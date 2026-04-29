@@ -1,0 +1,18 @@
+# Override for Linux hosts with NVIDIA GPU (TensorRT detector).
+# Activated by install.sh when nvidia-smi is detected, by setting:
+#
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.linux-nvidia.yml
+#
+# Requires the NVIDIA Container Toolkit to be installed on the host
+# (https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/).
+
+services:
+  frigate:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu, video, compute, utility]
+    runtime: nvidia

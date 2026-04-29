@@ -1,0 +1,12 @@
+# Override that mounts the Intel iGPU device into the Frigate container.
+# Activated by install.sh on Linux hosts that have /dev/dri/renderD128
+# (Intel N100, J5005, etc.) by setting:
+#
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.linux-igpu.yml
+#
+# in .env. docker compose merges this on top of the base file.
+
+services:
+  frigate:
+    devices:
+      - /dev/dri/renderD128:/dev/dri/renderD128

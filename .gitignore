@@ -1,0 +1,39 @@
+# Secrets and local config
+.env
+.env.local
+
+# Generated config (rendered from template). Frigate reads /config/config.yml.
+config/config.yml
+
+# Camera list — contains plaintext passwords, managed by admin panel
+config/cameras.yml
+
+# Frigate runtime data (if stored locally)
+storage/
+media/
+*.db
+*.db-shm
+*.db-wal
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+admin/.venv/

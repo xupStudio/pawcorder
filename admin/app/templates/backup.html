@@ -1,0 +1,138 @@
+{% extends "_layout.html" %}
+{% block title %}{{ t('BACKUP_TITLE') }} · pawcorder{% endblock %}
+{% block main %}
+<div x-data="backupPage()" class="max-w-3xl">
+  <h1 class="text-2xl font-semibold tracking-tight">{{ t('BACKUP_TITLE') }}</h1>
+  <p class="text-sm text-slate-500 dark:text-slate-400 mb-6">{{ t('BACKUP_SUBTITLE') }}</p>
+
+  <!-- Download -->
+  <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5 mb-6">
+    <h2 class="text-base font-semibold tracking-tight">{{ t('BACKUP_DOWNLOAD_HEAD') }}</h2>
+    <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('BACKUP_DOWNLOAD_HELP') }}</p>
+    <div class="mt-4 flex flex-col sm:flex-row gap-3 sm:items-center">
+      <a href="/api/backup/download"
+         class="inline-flex items-center justify-center rounded-md bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 text-sm font-medium">
+        {{ t('BACKUP_DOWNLOAD_BUTTON') }}
+      </a>
+      <span class="text-xs text-slate-500 dark:text-slate-400">{{ t('BACKUP_VERSION_LABEL') }}: <span class="font-mono">{{ app_version }}</span></span>
+    </div>
+    <details class="mt-4 text-xs text-slate-600 dark:text-slate-300">
+      <summary class="cursor-pointer text-slate-500 dark:text-slate-400">{{ t('BACKUP_WHATS_INSIDE') }}</summary>
+      <ul class="list-disc ml-5 mt-2 space-y-0.5">
+        <li><code>.env</code> — {{ t('BACKUP_ITEM_ENV') }}</li>
+        <li><code>config/cameras.yml</code> — {{ t('BACKUP_ITEM_CAMERAS') }}</li>
+        <li><code>config/rclone/rclone.conf</code> — {{ t('BACKUP_ITEM_RCLONE') }}</li>
+        <li><code>config/frigate.template.yml</code> — {{ t('BACKUP_ITEM_TEMPLATE') }}</li>
+      </ul>
+      <p class="mt-2 text-slate-500 dark:text-slate-400">{{ t('BACKUP_NOT_INCLUDED') }}</p>
+    </details>
+  </div>
+
+  <!-- Restore -->
+  <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5">
+    <h2 class="text-base font-semibold tracking-tight">{{ t('BACKUP_RESTORE_HEAD') }}</h2>
+    <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('BACKUP_RESTORE_HELP') }}</p>
+    <div class="mt-4 space-y-3">
+      <input type="file" x-ref="picker" @change="picked($event)"
+             accept=".tar.gz,.tgz,application/gzip"
+             class="block w-full text-sm text-slate-700 dark:text-slate-300 file:mr-3 file:rounded-md file:border-0 file:bg-slate-900 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white file:hover:bg-slate-800" />
+
+      <template x-if="meta">
+        <div class="rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-3 text-xs">
+          <div><span class="text-slate-500 dark:text-slate-400">{{ t('BACKUP_INSPECT_VERSION') }}:</span> <span class="font-mono" x-text="meta.version"></span></div>
+          <div><span class="text-slate-500 dark:text-slate-400">{{ t('BACKUP_INSPECT_CREATED') }}:</span> <span x-text="formatTime(meta.created_at)"></span></div>
+          <div class="mt-1"><span class="text-slate-500 dark:text-slate-400">{{ t('BACKUP_INSPECT_FILES') }}:</span></div>
+          <ul class="list-disc ml-5 mt-1">
+            <template x-for="f in meta.files" :key="f">
+              <li class="font-mono" x-text="f"></li>
+            </template>
+          </ul>
+        </div>
+      </template>
+
+      <template x-if="meta && !meta.compatible">
+        <div class="rounded-lg bg-rose-50 dark:bg-rose-900 border border-rose-200 dark:border-rose-800 p-3 text-xs text-rose-800 dark:text-rose-200">
+          <div class="font-medium">{{ t('BACKUP_VERSION_MISMATCH') }}</div>
+          <div class="mt-1" x-text="labels.version_detail
+            .replace('{file}', meta.version)
+            .replace('{app}', meta.expected_version)"></div>
+        </div>
+      </template>
+
+      <template x-if="error">
+        <div class="rounded-lg bg-rose-50 dark:bg-rose-900 border border-rose-200 dark:border-rose-800 p-3 text-xs text-rose-800 dark:text-rose-200" x-text="error"></div>
+      </template>
+
+      <div class="rounded-lg bg-amber-50 dark:bg-amber-900 border border-amber-200 dark:border-amber-800 p-3 text-xs text-amber-900 dark:text-amber-200" x-show="meta">
+        {{ t('BACKUP_RESTORE_WARNING') }}
+      </div>
+
+      <div class="flex gap-2">
+        <button @click="reset()" :disabled="!file"
+                class="rounded-md bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50">{{ t('CANCEL') }}</button>
+        <button @click="restore()" :disabled="!meta || !meta.compatible || restoring"
+                class="rounded-md bg-rose-600 hover:bg-rose-700 text-white px-3 py-2 text-sm font-medium disabled:opacity-50"
+                x-text="restoring ? labels.restoring : labels.restore_now"></button>
+      </div>
+
+      <template x-if="restored">
+        <div class="rounded-lg bg-emerald-50 dark:bg-emerald-900 border border-emerald-200 dark:border-emerald-800 p-3 text-xs text-emerald-800 dark:text-emerald-200">
+          <div class="font-medium">{{ t('BACKUP_RESTORE_DONE') }}</div>
+          <div x-text="labels.restored_files + ' ' + restored"></div>
+          <div class="mt-1">{{ t('BACKUP_RESTORE_NEXT') }}</div>
+        </div>
+      </template>
+    </div>
+  </div>
+</div>
+
+<script>
+  function backupPage() {
+    return {
+      file: null,
+      meta: null,
+      error: '',
+      restoring: false,
+      restored: 0,
+      labels: {
+        restore_now:    {{ t('BACKUP_RESTORE_BUTTON') | tojson }},
+        restoring:      {{ t('BACKUP_RESTORING') | tojson }},
+        restored_files: {{ t('BACKUP_RESTORED_FILES') | tojson }},
+        version_detail: {{ t('BACKUP_VERSION_MISMATCH_DETAIL') | tojson }},
+      },
+      reset() {
+        this.file = null; this.meta = null; this.error = ''; this.restored = 0;
+        if (this.$refs.picker) this.$refs.picker.value = '';
+      },
+      formatTime(t) {
+        if (!t) return '—';
+        return new Date(t * 1000).toLocaleString();
+      },
+      async picked(event) {
+        const f = event.target.files && event.target.files[0];
+        this.error = ''; this.meta = null; this.restored = 0;
+        if (!f) { this.file = null; return; }
+        this.file = f;
+        const data = new FormData();
+        data.append('file', f);
+        try {
+          this.meta = await apiUpload('/api/backup/inspect', data);
+        } catch (e) { this.error = e.message; }
+      },
+      async restore() {
+        if (!this.file || !this.meta || !this.meta.compatible) return;
+        if (!confirm({{ t('BACKUP_RESTORE_CONFIRM') | tojson }})) return;
+        this.restoring = true;
+        try {
+          const data = new FormData();
+          data.append('file', this.file);
+          const body = await apiUpload('/api/backup/restore', data);
+          this.restored = body.files_restored;
+          this.error = '';
+        } catch (e) { this.error = e.message; }
+        finally { this.restoring = false; }
+      },
+    };
+  }
+</script>
+{% endblock %}

@@ -1,0 +1,131 @@
+{% extends "_layout.html" %}
+{% block title %}{{ t('STORAGE_TITLE') }} · pawcorder{% endblock %}
+{% block main %}
+<div x-data="storagePage()" class="max-w-3xl">
+  <h1 class="text-2xl font-semibold tracking-tight">{{ t('STORAGE_TITLE') }}</h1>
+  <p class="text-sm text-slate-500 dark:text-slate-400 mb-6">{{ t('STORAGE_SUBTITLE') }}</p>
+
+  <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-6 space-y-5">
+    <div>
+      <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('STORAGE_LABEL') }}</label>
+      <input type="text" x-model="form.storage_path" placeholder="/mnt/pawcorder"
+             class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm font-mono" />
+      <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('STORAGE_HELP') }}</p>
+    </div>
+
+    <details class="rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-4 text-sm">
+      <summary class="font-medium cursor-pointer">{{ t('STORAGE_NAS_HOW') }}</summary>
+      <div class="mt-3 space-y-3">
+        <p class="text-xs text-slate-600 dark:text-slate-300">{{ t('STORAGE_NAS_HELP') }}</p>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <label class="text-xs">
+            {{ t('STORAGE_NAS_PROTOCOL') }}
+            <select x-model="nas.protocol" class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm">
+              <option value="nfs">NFS（TrueNAS、OMV、Synology）</option>
+              <option value="smb">SMB / CIFS（Synology、QNAP、Windows）</option>
+            </select>
+          </label>
+          <label class="text-xs">
+            {{ t('STORAGE_NAS_SERVER') }}
+            <input type="text" x-model="nas.server" placeholder="192.168.1.10"
+                   class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm font-mono" />
+          </label>
+          <label class="text-xs sm:col-span-2">
+            {{ t('STORAGE_NAS_SHARE') }}
+            <input type="text" x-model="nas.share" placeholder="/volume1/pawcorder"
+                   class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm font-mono" />
+          </label>
+          <template x-if="nas.protocol === 'smb'">
+            <div class="grid grid-cols-2 gap-3 sm:col-span-2">
+              <label class="text-xs">
+                {{ t('STORAGE_NAS_USER') }}
+                <input type="text" x-model="nas.username"
+                       class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm" />
+              </label>
+              <label class="text-xs">
+                {{ t('STORAGE_NAS_PASSWORD') }}
+                <input type="password" x-model="nas.password"
+                       class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm" />
+              </label>
+            </div>
+          </template>
+          <label class="text-xs sm:col-span-2">
+            {{ t('STORAGE_NAS_MOUNT_POINT') }}
+            <input type="text" x-model="nas.mount_point" placeholder="/mnt/pawcorder"
+                   class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm font-mono" />
+          </label>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <button @click="testMount()" :disabled="testing"
+                  class="rounded-md bg-slate-900 text-white px-3 py-2 text-xs font-medium disabled:opacity-50"
+                  x-text="testing ? labels.testing : labels.test"></button>
+          <button @click="installMount()" :disabled="installing || !nas.testedOk"
+                  class="rounded-md bg-brand-500 hover:bg-brand-600 text-white px-3 py-2 text-xs font-medium disabled:opacity-50"
+                  x-text="installing ? labels.installing : labels.install"></button>
+          <p class="text-xs" :class="nas.testMessageClass" x-text="nas.testMessage"></p>
+        </div>
+        <details x-show="nas.testOutput" class="text-xs">
+          <summary class="cursor-pointer text-slate-500 dark:text-slate-400">{{ t('STORAGE_NAS_DETAILS') }}</summary>
+          <pre class="mt-1 bg-rose-50 dark:bg-rose-900 border border-rose-200 dark:border-rose-800 rounded p-2 overflow-x-auto" x-text="nas.testOutput"></pre>
+        </details>
+      </div>
+    </details>
+
+    <div class="flex justify-end">
+      <button @click="save()" class="rounded-md bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 text-sm font-medium">{{ t('SAVE') }}</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  function storagePage() {
+    return {
+      form: { storage_path: {{ config.storage_path | tojson }} },
+      nas: {
+        protocol: 'nfs', server: '', share: '', mount_point: '/mnt/pawcorder',
+        username: '', password: '',
+        testedOk: false, testMessage: '', testOutput: '',
+        get testMessageClass() {
+          if (!this.testMessage) return '';
+          return this.testedOk ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300';
+        },
+      },
+      testing: false,
+      installing: false,
+      labels: {
+        test:       {{ t('STORAGE_NAS_TEST') | tojson }},
+        testing:    {{ t('STORAGE_NAS_TESTING') | tojson }},
+        install:    {{ t('STORAGE_NAS_INSTALL') | tojson }},
+        installing: {{ t('STORAGE_NAS_INSTALLING') | tojson }},
+      },
+      async save() {
+        try {
+          await api('/api/config/save', { method: 'POST', body: { section: 'storage', data: this.form } });
+          toast({{ t('SAVED') | tojson }}, 'info');
+        } catch (e) { toast(e.message, 'error'); }
+      },
+      async testMount() {
+        this.testing = true;
+        try {
+          const out = await api('/api/storage/test-mount', { method: 'POST', body: this.nas });
+          this.nas.testedOk = !!out.ok;
+          this.nas.testMessage = out.message;
+          this.nas.testOutput = out.output || '';
+        } catch (e) { this.nas.testedOk = false; this.nas.testMessage = e.message; }
+        finally { this.testing = false; }
+      },
+      async installMount() {
+        this.installing = true;
+        try {
+          const out = await api('/api/storage/install-mount', { method: 'POST', body: this.nas });
+          if (out.ok) {
+            this.form.storage_path = out.mount_point;
+            toast({{ t('SAVED') | tojson }}, 'success');
+          }
+        } catch (e) { toast(e.message, 'error'); }
+        finally { this.installing = false; }
+      },
+    };
+  }
+</script>
+{% endblock %}

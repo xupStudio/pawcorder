@@ -1,0 +1,103 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  python-tests:
+    name: Python tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: admin/requirements-dev.txt
+      - name: Install dependencies
+        working-directory: admin
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+      - name: Run pytest with coverage
+        working-directory: admin
+        run: pytest tests/ --cov=app --cov-report=term-missing --cov-report=xml
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: admin/coverage.xml
+
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ludeeus/action-shellcheck@2.0.0
+        with:
+          severity: warning
+          scandir: "."
+          additional_files: "install.sh"
+
+  template-render:
+    name: Frigate template renders to valid YAML
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pyyaml + jinja2
+        run: pip install pyyaml jinja2
+      - name: Render template with mock cameras
+        run: |
+          python - <<'PY'
+          import jinja2, yaml
+          env = jinja2.Environment(loader=jinja2.FileSystemLoader("config"), undefined=jinja2.StrictUndefined)
+          tpl = env.get_template("frigate.template.yml")
+          cams = [{
+              "name": "cam", "ip": "1.1.1.1", "rtsp_port": 554, "onvif_port": 8000,
+              "detect_width": 640, "detect_height": 480, "enabled": True,
+              "user": "admin", "password": 'p"x', "user_url": "admin", "password_url": "p%22x",
+              "rtsp_main_path": "/h264Preview_01_main",
+              "rtsp_sub_path": "/h264Preview_01_sub",
+              "two_way_audio": False, "audio_detection": False,
+              "energy_paused": False, "zones": [], "privacy_masks": [],
+          }]
+          for combo in [
+              {"track_cat": True,  "track_dog": True,  "track_person": True},
+              {"track_cat": True,  "track_dog": False, "track_person": False},
+              {"track_cat": False, "track_dog": False, "track_person": True},
+          ]:
+              out = tpl.render(cameras=cams, detector_type="cpu", recording_paused=False, pet_min_score="0.65", pet_threshold="0.7", tz="UTC", **combo)
+              parsed = yaml.safe_load(out)
+              assert "cam" in parsed["cameras"]
+          print("ok")
+          PY
+
+  docker-compose-validate:
+    name: docker compose config validates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate compose file syntax
+        run: |
+          # Provide minimum env for the variable substitutions in docker-compose.yml
+          export STORAGE_PATH=/tmp/storage
+          export FRIGATE_RTSP_PASSWORD=test
+          docker compose config --quiet
+
+  packer-validate:
+    name: Packer template validates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-packer@main
+        with:
+          version: latest
+      - working-directory: boot-image
+        run: |
+          packer init pawcorder.pkr.hcl
+          packer validate pawcorder.pkr.hcl

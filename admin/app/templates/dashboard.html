@@ -1,0 +1,212 @@
+{% extends "_layout.html" %}
+{% block title %}{{ t('DASHBOARD_TITLE') }} · pawcorder{% endblock %}
+{% block main %}
+<div x-data="dashboard()" x-init="init()">
+  <div class="flex items-center justify-between mb-6">
+    <div>
+      <h1 class="text-2xl font-semibold tracking-tight">{{ t('DASHBOARD_TITLE') }}</h1>
+      <p class="text-sm text-slate-500 dark:text-slate-400">{{ t('DASHBOARD_SUBTITLE') }}</p>
+    </div>
+    <div class="flex gap-2">
+      <a href="http://{{ request.url.hostname }}:5000" target="_blank" rel="noopener"
+         class="inline-flex items-center rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800">
+        {{ t('OPEN_FRIGATE_UI') }}
+      </a>
+    </div>
+  </div>
+
+  {# Onboarding tracker — once the user has finished `/setup`, nudge
+     them through the post-setup features (notifications, cloud backup,
+     pet identity, etc.). State is derived from real config, so when
+     they finish a step elsewhere the widget updates automatically on
+     next refresh. Hides itself when all done or all skipped. #}
+  <div x-show="onboarding && !onboarding.all_done" x-cloak
+       class="rounded-2xl bg-amber-50 dark:bg-amber-900 border border-amber-200 dark:border-amber-800 p-4 mb-6">
+    <div class="flex items-start justify-between gap-3 flex-wrap">
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center gap-2 mb-1">
+          <span class="text-xs font-medium uppercase tracking-wider text-amber-800 dark:text-amber-200">
+            {{ t('ONBOARDING_TITLE') }}
+          </span>
+          <span class="text-xs text-amber-800 dark:text-amber-200"
+                x-text="onboardingProgressLabel()"></span>
+        </div>
+        <p class="font-semibold text-amber-900 dark:text-amber-100"
+           x-text="onboardingNextStep()?.title || ''"></p>
+        <p class="text-sm text-amber-800 dark:text-amber-200"
+           x-text="onboardingNextStep()?.why || ''"></p>
+      </div>
+      <div class="flex items-center gap-2 shrink-0">
+        <a :href="onboarding?.next_step_href || '#'"
+           class="inline-flex items-center rounded-md bg-amber-500 hover:bg-amber-600 text-white px-3 py-2 text-sm font-medium">
+          {{ t('ONBOARDING_NEXT') }} →
+        </a>
+        <button type="button" @click="skipOnboardingStep(onboarding?.next_step_key)"
+                class="text-xs text-amber-800 dark:text-amber-200 hover:underline">
+          {{ t('ONBOARDING_SKIP') }}
+        </button>
+        <button type="button" @click="skipAllOnboarding()"
+                class="text-xs text-amber-700 dark:text-amber-300 hover:underline">
+          {{ t('ONBOARDING_SKIP_ALL') }}
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+    <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5">
+      <div class="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">{{ t('TILE_FRIGATE') }}</div>
+      <div class="mt-2 flex items-baseline gap-2">
+        <span class="text-2xl font-semibold text-slate-900 dark:text-slate-100" x-text="status.frigate.running ? {{ t('STATE_RUNNING') | tojson }} : {{ t('STATE_STOPPED') | tojson }}"></span>
+        <span class="inline-flex h-2 w-2 rounded-full"
+              x-bind:class="status.frigate.running ? 'bg-emerald-500' : 'bg-rose-500'"></span>
+      </div>
+      <div class="mt-1 text-sm text-slate-500 dark:text-slate-400" x-text="status.frigate.health || status.frigate.status"></div>
+    </div>
+    <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5">
+      <div class="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">{{ t('TILE_CAMERAS') }}</div>
+      <div class="mt-2 text-2xl font-semibold text-slate-900 dark:text-slate-100" x-text="status.camera_count"></div>
+      <div class="mt-1 text-sm text-slate-500 dark:text-slate-400">
+        <a href="/cameras" class="hover:text-slate-700 dark:hover:text-slate-200 underline">{{ t('MANAGE_CAMERAS') }}</a>
+      </div>
+    </div>
+    <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5">
+      <div class="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">{{ t('TILE_PETS_TODAY') }}</div>
+      <div class="mt-2 text-2xl font-semibold text-slate-900 dark:text-slate-100" x-text="petsToday.total"></div>
+      <div class="mt-1 text-sm text-slate-500 dark:text-slate-400" x-show="petsToday.byPet.length > 0">
+        <template x-for="p in petsToday.byPet.slice(0, 3)" :key="p.pet_id">
+          <span class="mr-2"><span x-text="p.pet_name"></span>: <span x-text="p.count"></span></span>
+        </template>
+      </div>
+      <div class="mt-1 text-sm text-slate-500 dark:text-slate-400" x-show="petsToday.byPet.length === 0">
+        <a href="/pets" class="hover:text-slate-700 dark:hover:text-slate-200 underline">{{ t('TILE_PETS_TODAY_EMPTY') }}</a>
+      </div>
+    </div>
+    <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5">
+      <div class="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">{{ t('TILE_STORAGE') }}</div>
+      <div class="mt-2 text-2xl font-semibold truncate text-slate-900 dark:text-slate-100">{{ config.storage_path or t('NOT_SET') }}</div>
+      <div class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{ t('STORAGE_CAPTION') }}</div>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5">
+      <h2 class="text-base font-semibold tracking-tight mb-3">{{ t('DASHBOARD_CAMERAS_HEADING') }}</h2>
+      <ul x-show="status.cameras && status.cameras.length > 0" class="space-y-2 text-sm">
+        <template x-for="c in status.cameras" :key="c.name">
+          <li class="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-2 last:border-0 last:pb-0">
+            <div class="flex items-center gap-2">
+              <div>
+                <div class="font-medium" x-text="c.name"></div>
+                <div class="text-xs text-slate-500 dark:text-slate-400 font-mono" x-text="c.ip"></div>
+              </div>
+              <span x-show="c.connection_type && c.connection_type !== 'unknown'"
+                    class="inline-flex rounded-full px-2 py-0.5 text-xs font-medium"
+                    x-bind:class="{
+                      'bg-blue-50 dark:bg-blue-900 text-blue-700 dark:text-blue-300': c.connection_type === 'wifi',
+                      'bg-emerald-50 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300': c.connection_type === 'wired',
+                    }"
+                    x-text="c.connection_type === 'wifi' ? {{ t('LINK_WIFI') | tojson }} : {{ t('LINK_WIRED') | tojson }}"></span>
+            </div>
+            <span class="inline-flex h-2 w-2 rounded-full"
+                  x-bind:class="c.enabled ? 'bg-emerald-500' : 'bg-slate-300'"></span>
+          </li>
+        </template>
+      </ul>
+      <p x-show="!status.cameras || status.cameras.length === 0" class="text-sm text-slate-500 dark:text-slate-400">
+        {{ t('DASHBOARD_NO_CAMERAS') }} <a href="/cameras" class="underline">{{ t('ADD_CAMERA') }}</a>.
+      </p>
+    </div>
+    <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5">
+      <h2 class="text-base font-semibold tracking-tight mb-3">{{ t('DASHBOARD_QUICK_ACTIONS') }}</h2>
+      <div class="space-y-2">
+        <button @click="restart()"
+                class="w-full text-left rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 text-sm flex justify-between items-center">
+          <span>{{ t('QA_RESTART') }}</span>
+          <span class="text-xs text-slate-400 dark:text-slate-500">→</span>
+        </button>
+        <a href="/mobile" class="w-full text-left rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 text-sm flex justify-between items-center block">
+          <span>{{ t('QA_MOBILE') }}</span><span class="text-xs text-slate-400 dark:text-slate-500">→</span>
+        </a>
+        <a href="/notifications" class="w-full text-left rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 text-sm flex justify-between items-center block">
+          <span class="flex items-center gap-2">
+            {{ t('QA_TELEGRAM') }}
+            {% if config.telegram_enabled or config.line_enabled %}<span class="inline-flex h-2 w-2 rounded-full bg-emerald-500" title="{{ t('ENABLED') }}"></span>{% endif %}
+          </span>
+          <span class="text-xs text-slate-400 dark:text-slate-500">→</span>
+        </a>
+        <a href="/home-assistant" class="w-full text-left rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 text-sm flex justify-between items-center block">
+          <span>{{ t('QA_HA') }}</span><span class="text-xs text-slate-400 dark:text-slate-500">→</span>
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  function dashboard() {
+    return {
+      status: { frigate: { running: false, status: 'unknown' }, camera_count: 0, cameras: [] },
+      petsToday: { total: 0, byPet: [] },
+      onboarding: null,
+      labels: {
+        progress: {{ t('ONBOARDING_PROGRESS') | tojson }},  // "{done}/{total} done"
+      },
+      async init() {
+        await this.refresh();
+        setInterval(() => this.refresh(), 5000);
+      },
+      async refresh() {
+        try { this.status = await api('/api/status'); } catch (e) {}
+        try {
+          const summary = await api('/api/pets');
+          // Aggregate today's sightings — total + per-pet counts.
+          let total = 0;
+          const byPet = [];
+          for (const p of (summary.pets || [])) {
+            const c = p.stats?.sightings || 0;
+            total += c;
+            if (c > 0) byPet.push({ pet_id: p.pet_id, pet_name: p.name, count: c });
+          }
+          byPet.sort((a, b) => b.count - a.count);
+          this.petsToday = { total, byPet };
+        } catch (e) {}
+        // Skip the onboarding fetch once we know everything's done — the
+        // 5s status loop runs forever, and there's no need to keep asking.
+        if (!this.onboarding || !this.onboarding.all_done) {
+          try { this.onboarding = await api('/api/onboarding'); } catch (e) {}
+        }
+      },
+      async restart() {
+        try {
+          await api('/api/frigate/restart', { method: 'POST', body: {} });
+          toast({{ t('SAVED') | tojson }}, 'success');
+          this.refresh();
+        } catch (e) { toast(e.message, 'error'); }
+      },
+      onboardingProgressLabel() {
+        if (!this.onboarding) return '';
+        return this.labels.progress
+          .replace('{done}', this.onboarding.completed_count)
+          .replace('{total}', this.onboarding.total);
+      },
+      onboardingNextStep() {
+        // Server includes pre-translated title/why on each step; the
+        // widget renders the first non-completed-not-skipped one.
+        return this.onboarding?.steps?.find(s => s.key === this.onboarding.next_step_key) || null;
+      },
+      async skipOnboardingStep(step) {
+        if (!step) return;
+        try { await api('/api/onboarding/skip', { method: 'POST', body: { step } }); }
+        catch (e) { toast(e.message, 'error'); return; }
+        this.refresh();
+      },
+      async skipAllOnboarding() {
+        try { await api('/api/onboarding/skip', { method: 'POST', body: { all: true } }); }
+        catch (e) { toast(e.message, 'error'); return; }
+        this.refresh();
+      },
+    };
+  }
+</script>
+{% endblock %}

@@ -1,0 +1,428 @@
+{% extends "_layout.html" %}
+{% block title %}{{ t('PETS_TITLE') }} · pawcorder{% endblock %}
+{% block main %}
+<div x-data='petsPage({{ pets | tojson }}, {{ summary | tojson }}, {{ recognition_ready | tojson }})'
+     x-init="refresh()">
+  <div class="flex items-center justify-between mb-6 gap-2">
+    <div>
+      <h1 class="text-2xl font-semibold tracking-tight">{{ t('PETS_TITLE') }}</h1>
+      <p class="text-sm text-slate-500 dark:text-slate-400">{{ t('PETS_SUBTITLE') }}</p>
+    </div>
+    <button @click="openNew()"
+            class="rounded-md bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 text-sm font-medium">
+      {{ t('PETS_ADD') }}
+    </button>
+  </div>
+
+  <!-- Recognition setup nag — only show if model not yet downloaded -->
+  <div x-show="!recognitionReady" x-cloak
+       class="rounded-2xl bg-amber-50 dark:bg-amber-900 border border-amber-200 dark:border-amber-800 p-5 mb-6">
+    <h2 class="text-base font-semibold tracking-tight">{{ t('PETS_SETUP_HEADING') }}</h2>
+    <p class="text-sm text-amber-800 dark:text-amber-200 mt-1">{{ t('PETS_SETUP_HELP') }}</p>
+    <button @click="setupModel()" :disabled="setupBusy"
+            class="mt-3 rounded-md bg-amber-600 hover:bg-amber-700 text-white px-3 py-2 text-sm font-medium disabled:opacity-50"
+            x-text="setupBusy ? labels.setup_running : labels.setup_button"></button>
+  </div>
+
+  <!-- Empty state -->
+  <div x-show="pets.length === 0" x-cloak
+       class="rounded-2xl bg-white dark:bg-slate-900 border border-dashed border-slate-300 dark:border-slate-600 p-10 text-center">
+    <p class="text-sm text-slate-500 dark:text-slate-400">{{ t('PETS_EMPTY') }} <span class="font-medium text-slate-700 dark:text-slate-300">{{ t('PETS_ADD') }}</span> {{ t('PETS_EMPTY_AFTER') }}</p>
+  </div>
+
+  <!-- Backfill recognition over past events -->
+  <div class="rounded-2xl bg-slate-50 dark:bg-slate-800 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-700 p-4 mb-6 text-sm"
+       x-show="pets.length > 0 && recognitionReady">
+    <div class="flex items-start justify-between gap-3">
+      <div>
+        <p class="font-medium">{{ t('PETS_BACKFILL_HEADING') }}</p>
+        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('PETS_BACKFILL_HELP') }}</p>
+      </div>
+      <button @click="runBackfill()" :disabled="backfill.running"
+              class="rounded-md bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 px-3 py-1.5 text-xs font-medium disabled:opacity-50 shrink-0"
+              x-text="backfill.running ? labels.backfill_running : labels.backfill_start"></button>
+    </div>
+    <div x-show="backfill.running || backfill.processed > 0" class="mt-3">
+      <div class="h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+        <div class="h-full bg-brand-500 transition-all"
+             :style="`width: ${(backfill.fraction * 100).toFixed(1)}%`"></div>
+      </div>
+      <p class="text-xs text-slate-500 dark:text-slate-400 mt-1"
+         x-text="backfill.processed + ' / ' + backfill.total_events + ' — ' + backfill.matched + ' ' + labels.backfill_matched"></p>
+    </div>
+  </div>
+
+  <!-- Today's top moments — sit above the pet cards so users notice -->
+  <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5 mb-6"
+       x-show="moments.length > 0">
+    <h2 class="text-base font-semibold tracking-tight">{{ t('PETS_TODAY_HEADING') }}</h2>
+    <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('PETS_TODAY_HELP') }}</p>
+    <div class="mt-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+      <template x-for="m in moments" :key="m.event_id">
+        <div class="relative aspect-video rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800">
+          <img :src="m.snapshot_url" alt="" class="absolute inset-0 w-full h-full object-cover"
+               loading="lazy" onerror="this.style.opacity=0.3" />
+          <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent text-white p-2 text-xs">
+            <div class="font-medium" x-text="m.pet_name || m.camera"></div>
+            <div class="text-[10px] opacity-80" x-text="formatHHMM(m.start_time)"></div>
+          </div>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <!-- Pet cards -->
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4" x-show="pets.length > 0">
+    <template x-for="p in pets" :key="p.pet_id">
+      <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5 flex gap-4">
+        <!-- avatar: first photo -->
+        <div class="shrink-0">
+          <template x-if="p.photos && p.photos.length > 0">
+            <img :src="`/api/pets/${p.pet_id}/photos/${p.photos[0].filename}`"
+                 alt="" class="w-20 h-20 rounded-xl object-cover bg-slate-100 dark:bg-slate-800" />
+          </template>
+          <template x-if="!p.photos || p.photos.length === 0">
+            <div class="w-20 h-20 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-3xl">
+              <span x-text="p.species === 'dog' ? '🐶' : '🐱'"></span>
+            </div>
+          </template>
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-start justify-between gap-2">
+            <div class="min-w-0">
+              <div class="font-medium truncate" x-text="p.name"></div>
+              <div class="text-xs text-slate-500 dark:text-slate-400 capitalize" x-text="p.species"></div>
+            </div>
+            <div class="text-right text-xs text-slate-500 dark:text-slate-400 shrink-0">
+              <div x-text="(p.stats?.sightings || 0) + ' ' + labels.sightings_24h"></div>
+              <div x-show="p.stats?.last_seen" x-text="labels.last_seen + ' ' + relTime(p.stats.last_seen)"></div>
+            </div>
+          </div>
+          <p class="text-xs text-slate-500 dark:text-slate-400 mt-2" x-text="p.notes || '—'"></p>
+          <div class="mt-3 flex items-center gap-3 text-sm">
+            <button @click="openPhotos(p)" class="text-brand-600 hover:text-brand-700"
+                    x-text="labels.photos + ' (' + (p.photos?.length || 0) + ')'"></button>
+            <button @click="openTimeline(p)" class="text-brand-600 hover:text-brand-700">{{ t('PETS_VIEW_TIMELINE') }}</button>
+            <button @click="openEdit(p)" class="text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100">{{ t('EDIT') }}</button>
+            <button @click="remove(p)" class="text-rose-600 dark:text-rose-400 hover:text-rose-700">{{ t('REMOVE') }}</button>
+          </div>
+        </div>
+      </div>
+    </template>
+  </div>
+
+  <!-- Add/Edit modal -->
+  <div x-show="modal.open" x-cloak
+       class="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/50 p-4"
+       @keydown.escape.window="closeModal()">
+    <div class="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-md">
+      <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
+        <h2 class="text-lg font-semibold" x-text="modal.mode === 'edit' ? labels.title_edit : labels.title_new"></h2>
+        <button @click="closeModal()" class="text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200">×</button>
+      </div>
+      <div class="px-6 py-5 space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('PETS_NAME') }}</label>
+          <input type="text" x-model="form.name" placeholder="Mochi"
+                 class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm" />
+          <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('PETS_NAME_HELP') }}</p>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('PETS_SPECIES') }}</label>
+          <select x-model="form.species" class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm">
+            <option value="cat">{{ t('PETS_SPECIES_CAT') }}</option>
+            <option value="dog">{{ t('PETS_SPECIES_DOG') }}</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('PETS_NOTES') }}</label>
+          <textarea x-model="form.notes" rows="2"
+                    class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm"></textarea>
+        </div>
+      </div>
+      <div class="px-6 py-4 bg-slate-50 dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-2">
+        <button @click="closeModal()" class="rounded-md bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 px-4 py-2 text-sm hover:bg-slate-100 dark:hover:bg-slate-700">{{ t('CANCEL') }}</button>
+        <button @click="save()" :disabled="saving || !form.name"
+                class="rounded-md bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 text-sm font-medium disabled:opacity-50"
+                x-text="saving ? labels.saving : labels.save"></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Photo manager modal -->
+  <div x-show="photoModal.open" x-cloak
+       class="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/50 p-4"
+       @keydown.escape.window="closePhotos()">
+    <div class="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+      <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
+        <h2 class="text-lg font-semibold" x-text="labels.photos_for + ' ' + (photoModal.pet?.name || '')"></h2>
+        <button @click="closePhotos()" class="text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200">×</button>
+      </div>
+      <div class="px-6 py-5">
+        <p class="text-sm text-slate-500 dark:text-slate-400 mb-4">{{ t('PETS_PHOTO_HELP') }}</p>
+
+        <!-- Upload zone -->
+        <div class="rounded-lg border-2 border-dashed border-slate-300 dark:border-slate-600 p-6 text-center mb-5"
+             @dragover.prevent="dragHover = true"
+             @dragleave="dragHover = false"
+             @drop.prevent="dropFiles($event)"
+             :class="dragHover ? 'border-brand-500 bg-brand-50 dark:bg-brand-900' : ''">
+          <p class="text-sm text-slate-600 dark:text-slate-300">{{ t('PETS_PHOTO_DROP') }}</p>
+          <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('PETS_PHOTO_OR') }}</p>
+          <input type="file" x-ref="picker" @change="filesPicked($event)"
+                 accept="image/*" multiple class="hidden" />
+          <button @click="$refs.picker.click()"
+                  class="mt-3 inline-block rounded-md bg-slate-900 text-white px-3 py-2 text-sm hover:bg-slate-800">
+            {{ t('PETS_PHOTO_PICK') }}
+          </button>
+          <p x-show="uploadProgress" x-text="uploadProgress" class="mt-3 text-sm text-brand-700 dark:text-brand-300"></p>
+          <p x-show="uploadError" x-text="uploadError" class="mt-3 text-sm text-rose-600 dark:text-rose-400"></p>
+        </div>
+
+        <!-- Existing photo grid -->
+        <div class="grid grid-cols-3 sm:grid-cols-4 gap-3" x-show="photoModal.pet">
+          <template x-for="ph in (photoModal.pet?.photos || [])" :key="ph.filename">
+            <div class="relative group">
+              <img :src="`/api/pets/${photoModal.pet.pet_id}/photos/${ph.filename}`"
+                   class="w-full aspect-square object-cover rounded-lg bg-slate-100 dark:bg-slate-800" />
+              <button @click="removePhoto(ph.filename)"
+                      class="absolute top-1 right-1 rounded-full bg-white dark:bg-slate-900/95 hover:bg-rose-100 text-rose-700 dark:text-rose-300 w-6 h-6 text-xs"
+                      title="Remove">×</button>
+            </div>
+          </template>
+        </div>
+        <div x-show="(photoModal.pet?.photos || []).length === 0"
+             class="text-center text-sm text-slate-500 dark:text-slate-400 py-6">
+          {{ t('PETS_PHOTO_NONE_YET') }}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Timeline modal -->
+  <div x-show="timelineModal.open" x-cloak
+       class="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/50 p-4"
+       @keydown.escape.window="timelineModal.open = false">
+    <div class="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+      <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
+        <h2 class="text-lg font-semibold"
+            x-text="labels.timeline_for + ' ' + (timelineModal.pet?.name || '')"></h2>
+        <button @click="timelineModal.open = false" class="text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200">×</button>
+      </div>
+      <div class="px-6 py-5">
+        <p x-show="timelineModal.loading" class="text-sm text-slate-500 dark:text-slate-400">{{ t('SAVING') }}</p>
+        <p x-show="!timelineModal.loading && timelineModal.journeys.length === 0"
+           class="text-sm text-slate-500 dark:text-slate-400">{{ t('PETS_TIMELINE_EMPTY') }}</p>
+        <ol class="space-y-4">
+          <template x-for="(j, ji) in timelineModal.journeys" :key="ji">
+            <li class="rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-3">
+              <div class="text-xs text-slate-500 dark:text-slate-400 mb-2"
+                   x-text="formatDate(j.start_time) + ' → ' + formatDate(j.end_time)"></div>
+              <ol class="space-y-1">
+                <template x-for="(leg, li) in j.legs" :key="li">
+                  <li class="flex items-center justify-between text-sm"
+                      :class="leg.confidence === 'tentative' ? 'opacity-60' : ''">
+                    <span class="font-mono" x-text="leg.camera"></span>
+                    <span class="text-slate-500 dark:text-slate-400"
+                          x-text="formatTime(leg.start_time) + ' – ' + formatTime(leg.end_time)"></span>
+                  </li>
+                </template>
+              </ol>
+            </li>
+          </template>
+        </ol>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  function petsPage(initialPets, initialSummary, recognitionReady) {
+    return {
+      pets: (initialPets || []).map(p => ({
+        ...p,
+        stats: initialSummary[p.pet_id] || { sightings: 0, last_seen: 0, cameras: [] },
+      })),
+      recognitionReady: recognitionReady,
+      moments: [],
+      backfill: { running: false, total_events: 0, processed: 0, matched: 0, fraction: 0 },
+      _backfillPoll: null,
+      setupBusy: false,
+      modal: { open: false, mode: 'new', original: null },
+      photoModal: { open: false, pet: null },
+      timelineModal: { open: false, pet: null, loading: false, journeys: [] },
+      form: { name: '', species: 'cat', notes: '' },
+      saving: false,
+      dragHover: false,
+      uploadProgress: '',
+      uploadError: '',
+      labels: {
+        backfill_start:   {{ t('PETS_BACKFILL_START') | tojson }},
+        backfill_running: {{ t('PETS_BACKFILL_RUNNING') | tojson }},
+        backfill_matched: {{ t('PETS_BACKFILL_MATCHED') | tojson }},
+        title_new:     {{ t('PETS_TITLE_NEW') | tojson }},
+        title_edit:    {{ t('PETS_TITLE_EDIT') | tojson }},
+        save:          {{ t('SAVE') | tojson }},
+        saving:        {{ t('SAVING') | tojson }},
+        sightings_24h: {{ t('PETS_SIGHTINGS_24H') | tojson }},
+        last_seen:     {{ t('PETS_LAST_SEEN') | tojson }},
+        photos:        {{ t('PETS_PHOTOS') | tojson }},
+        photos_for:    {{ t('PETS_PHOTOS_FOR') | tojson }},
+        timeline_for:  {{ t('PETS_TIMELINE_FOR') | tojson }},
+        setup_button:  {{ t('PETS_SETUP_BUTTON') | tojson }},
+        setup_running: {{ t('PETS_SETUP_RUNNING') | tojson }},
+      },
+      async refresh() {
+        try {
+          const data = await api('/api/pets');
+          this.pets = (data.pets || []);
+          this.recognitionReady = !!data.recognition_ready;
+        } catch (e) { /* keep what we had */ }
+        try {
+          const data = await api('/api/pets/today?limit=10');
+          this.moments = data.moments || [];
+        } catch (e) { /* recognition not set up — silent */ }
+      },
+      formatHHMM(ts) {
+        if (!ts) return '';
+        const d = new Date(ts * 1000);
+        return d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0');
+      },
+      async runBackfill() {
+        try {
+          await api('/api/pets/backfill', { method: 'POST', body: { hours: 168 } });
+          this._pollBackfill();
+        } catch (e) { toast(e.message, 'error'); }
+      },
+      _pollBackfill() {
+        if (this._backfillPoll) clearInterval(this._backfillPoll);
+        this._backfillPoll = setInterval(async () => {
+          try {
+            this.backfill = await api('/api/pets/backfill/progress');
+            if (!this.backfill.running) {
+              clearInterval(this._backfillPoll); this._backfillPoll = null;
+              await this.refresh();  // pull fresh top-moments + counts
+            }
+          } catch (e) {
+            clearInterval(this._backfillPoll); this._backfillPoll = null;
+          }
+        }, 1500);
+      },
+      openNew() {
+        this.modal = { open: true, mode: 'new', original: null };
+        this.form = { name: '', species: 'cat', notes: '' };
+      },
+      openEdit(p) {
+        this.modal = { open: true, mode: 'edit', original: p.pet_id };
+        this.form = { name: p.name, species: p.species, notes: p.notes || '' };
+      },
+      closeModal() { this.modal.open = false; },
+      async save() {
+        this.saving = true;
+        try {
+          if (this.modal.mode === 'edit') {
+            await api(`/api/pets/${encodeURIComponent(this.modal.original)}`,
+                       { method: 'PUT', body: this.form });
+          } else {
+            await api('/api/pets', { method: 'POST', body: this.form });
+          }
+          this.closeModal();
+          await this.refresh();
+        } catch (e) { toast(e.message, 'error'); }
+        finally { this.saving = false; }
+      },
+      async remove(p) {
+        if (!confirm({{ t('PETS_REMOVE_CONFIRM') | tojson }}.replace('{name}', p.name))) return;
+        try {
+          await api(`/api/pets/${encodeURIComponent(p.pet_id)}`, { method: 'DELETE' });
+          await this.refresh();
+        } catch (e) { toast(e.message, 'error'); }
+      },
+      openPhotos(p) {
+        this.photoModal = { open: true, pet: { ...p, photos: p.photos || [] } };
+        this.uploadProgress = '';
+        this.uploadError = '';
+      },
+      closePhotos() {
+        this.photoModal.open = false;
+        this.refresh();
+      },
+      filesPicked(event) {
+        const files = Array.from(event.target.files || []);
+        this.uploadFiles(files);
+        event.target.value = '';
+      },
+      dropFiles(event) {
+        this.dragHover = false;
+        const files = Array.from(event.dataTransfer.files || []).filter(f => f.type.startsWith('image/'));
+        this.uploadFiles(files);
+      },
+      async uploadFiles(files) {
+        this.uploadError = '';
+        if (!files.length) return;
+        for (let i = 0; i < files.length; i++) {
+          this.uploadProgress = labelize({{ t('PETS_PHOTO_UPLOADING') | tojson }}, { i: i + 1, n: files.length });
+          const formData = new FormData();
+          formData.append('file', files[i]);
+          try {
+            await apiUpload(`/api/pets/${encodeURIComponent(this.photoModal.pet.pet_id)}/photos`, formData);
+          } catch (e) {
+            this.uploadError = e.message;
+            this.uploadProgress = '';
+            return;
+          }
+        }
+        this.uploadProgress = '';
+        // Refetch the pet so the photo grid shows the new uploads.
+        const fresh = await api('/api/pets');
+        const refreshed = (fresh.pets || []).find(p => p.pet_id === this.photoModal.pet.pet_id);
+        if (refreshed) this.photoModal.pet = refreshed;
+      },
+      async removePhoto(filename) {
+        try {
+          await api(`/api/pets/${encodeURIComponent(this.photoModal.pet.pet_id)}/photos/${encodeURIComponent(filename)}`,
+                     { method: 'DELETE' });
+          this.photoModal.pet.photos = this.photoModal.pet.photos.filter(p => p.filename !== filename);
+        } catch (e) { toast(e.message, 'error'); }
+      },
+      async openTimeline(p) {
+        this.timelineModal = { open: true, pet: p, loading: true, journeys: [] };
+        try {
+          const data = await api(`/api/pets/${encodeURIComponent(p.pet_id)}/timeline`);
+          this.timelineModal.journeys = data.journeys || [];
+        } catch (e) { toast(e.message, 'error'); }
+        finally { this.timelineModal.loading = false; }
+      },
+      async setupModel() {
+        this.setupBusy = true;
+        try {
+          await api('/api/pets/setup-model', { method: 'POST', body: {} });
+          this.recognitionReady = true;
+          toast({{ t('SAVED') | tojson }}, 'success');
+        } catch (e) { toast(e.message, 'error'); }
+        finally { this.setupBusy = false; }
+      },
+      relTime(ts) {
+        if (!ts) return '—';
+        const sec = Date.now() / 1000 - ts;
+        if (sec < 60) return Math.round(sec) + 's';
+        if (sec < 3600) return Math.round(sec / 60) + 'min';
+        if (sec < 86400) return Math.round(sec / 3600) + 'h';
+        return Math.round(sec / 86400) + 'd';
+      },
+      formatDate(ts) {
+        if (!ts) return '—';
+        return new Date(ts * 1000).toLocaleString();
+      },
+      formatTime(ts) {
+        if (!ts) return '—';
+        return new Date(ts * 1000).toLocaleTimeString();
+      },
+    };
+  }
+  // Tiny string interpolator: 'hello {n}' + {n: 3} → 'hello 3'.
+  function labelize(template, values) {
+    return template.replace(/\{(\w+)\}/g, (_, k) => values[k] != null ? values[k] : '');
+  }
+</script>
+{% endblock %}

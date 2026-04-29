@@ -1,0 +1,72 @@
+{% extends "_layout.html" %}
+{% block title %}{{ t('TIMELAPSE_TITLE') }} · pawcorder{% endblock %}
+{% block main %}
+<div x-data='timelapsePage({{ items | tojson }})' x-init="poll()">
+  <div class="flex items-center justify-between mb-6 gap-2">
+    <div>
+      <h1 class="text-2xl font-semibold tracking-tight">{{ t('TIMELAPSE_TITLE') }}</h1>
+      <p class="text-sm text-slate-500 dark:text-slate-400">{{ t('TIMELAPSE_SUBTITLE') }}</p>
+    </div>
+    <button @click="buildNow()" :disabled="building"
+            class="rounded-md bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 px-3 py-2 text-sm font-medium disabled:opacity-50"
+            x-text="building ? labels.building : labels.build"></button>
+  </div>
+
+  <div x-show="items.length === 0" class="rounded-2xl bg-white dark:bg-slate-900 border border-dashed border-slate-300 dark:border-slate-600 dark:border-slate-700 p-10 text-center">
+    <div class="text-4xl mb-2">⏱</div>
+    <p class="text-sm text-slate-500 dark:text-slate-400">{{ t('TIMELAPSE_EMPTY') }}</p>
+  </div>
+
+  <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4" x-show="items.length > 0">
+    <template x-for="item in items" :key="item.filename">
+      <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 overflow-hidden">
+        <video :src="`/api/timelapse/${encodeURIComponent(item.filename)}`"
+               class="w-full aspect-video bg-slate-900 object-cover"
+               controls preload="metadata"></video>
+        <div class="p-3 flex items-center justify-between">
+          <div class="min-w-0">
+            <div class="font-medium truncate" x-text="item.camera"></div>
+            <div class="text-xs text-slate-500 dark:text-slate-400" x-text="item.date + ' · ' + humanMB(item.size_bytes)"></div>
+          </div>
+          <a :href="`/api/timelapse/${encodeURIComponent(item.filename)}`"
+             :download="item.filename"
+             class="text-xs text-brand-600 hover:text-brand-700">{{ t('TIMELAPSE_DOWNLOAD') }}</a>
+        </div>
+      </div>
+    </template>
+  </div>
+</div>
+
+<script>
+  function timelapsePage(initial) {
+    return {
+      items: initial || [],
+      building: false,
+      labels: {
+        build:    {{ t('TIMELAPSE_BUILD_NOW') | tojson }},
+        building: {{ t('TIMELAPSE_BUILDING') | tojson }},
+        buildFailed: {{ t('TIMELAPSE_BUILD_FAILED') | tojson }},
+      },
+      async poll() {
+        try { this.items = (await api('/api/timelapse')).items || []; } catch (e) {}
+      },
+      async buildNow() {
+        this.building = true;
+        try {
+          const out = await api('/api/timelapse/build-now', { method: 'POST', body: {} });
+          const failed = (out.results || []).filter(r => !r.output);
+          if (failed.length === 0) toast({{ t('SAVED') | tojson }}, 'success');
+          else toast(failed[0].error || this.labels.buildFailed, 'error');
+          await this.poll();
+        } catch (e) { toast(e.message, 'error'); }
+        finally { this.building = false; }
+      },
+      humanMB(n) {
+        if (!n) return '0';
+        if (n < 1024 * 1024) return (n / 1024).toFixed(0) + ' KB';
+        return (n / 1024 / 1024).toFixed(1) + ' MB';
+      },
+    };
+  }
+</script>
+{% endblock %}

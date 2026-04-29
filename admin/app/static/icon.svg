@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%"  stop-color="#f59239"/>
+      <stop offset="100%" stop-color="#bd420c"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="96" fill="url(#g)"/>
+  <!-- A stylised paw made of one large pad + four toes.
+       Paw extents: y=-94 (top of inner toes) to y=108 (bottom of pad).
+       Vertical centre is 7 above the translate origin, so translate by
+       256 - 7 = 249 to land the visual centre at the 256,256 box centre. -->
+  <g fill="#ffffff" transform="translate(256 249)">
+    <!-- main pad -->
+    <ellipse cx="0" cy="48" rx="74" ry="60"/>
+    <!-- toes (outer-left, inner-left, inner-right, outer-right) -->
+    <circle cx="-86"  cy="-18" r="28"/>
+    <circle cx="-32"  cy="-66" r="28"/>
+    <circle cx="32"   cy="-66" r="28"/>
+    <circle cx="86"   cy="-18" r="28"/>
+  </g>
+</svg>

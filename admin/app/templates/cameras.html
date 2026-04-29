@@ -1,0 +1,549 @@
+{% extends "_layout.html" %}
+{% block title %}{{ t('CAMERAS_TITLE') }} · pawcorder{% endblock %}
+{% block main %}
+<div x-data='camerasPage({{ cameras | map(attribute="name") | list | tojson }})' x-init="refresh(); loadBrands()">
+  <div class="flex items-center justify-between mb-6">
+    <div>
+      <h1 class="text-2xl font-semibold tracking-tight">{{ t('CAMERAS_TITLE') }}</h1>
+      <p class="text-sm text-slate-500 dark:text-slate-400">{{ t('CAMERAS_SUBTITLE') }}</p>
+    </div>
+    <button @click="openNew()" class="rounded-md bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 text-sm font-medium">
+      {{ t('ADD_CAMERA') }}
+    </button>
+  </div>
+
+  <!-- Desktop: table -->
+  <div class="hidden sm:block rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 overflow-hidden mb-6"
+       x-show="cameras.length > 0">
+    <table class="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
+      <thead class="bg-slate-50 dark:bg-slate-800">
+        <tr class="text-left text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">
+          <th class="px-4 py-3 font-medium">{{ t('TBL_NAME') }}</th>
+          <th class="px-4 py-3 font-medium">{{ t('TBL_IP') }}</th>
+          <th class="px-4 py-3 font-medium">{{ t('TBL_LINK') }}</th>
+          <th class="px-4 py-3 font-medium">{{ t('TBL_DETECT') }}</th>
+          <th class="px-4 py-3 font-medium">{{ t('TBL_ENABLED') }}</th>
+          <th class="px-4 py-3"></th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100 dark:divide-slate-700 text-sm">
+        <template x-for="c in cameras" :key="c.name">
+          <tr>
+            <td class="px-4 py-3 font-medium">
+              <div class="flex items-center gap-3">
+                <img :src="`/api/cameras/${encodeURIComponent(c.name)}/thumbnail?t=${tickKey}`"
+                     class="w-12 h-9 rounded object-cover bg-slate-100 dark:bg-slate-800 shrink-0"
+                     loading="lazy"
+                     onerror="this.style.visibility='hidden'" alt="" />
+                <span x-text="c.name"></span>
+              </div>
+            </td>
+            <td class="px-4 py-3 font-mono text-slate-600 dark:text-slate-300" x-text="c.ip + ':' + c.rtsp_port"></td>
+            <td class="px-4 py-3">
+              <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
+                    x-bind:class="{
+                      'bg-blue-50 dark:bg-blue-900 text-blue-700 dark:text-blue-300 ring-1 ring-blue-200 dark:ring-blue-800': c.connection_type === 'wifi',
+                      'bg-emerald-50 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-200 dark:ring-emerald-800': c.connection_type === 'wired',
+                      'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 ring-1 ring-slate-200 dark:ring-slate-700': c.connection_type === 'unknown' || !c.connection_type,
+                    }"
+                    x-text="(c.connection_type === 'wifi' ? labels.wifi : c.connection_type === 'wired' ? labels.wired : labels.unknown)"></span>
+            </td>
+            <td class="px-4 py-3 text-slate-600 dark:text-slate-300 font-mono" x-text="c.detect_width + 'x' + c.detect_height"></td>
+            <td class="px-4 py-3">
+              <span class="inline-flex h-2 w-2 rounded-full mr-1"
+                    x-bind:class="c.enabled ? 'bg-emerald-500' : 'bg-slate-300'"></span>
+              <span x-text="c.enabled ? labels.on : labels.off"></span>
+            </td>
+            <td class="px-4 py-3 text-right">
+              <button @click="openLive(c)" class="text-brand-600 hover:text-brand-700 text-sm">{{ t('CAM_WATCH') }}</button>
+              <a :href="`/cameras/${encodeURIComponent(c.name)}/zones`"
+                 class="text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100 text-sm ml-3">{{ t('CAM_ZONES_LINK') }}</a>
+              <button @click="openEdit(c)" class="text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100 text-sm ml-3">{{ t('EDIT') }}</button>
+              <button @click="remove(c.name)" class="text-rose-600 dark:text-rose-400 hover:text-rose-700 text-sm ml-3">{{ t('REMOVE') }}</button>
+            </td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Mobile: card stack -->
+  <div class="sm:hidden space-y-3 mb-6" x-show="cameras.length > 0">
+    <template x-for="c in cameras" :key="c.name">
+      <div class="rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-4">
+        <div class="flex items-start justify-between gap-2 mb-3">
+          <div class="min-w-0 flex-1">
+            <div class="font-medium truncate" x-text="c.name"></div>
+            <div class="text-xs font-mono text-slate-500 dark:text-slate-400 truncate" x-text="c.ip + ':' + c.rtsp_port"></div>
+          </div>
+          <span class="inline-flex h-2 w-2 rounded-full mt-2 shrink-0"
+                x-bind:class="c.enabled ? 'bg-emerald-500' : 'bg-slate-300'"></span>
+        </div>
+        <div class="flex flex-wrap gap-1.5 mb-3 text-xs">
+          <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium"
+                x-bind:class="{
+                  'bg-blue-50 dark:bg-blue-900 text-blue-700 dark:text-blue-300 ring-1 ring-blue-200 dark:ring-blue-800': c.connection_type === 'wifi',
+                  'bg-emerald-50 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-200 dark:ring-emerald-800': c.connection_type === 'wired',
+                  'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 ring-1 ring-slate-200 dark:ring-slate-700': c.connection_type === 'unknown' || !c.connection_type,
+                }"
+                x-text="(c.connection_type === 'wifi' ? labels.wifi : c.connection_type === 'wired' ? labels.wired : labels.unknown)"></span>
+          <span class="inline-flex items-center gap-1 rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 font-mono"
+                x-text="c.detect_width + '×' + c.detect_height"></span>
+        </div>
+        <div class="flex justify-end gap-3 text-sm border-t border-slate-100 dark:border-slate-700 pt-3">
+          <button @click="openEdit(c)" class="text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100">{{ t('EDIT') }}</button>
+          <button @click="remove(c.name)" class="text-rose-600 dark:text-rose-400 hover:text-rose-700">{{ t('REMOVE') }}</button>
+        </div>
+      </div>
+    </template>
+  </div>
+
+  <div x-show="cameras.length === 0" class="rounded-2xl bg-white dark:bg-slate-900 border border-dashed border-slate-300 dark:border-slate-600 p-8 text-center mb-6">
+    <p class="text-sm text-slate-500 dark:text-slate-400">{{ t('NO_CAMERAS_YET') }} <span class="font-medium text-slate-700 dark:text-slate-300">{{ t('ADD_CAMERA') }}</span> {{ t('TO_ADD_FIRST') }}</p>
+  </div>
+
+  <!-- live view modal -->
+  <div x-show="liveModal.open" x-cloak
+       class="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/80 p-4"
+       @keydown.escape.window="closeLive()">
+    <div class="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+      <div class="px-5 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2 flex-wrap">
+        <h2 class="text-lg font-semibold tracking-tight" x-text="liveModal.camera"></h2>
+        <div class="flex items-center gap-2">
+          <label class="inline-flex items-center gap-1 text-xs text-slate-600 dark:text-slate-300">
+            <input type="checkbox" x-model="liveModal.heatmap"
+                   class="rounded border-slate-300 dark:border-slate-600 text-brand-500" />
+            {{ t('CAM_HEATMAP_TOGGLE') }}
+          </label>
+          <button @click="closeLive()" class="text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 text-2xl leading-none">×</button>
+        </div>
+      </div>
+
+      <div class="p-4">
+        <div class="relative bg-black rounded-lg overflow-hidden aspect-video">
+          <!-- live MJPEG -->
+          <img x-show="liveModal.open" :src="liveSrc()" alt=""
+               class="absolute inset-0 w-full h-full object-contain" />
+          <!-- heatmap overlay -->
+          <img x-show="liveModal.heatmap" :src="heatmapSrc()" alt=""
+               class="absolute inset-0 w-full h-full object-contain opacity-70 pointer-events-none" />
+        </div>
+
+        <!-- PTZ controls — only render if camera is Reolink-ish (everyone's
+             ONVIF endpoint is roughly compatible) -->
+        <div class="mt-4 flex flex-wrap items-center gap-2 text-sm">
+          <span class="text-xs text-slate-500 dark:text-slate-400 mr-2">{{ t('CAM_PTZ_LABEL') }}:</span>
+          <button @mousedown="ptz('move','up')" @mouseup="ptz('stop')" @mouseleave="ptz('stop')"
+                  class="rounded-md bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 px-2.5 py-1.5">↑</button>
+          <button @mousedown="ptz('move','left')" @mouseup="ptz('stop')" @mouseleave="ptz('stop')"
+                  class="rounded-md bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 px-2.5 py-1.5">←</button>
+          <button @mousedown="ptz('move','right')" @mouseup="ptz('stop')" @mouseleave="ptz('stop')"
+                  class="rounded-md bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 px-2.5 py-1.5">→</button>
+          <button @mousedown="ptz('move','down')" @mouseup="ptz('stop')" @mouseleave="ptz('stop')"
+                  class="rounded-md bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 px-2.5 py-1.5">↓</button>
+          <span class="ml-3 text-xs text-slate-500 dark:text-slate-400">{{ t('CAM_ZOOM_LABEL') }}:</span>
+          <button @mousedown="ptz('zoom','in')" @mouseup="ptz('zoom','stop')"
+                  class="rounded-md bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 px-2.5 py-1.5">＋</button>
+          <button @mousedown="ptz('zoom','out')" @mouseup="ptz('zoom','stop')"
+                  class="rounded-md bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 px-2.5 py-1.5">−</button>
+        </div>
+
+        <!-- Saved PTZ presets — quick-jump + save-current-position -->
+        <div class="mt-3 flex flex-wrap items-center gap-2 text-sm border-t border-slate-200 dark:border-slate-700 pt-3">
+          <span class="text-xs text-slate-500 dark:text-slate-400">{{ t('PTZ_PRESETS_LABEL') }}:</span>
+          <template x-for="p in (livePresets || [])" :key="p.preset_token">
+            <button @click="ptzPreset(p.preset_token)"
+                    class="rounded-md bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-600 px-2 py-1 text-xs"
+                    x-text="p.name"></button>
+          </template>
+          <span x-show="(livePresets || []).length === 0" class="text-xs text-slate-400 dark:text-slate-500">{{ t('PTZ_NO_PRESETS') }}</span>
+          <input type="text" x-model="newPresetName" placeholder="{{ t('PTZ_NEW_PRESET_PLACEHOLDER') }}"
+                 class="ml-2 w-32 rounded border border-slate-300 dark:border-slate-600 px-2 py-1 text-xs" />
+          <button @click="savePreset()" :disabled="!newPresetName.trim()"
+                  class="rounded-md bg-slate-900 hover:bg-slate-800 text-white px-2 py-1 text-xs disabled:opacity-50">
+            {{ t('PTZ_SAVE_PRESET') }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- add / edit modal -->
+  <div x-show="modal.open"
+       x-cloak
+       class="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/50 p-4"
+       @keydown.escape.window="closeModal()">
+    <div class="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+      <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
+        <h2 class="text-lg font-semibold tracking-tight" x-text="modal.mode === 'edit' ? labels.title_edit : labels.title_new"></h2>
+        <button @click="closeModal()" class="text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200">×</button>
+      </div>
+      <div class="px-6 py-5 space-y-4">
+        <div class="rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-3" x-show="modal.mode === 'new'">
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('SCAN_LABEL') }}</label>
+          <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('SCAN_HELP') }}</p>
+          <div class="mt-2 flex gap-2">
+            <input type="text" x-model="cidr" placeholder="192.168.1.0/24"
+                   class="flex-1 rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm font-mono" />
+            <button @click="scan()" :disabled="scanning"
+                    class="rounded-md bg-slate-900 text-white px-3 py-2 text-sm hover:bg-slate-800 disabled:opacity-50"
+                    x-text="scanning ? labels.scanning : labels.scan"></button>
+          </div>
+          <ul x-show="candidates.length > 0" class="mt-3 grid grid-cols-2 gap-2">
+            <template x-for="cand in candidates" :key="cand.ip">
+              <li>
+                <button @click="form.ip = cand.ip"
+                        class="w-full text-left text-xs rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 hover:border-brand-500 px-2 py-1 font-mono"
+                        x-text="cand.ip"></button>
+              </li>
+            </template>
+          </ul>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('CAM_BRAND') }}</label>
+          <select x-model="form.brand" @change="brandChanged()"
+                  class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm">
+            <template x-for="b in brands" :key="b.key">
+              <option :value="b.key" x-text="b.name"></option>
+            </template>
+          </select>
+          <p class="text-xs text-slate-500 dark:text-slate-400 mt-1" x-show="currentBrand()" x-text="currentBrand()?.notes || ''"></p>
+
+          {# Setup guidance panel — shown for both:
+             1. manual_setup brands (Tapo/Imou/Wyze) where RTSP can't be enabled
+                programmatically; the user must prep their camera in its own app first.
+             2. the "other" brand catch-all where pawcorder will try ONVIF first but
+                may need the user to find the stream URL manually as a fallback.
+             The "Manual setup required" badge only renders for case (1). #}
+          <div x-show="currentBrand()?.manual_setup || currentBrand()?.key === 'other'"
+               class="mt-3 rounded-lg bg-amber-50 dark:bg-amber-900 border border-amber-200 dark:border-amber-800 p-3 text-sm">
+            <div class="flex items-center gap-2 mb-2">
+              <span x-show="currentBrand()?.manual_setup"
+                    class="inline-flex items-center rounded-full bg-amber-200 dark:bg-amber-800 px-2 py-0.5 text-xs font-medium text-amber-900 dark:text-amber-200">
+                {{ t('BRAND_MANUAL_BADGE') }}
+              </span>
+              <p x-show="currentBrand()?.manual_setup" class="text-xs text-amber-800 dark:text-amber-200">{{ t('BRAND_MANUAL_HINT') }}</p>
+              <p x-show="currentBrand()?.key === 'other'" class="text-xs text-amber-800 dark:text-amber-200">{{ t('BRAND_OTHER_HINT') }}</p>
+            </div>
+
+            {# Data-driven setup panel — title + steps come from the brand
+               payload (see api_camera_brands in main.py, which translates
+               the BRAND_SETUP_<KEY>_TITLE / _STEP_N i18n keys server-side).
+               Adding a new manual brand is now a Python-only change: add
+               its BrandSpec + i18n keys, no template edits needed. #}
+            <template x-if="currentBrand()?.setup_title">
+              <div>
+                <h4 class="font-medium text-amber-900 dark:text-amber-200 mb-1"
+                    x-text="currentBrand().setup_title"></h4>
+                <ol class="list-decimal list-inside space-y-1 text-amber-800 dark:text-amber-200 text-xs">
+                  <template x-for="step in currentBrand().setup_steps" :key="step">
+                    <li x-text="step"></li>
+                  </template>
+                </ol>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('CAM_NAME') }}</label>
+            <input type="text" x-model="form.name" :disabled="modal.mode === 'edit'"
+                   class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm font-mono disabled:bg-slate-50"
+                   placeholder="living_room" />
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('CAM_NAME_HELP') }}</p>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('CAM_IP') }}</label>
+            <input type="text" x-model="form.ip" placeholder="192.168.1.100"
+                   class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm font-mono" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('CAM_USER') }}</label>
+            <input type="text" x-model="form.user"
+                   class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('CAM_PASSWORD') }}</label>
+            <input type="password" x-model="form.password"
+                   :placeholder="modal.mode === 'edit' ? labels.password_keep : ''"
+                   class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm" />
+          </div>
+        </div>
+
+        <label class="inline-flex items-start gap-2 text-sm" x-show="currentBrandSupportsTalk()">
+          <input type="checkbox" x-model="form.two_way_audio"
+                 class="mt-1 rounded border-slate-300 dark:border-slate-600 text-brand-500 focus:ring-brand-500" />
+          <span>
+            {{ t('CAM_TWO_WAY_AUDIO') }}
+            <span class="block text-xs text-slate-500 dark:text-slate-400">{{ t('CAM_TWO_WAY_AUDIO_HELP') }}</span>
+          </span>
+        </label>
+
+        <details class="rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-3">
+          <summary class="text-sm font-medium text-slate-700 dark:text-slate-300 cursor-pointer">{{ t('CAM_ADVANCED') }}</summary>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
+            <div>
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('CAM_RTSP_PORT') }}</label>
+              <input type="number" x-model.number="form.rtsp_port"
+                     class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('CAM_ONVIF_PORT') }}</label>
+              <input type="number" x-model.number="form.onvif_port"
+                     class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm" />
+              <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('CAM_ONVIF_HELP') }}</p>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('CAM_DETECT_W') }}</label>
+              <input type="number" x-model.number="form.detect_width"
+                     class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('CAM_DETECT_H') }}</label>
+              <input type="number" x-model.number="form.detect_height"
+                     class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm" />
+              <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('CAM_DETECT_HELP') }}</p>
+            </div>
+          </div>
+        </details>
+
+        <label class="inline-flex items-center gap-2 text-sm">
+          <input type="checkbox" x-model="form.enabled"
+                 class="rounded border-slate-300 dark:border-slate-600 text-brand-500 focus:ring-brand-500" />
+          {{ t('ENABLED') }} <span class="text-xs text-slate-500 dark:text-slate-400">— {{ t('CAM_ENABLED_HELP') }}</span>
+        </label>
+
+        <div class="flex items-center gap-3 flex-wrap">
+          <button @click="test()" :disabled="testing || !form.ip || (modal.mode === 'new' && !form.password)"
+                  class="rounded-md bg-slate-900 text-white px-3 py-2 text-sm hover:bg-slate-800 disabled:opacity-50"
+                  x-text="testing ? labels.testing : labels.test"></button>
+          <div x-show="testResult" class="text-sm flex items-center gap-2 flex-wrap">
+            {# Manual sentinel: the brand-dispatcher short-circuits before any
+               network probe (Tapo/Imou/Wyze/UniFi). Don't show green "connected"
+               or red "error" — show a neutral amber "finish in app, then re-test"
+               hint instead. See camera_setup.auto_configure_for_brand. #}
+            <span x-show="testResult?.reolink_login?.manual"
+                  class="inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-900 px-2 py-0.5 text-xs font-medium text-amber-800 dark:text-amber-200">
+              {{ t('BRAND_MANUAL_RETEST_HINT') }}
+            </span>
+            <span x-show="!testResult?.reolink_login?.manual"
+                  x-bind:class="testResult?.ok ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'">
+              <span x-show="testResult?.ok" x-text="labels.connected + formatStream(testResult.rtsp_main)"></span>
+              <span x-show="!testResult?.ok" x-text="formatError()"></span>
+            </span>
+            <span x-show="testResult?.connection_type && testResult.connection_type !== 'unknown'"
+                  class="inline-flex rounded-full px-2 py-0.5 text-xs font-medium"
+                  x-bind:class="{
+                    'bg-blue-50 dark:bg-blue-900 text-blue-700 dark:text-blue-300 ring-1 ring-blue-200 dark:ring-blue-800': testResult?.connection_type === 'wifi',
+                    'bg-emerald-50 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-200 dark:ring-emerald-800': testResult?.connection_type === 'wired',
+                  }"
+                  x-text="labels.detected + ' ' + (testResult?.connection_type === 'wifi' ? labels.wifi : labels.wired)"></span>
+          </div>
+        </div>
+      </div>
+      <div class="px-6 py-4 bg-slate-50 dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-2">
+        <button @click="closeModal()" class="rounded-md bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 px-4 py-2 text-sm hover:bg-slate-100 dark:hover:bg-slate-700">{{ t('CANCEL') }}</button>
+        <button @click="save()" :disabled="saving"
+                class="rounded-md bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 text-sm font-medium disabled:opacity-50"
+                x-text="saving ? labels.saving : (modal.mode === 'edit' ? labels.save : labels.add_button)"></button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  function camerasPage(initialNames) {
+    return {
+      cameras: [],
+      cidr: '192.168.1.0/24',
+      candidates: [],
+      scanning: false,
+      testing: false,
+      testResult: null,
+      saving: false,
+      modal: { open: false, mode: 'new', original: null },
+      liveModal: { open: false, camera: '', heatmap: false },
+      livePresets: [],
+      newPresetName: '',
+      form: emptyForm(),
+      // Refresh thumbnail URL every 30 s by bumping the cache-buster.
+      // The browser cache + admin route cache mean this is essentially
+      // free regardless of how many cameras are listed.
+      tickKey: 0,
+      _tickInterval: null,
+      brands: [],
+      currentBrand() { return this.brands.find(b => b.key === this.form.brand); },
+      currentBrandSupportsTalk() { return !!this.currentBrand()?.two_way_audio_supported; },
+      brandChanged() {
+        const b = this.currentBrand();
+        if (!b) return;
+        // Use defaults from the brand if the user hasn't edited them yet.
+        if (!this.form.user || this.form.user === 'admin') this.form.user = b.default_user;
+        if (!this.form.rtsp_port || this.form.rtsp_port === 554) this.form.rtsp_port = b.default_rtsp_port;
+        if (!b.two_way_audio_supported) this.form.two_way_audio = false;
+      },
+      async loadBrands() {
+        try {
+          const data = await api('/api/camera-brands');
+          this.brands = data.brands || [];
+        } catch (e) { /* ignore — UI degrades to text-input world */ }
+      },
+      labels: {
+        wifi:           {{ t('LINK_WIFI') | tojson }},
+        wired:          {{ t('LINK_WIRED') | tojson }},
+        unknown:        {{ t('LINK_UNKNOWN') | tojson }},
+        on:             {{ t('ENABLED') | tojson }},
+        off:            {{ t('DISABLED') | tojson }},
+        title_new:      {{ t('CAM_TITLE_NEW') | tojson }},
+        title_edit:     {{ t('CAM_TITLE_EDIT') | tojson }},
+        password_keep:  {{ t('CAM_PASSWORD_KEEP') | tojson }},
+        scan:           {{ t('SCAN') | tojson }},
+        scanning:       {{ t('SCANNING') | tojson }},
+        test:           {{ t('TEST_CONNECTION') | tojson }},
+        testing:        {{ t('TESTING') | tojson }},
+        save:           {{ t('SAVE') | tojson }},
+        saving:         {{ t('SAVING') | tojson }},
+        add_button:     {{ t('ADD_CAMERA') | tojson }},
+        connected:      {{ t('CAM_TEST_OK') | tojson }} + ' · ',
+        failed:         {{ t('CAM_TEST_FAIL') | tojson }},
+        detected:       {{ t('DETECTED_AS') | tojson }},
+        added:          {{ t('CAM_ADDED') | tojson }},
+        updated:        {{ t('CAM_UPDATED') | tojson }},
+        removed:        {{ t('CAM_REMOVED') | tojson }},
+        confirm_remove: {{ t('CAM_REMOVE_CONFIRM') | tojson }},
+      },
+      async refresh() {
+        const data = await api('/api/cameras');
+        this.cameras = data.cameras || [];
+        if (this._tickInterval == null) {
+          this._tickInterval = setInterval(() => { this.tickKey = Date.now(); }, 30000);
+        }
+      },
+      openNew() {
+        this.modal = { open: true, mode: 'new', original: null };
+        this.form = emptyForm();
+        this.testResult = null;
+      },
+      openEdit(c) {
+        this.modal = { open: true, mode: 'edit', original: c.name };
+        this.form = { ...c, password: '' };
+        this.testResult = null;
+      },
+      closeModal() { this.modal.open = false; },
+      openLive(c) {
+        this.liveModal = { open: true, camera: c.name, heatmap: false };
+        this.livePresets = c.ptz_presets || [];
+        this.newPresetName = '';
+      },
+      closeLive() { this.liveModal.open = false; this.liveModal.camera = ''; },
+      async ptzPreset(token) {
+        if (!this.liveModal.camera) return;
+        try {
+          await api(`/api/cameras/${encodeURIComponent(this.liveModal.camera)}/ptz`,
+                     { method: 'POST', body: { action: 'preset', preset: token } });
+        } catch (e) { toast(e.message, 'error'); }
+      },
+      async savePreset() {
+        const name = this.newPresetName.trim();
+        if (!name) return;
+        try {
+          const out = await api(`/api/cameras/${encodeURIComponent(this.liveModal.camera)}/ptz/preset-save`,
+                                  { method: 'POST', body: { name } });
+          this.livePresets = [...this.livePresets.filter(p => p.preset_token !== out.preset.preset_token), out.preset];
+          this.newPresetName = '';
+          toast({{ t('SAVED') | tojson }}, 'success');
+        } catch (e) { toast(e.message, 'error'); }
+      },
+      liveSrc() {
+        return this.liveModal.camera
+          ? `/api/cameras/${encodeURIComponent(this.liveModal.camera)}/stream?t=${Date.now()}`
+          : '';
+      },
+      heatmapSrc() {
+        return this.liveModal.camera
+          ? `/api/cameras/${encodeURIComponent(this.liveModal.camera)}/heatmap`
+          : '';
+      },
+      async ptz(action, dir) {
+        if (!this.liveModal.camera) return;
+        const body = { action };
+        if (dir) body.dir = dir;
+        try {
+          await api(`/api/cameras/${encodeURIComponent(this.liveModal.camera)}/ptz`,
+                     { method: 'POST', body });
+        } catch (e) { /* PTZ not supported on every camera; silent */ }
+      },
+      async scan() {
+        this.scanning = true;
+        try {
+          const data = await api('/api/scan', { method: 'POST', body: { cidr: this.cidr } });
+          this.candidates = data.candidates || [];
+          if (this.candidates.length === 0) toast({{ t('SCAN_NO_HITS') | tojson }}, 'info');
+        } catch (e) { toast(e.message, 'error'); }
+        finally { this.scanning = false; }
+      },
+      async test() {
+        this.testing = true; this.testResult = null;
+        try {
+          const body = { ...this.form };
+          if (!body.password && this.modal.mode === 'edit') {
+            this.testResult = await api(`/api/cameras/${encodeURIComponent(this.modal.original)}/test`, { method: 'POST', body: {} });
+          } else {
+            this.testResult = await api('/api/cameras/test', { method: 'POST', body });
+          }
+          if (this.testResult && this.testResult.connection_type) {
+            this.form.connection_type = this.testResult.connection_type;
+          }
+          toast(this.testResult.ok ? this.labels.connected.replace(' · ', '') : this.labels.failed,
+                this.testResult.ok ? 'success' : 'error');
+        } catch (e) { toast(e.message, 'error'); }
+        finally { this.testing = false; }
+      },
+      async save() {
+        this.saving = true;
+        try {
+          const body = { ...this.form };
+          if (this.modal.mode === 'edit') {
+            await api(`/api/cameras/${encodeURIComponent(this.modal.original)}`, { method: 'PUT', body });
+            toast(this.labels.updated, 'success');
+          } else {
+            await api('/api/cameras', { method: 'POST', body });
+            toast(this.labels.added, 'success');
+          }
+          this.closeModal();
+          await this.refresh();
+        } catch (e) { toast(e.message, 'error'); }
+        finally { this.saving = false; }
+      },
+      async remove(name) {
+        if (!confirm(`${this.labels.confirm_remove} "${name}"?`)) return;
+        try {
+          await api(`/api/cameras/${encodeURIComponent(name)}`, { method: 'DELETE' });
+          toast(this.labels.removed, 'success');
+          await this.refresh();
+        } catch (e) { toast(e.message, 'error'); }
+      },
+      formatStream(probe) { return probe ? `${probe.codec || '?'} ${probe.width || '?'}×${probe.height || '?'}` : ''; },
+      formatError() {
+        const r = this.testResult;
+        if (!r) return this.labels.failed;
+        if (r.reolink_login && !r.reolink_login.ok) return r.reolink_login.error;
+        if (r.rtsp_main && !r.rtsp_main.ok) return r.rtsp_main.error;
+        if (r.rtsp_sub && !r.rtsp_sub.ok) return r.rtsp_sub.error;
+        return this.labels.failed;
+      },
+    };
+  }
+  function emptyForm() {
+    return {
+      name: '', ip: '', user: 'admin', password: '',
+      rtsp_port: 554, onvif_port: 8000,
+      detect_width: 640, detect_height: 480,
+      enabled: true, connection_type: 'unknown',
+      brand: 'reolink', two_way_audio: false,
+    };
+  }
+</script>
+{% endblock %}

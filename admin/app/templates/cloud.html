@@ -1,0 +1,478 @@
+{% extends "_layout.html" %}
+{% block title %}{{ t('CLOUD_TITLE') }} · pawcorder{% endblock %}
+{% block main %}
+<div x-data="cloudPage()" x-init="init()" class="max-w-3xl">
+  <h1 class="text-2xl font-semibold tracking-tight">{{ t('CLOUD_TITLE') }}</h1>
+  <p class="text-sm text-slate-500 dark:text-slate-400 mb-6">{{ t('CLOUD_SUBTITLE') }}</p>
+
+  <div class="rounded-2xl bg-gradient-to-br from-emerald-50 dark:from-emerald-900 to-brand-50 dark:to-emerald-900 border border-emerald-200 dark:border-emerald-800 p-4 mb-6 text-sm text-emerald-900 dark:text-emerald-200">
+    {{ t('CLOUD_PITCH') }}
+  </div>
+
+  <!-- Connected destinations -->
+  <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-6 mb-6">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-base font-semibold tracking-tight">{{ t('CLOUD_CONNECTED') }}</h2>
+      <button @click="openNew()" class="rounded-md bg-brand-500 hover:bg-brand-600 text-white px-3 py-2 text-sm">
+        + {{ t('CLOUD_ADD_HEADING') }}
+      </button>
+    </div>
+
+    <div x-show="remotes.length === 0" class="text-sm text-slate-500 dark:text-slate-400">{{ t('CLOUD_NO_REMOTE') }}</div>
+    <ul x-show="remotes.length > 0" class="divide-y divide-slate-100 dark:divide-slate-700">
+      <template x-for="r in remotes" :key="r">
+        <li class="py-3 flex items-center justify-between">
+          <span class="font-mono text-sm" x-text="r"></span>
+          <div class="flex gap-2">
+            <button @click="testRemote(r)" class="text-sm text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100" x-text="labels.test"></button>
+            <button @click="deleteRemote(r)" class="text-sm text-rose-600 dark:text-rose-400 hover:text-rose-700" x-text="labels.delete"></button>
+          </div>
+        </li>
+      </template>
+    </ul>
+
+    <!-- Connection-test result line -->
+    <p x-show="testResult" class="text-sm mt-3"
+       x-bind:class="testResult?.ok ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'"
+       x-text="testResult?.ok ? '✓ ' + (testResult.detail || labels.test) : (testResult?.error || '?')"></p>
+  </div>
+
+  <!-- Cloud usage card -->
+  <div x-show="remotes.length > 0" class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-6 mb-6">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-base font-semibold tracking-tight">{{ t('CLOUD_USAGE_HEADING') }}</h2>
+      <button @click="refreshQuota()" :disabled="quotaLoading"
+              class="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
+              x-text="quotaLoading ? labels.loading : labels.refresh"></button>
+    </div>
+
+    <div x-show="quota === null && !quotaLoading" class="text-sm text-slate-500 dark:text-slate-400">
+      —
+    </div>
+
+    <div x-show="quota && !quota.quota_supported" class="text-sm text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded p-3">
+      {{ t('CLOUD_QUOTA_UNSUPPORTED') }}
+      <p class="mt-2">{{ t('CLOUD_USED_BY_PAWCORDER') }}: <strong x-text="formatBytes(quota?.pawcorder_bytes)"></strong></p>
+    </div>
+
+    <div x-show="quota && quota.quota_supported" class="space-y-3">
+      <!-- Stacked bar: pawcorder | other-used | free -->
+      <div class="h-3 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden flex">
+        <div class="bg-brand-500 h-full" :style="`width: ${pct(quota?.pawcorder_bytes, quota?.total_bytes)}%`" :title="labels.used_pc"></div>
+        <div class="bg-slate-300 h-full" :style="`width: ${pct((quota?.used_bytes || 0) - (quota?.pawcorder_bytes || 0), quota?.total_bytes)}%`" :title="labels.used_others"></div>
+      </div>
+      <div class="grid grid-cols-3 gap-2 text-xs text-slate-600 dark:text-slate-300">
+        <div><span class="inline-block h-2 w-2 rounded-full bg-brand-500 mr-1"></span><span x-text="labels.used_pc"></span>: <strong x-text="formatBytes(quota?.pawcorder_bytes)"></strong></div>
+        <div><span class="inline-block h-2 w-2 rounded-full bg-slate-300 mr-1"></span><span x-text="labels.used_others"></span>: <strong x-text="formatBytes((quota?.used_bytes || 0) - (quota?.pawcorder_bytes || 0))"></strong></div>
+        <div class="text-right">{{ t('CLOUD_FREE') }}: <strong x-text="formatBytes(quota?.free_bytes)"></strong> / <span x-text="formatBytes(quota?.total_bytes)"></span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Upload policy + size cap -->
+  <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-6 mb-6">
+    <h2 class="text-base font-semibold tracking-tight mb-4">{{ t('CLOUD_POLICY_HEADING') }}</h2>
+    <div class="space-y-4">
+      <label class="flex items-center gap-2 text-sm">
+        <input type="checkbox" x-model="form.cloud_enabled"
+               class="rounded border-slate-300 dark:border-slate-600 text-brand-500 focus:ring-brand-500" />
+        <span>{{ t('CLOUD_ENABLED') }}</span>
+      </label>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('CLOUD_REMOTE_PATH') }}</label>
+        <input type="text" x-model="form.cloud_remote_path" placeholder="pawcorder"
+               class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm font-mono" />
+      </div>
+      <label class="flex items-center gap-2 text-sm">
+        <input type="checkbox" x-model="form.cloud_upload_only_pets"
+               class="rounded border-slate-300 dark:border-slate-600 text-brand-500 focus:ring-brand-500" />
+        <span>{{ t('CLOUD_ONLY_PETS') }}</span>
+      </label>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('CLOUD_MIN_SCORE') }}</label>
+          <input type="number" min="0" max="1" step="0.05" x-model="form.cloud_upload_min_score"
+                 class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('CLOUD_RETENTION') }}</label>
+          <input type="number" min="1" max="3650" x-model="form.cloud_retention_days"
+                 class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm" />
+        </div>
+      </div>
+    </div>
+
+    <hr class="my-6 border-slate-200 dark:border-slate-700" />
+
+    <h3 class="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">{{ t('CLOUD_SIZE_CAP_HEADING') }}</h3>
+    <div class="space-y-2">
+      <label class="flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition"
+             :class="form.cloud_size_mode === 'none' ? 'border-brand-500 ring-2 ring-brand-200 dark:ring-brand-800 bg-brand-50 dark:bg-brand-900' : 'border-slate-200 dark:border-slate-700 hover:border-slate-400'">
+        <input type="radio" name="size_mode" value="none" class="mt-1"
+               :checked="form.cloud_size_mode === 'manual' && (!form.cloud_max_size_gb || form.cloud_max_size_gb === '0' || +form.cloud_max_size_gb === 0)"
+               @change="form.cloud_size_mode = 'manual'; form.cloud_max_size_gb = '0'" />
+        <span class="text-sm">{{ t('CLOUD_MODE_NONE') }}</span>
+      </label>
+
+      <label class="flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition"
+             :class="form.cloud_size_mode === 'manual' && +form.cloud_max_size_gb > 0 ? 'border-brand-500 ring-2 ring-brand-200 dark:ring-brand-800 bg-brand-50 dark:bg-brand-900' : 'border-slate-200 dark:border-slate-700 hover:border-slate-400'">
+        <input type="radio" name="size_mode" value="manual" class="mt-1"
+               :checked="form.cloud_size_mode === 'manual' && +form.cloud_max_size_gb > 0"
+               @change="form.cloud_size_mode = 'manual'; if (+form.cloud_max_size_gb === 0) form.cloud_max_size_gb = '50'" />
+        <div class="flex-1">
+          <span class="text-sm">{{ t('CLOUD_MODE_MANUAL') }}</span>
+          <div class="mt-2 flex items-center gap-2 text-sm" x-show="form.cloud_size_mode === 'manual' && +form.cloud_max_size_gb > 0">
+            <input type="number" min="1" max="10000" x-model="form.cloud_max_size_gb"
+                   class="w-24 rounded-md border-slate-300 dark:border-slate-600 px-2 py-1 border" />
+            <span class="text-slate-500 dark:text-slate-400">GB</span>
+            <span x-show="quota && quota.quota_supported" class="text-xs text-slate-500 dark:text-slate-400" x-text="estimateDays(+form.cloud_max_size_gb)"></span>
+          </div>
+        </div>
+      </label>
+
+      <label class="flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition"
+             :class="form.cloud_size_mode === 'adaptive' ? 'border-brand-500 ring-2 ring-brand-200 dark:ring-brand-800 bg-brand-50 dark:bg-brand-900' : 'border-slate-200 dark:border-slate-700 hover:border-slate-400'">
+        <input type="radio" name="size_mode" value="adaptive" class="mt-1"
+               :checked="form.cloud_size_mode === 'adaptive'"
+               @change="form.cloud_size_mode = 'adaptive'" />
+        <div class="flex-1">
+          <span class="text-sm">{{ t('CLOUD_MODE_ADAPTIVE') }}</span>
+          <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('CLOUD_ADAPTIVE_HELP') }}</p>
+          <div class="mt-2 flex items-center gap-2 text-sm" x-show="form.cloud_size_mode === 'adaptive'">
+            <input type="range" min="0.10" max="0.95" step="0.05" x-model.number="form.cloud_adaptive_fraction"
+                   class="w-40 accent-brand-500" />
+            <span class="font-mono text-xs" x-text="Math.round(form.cloud_adaptive_fraction * 100) + '%'"></span>
+            <span x-show="quota && quota.quota_supported" class="text-xs text-slate-500 dark:text-slate-400" x-text="adaptiveEstimate()"></span>
+          </div>
+        </div>
+      </label>
+    </div>
+
+    <div class="flex justify-end mt-6">
+      <button @click="savePolicy()" class="rounded-md bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 text-sm font-medium">{{ t('SAVE') }}</button>
+    </div>
+  </div>
+
+  <!-- Add cloud modal -->
+  <div x-show="modal.open" x-cloak
+       class="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/50 p-4"
+       @keydown.escape.window="modal.open = false">
+    <div class="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+      <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
+        <h2 class="text-lg font-semibold">{{ t('CLOUD_ADD_HEADING') }}</h2>
+        <button @click="modal.open = false" class="text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200">×</button>
+      </div>
+      <div class="px-6 py-5 space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('CLOUD_BACKEND') }}</label>
+          <select x-model="modal.backend" class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm">
+            <option value="drive">{{ t('CLOUD_BACKEND_DRIVE') }}</option>
+            <option value="dropbox">{{ t('CLOUD_BACKEND_DROPBOX') }}</option>
+            <option value="onedrive">{{ t('CLOUD_BACKEND_ONEDRIVE') }}</option>
+            <option value="b2">{{ t('CLOUD_BACKEND_B2') }}</option>
+            <option value="s3">{{ t('CLOUD_BACKEND_S3') }}</option>
+            <option value="webdav">{{ t('CLOUD_BACKEND_WEBDAV') }}</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('CLOUD_REMOTE_NAME') }}</label>
+          <input type="text" x-model="modal.name"
+                 class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm font-mono" />
+        </div>
+
+        <!-- OAuth backends: walk the user through rclone authorize step-by-step -->
+        <div x-show="['drive','dropbox','onedrive'].includes(modal.backend)" class="space-y-4">
+          <div class="rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-4">
+            <h3 class="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-1">{{ t('CLOUD_AUTH_TITLE') }}</h3>
+            <p class="text-xs text-slate-600 dark:text-slate-300">{{ t('CLOUD_AUTH_INTRO') }}</p>
+          </div>
+
+          <!-- OS tabs -->
+          <div class="flex rounded-md border border-slate-200 dark:border-slate-700 overflow-hidden text-xs">
+            <button type="button" @click="modal.os = 'mac'"
+                    class="flex-1 px-3 py-2"
+                    :class="modal.os === 'mac' ? 'bg-slate-900 text-white' : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'">
+              {{ t('CLOUD_AUTH_OS_MAC') }}
+            </button>
+            <button type="button" @click="modal.os = 'linux'"
+                    class="flex-1 px-3 py-2 border-l border-slate-200 dark:border-slate-700"
+                    :class="modal.os === 'linux' ? 'bg-slate-900 text-white' : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'">
+              {{ t('CLOUD_AUTH_OS_LINUX') }}
+            </button>
+            <button type="button" @click="modal.os = 'windows'"
+                    class="flex-1 px-3 py-2 border-l border-slate-200 dark:border-slate-700"
+                    :class="modal.os === 'windows' ? 'bg-slate-900 text-white' : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'">
+              {{ t('CLOUD_AUTH_OS_WINDOWS') }}
+            </button>
+          </div>
+
+          <!-- Step 1: install -->
+          <div>
+            <p class="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">{{ t('CLOUD_AUTH_STEP1') }}</p>
+            <div class="relative">
+              <pre class="bg-slate-900 text-slate-100 rounded-md p-3 pr-16 text-xs overflow-x-auto"><code x-text="installCmd()"></code></pre>
+              <button type="button" @click="copyCmd(installCmd())"
+                      class="absolute top-2 right-2 rounded bg-slate-700 hover:bg-slate-600 text-slate-100 px-2 py-1 text-xs">
+                {{ t('CLOUD_COPY') }}
+              </button>
+            </div>
+          </div>
+
+          <!-- Step 2: authorize -->
+          <div>
+            <p class="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">{{ t('CLOUD_AUTH_STEP2') }}</p>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mb-2">{{ t('CLOUD_AUTH_STEP2_DESC') }}</p>
+            <div class="relative">
+              <pre class="bg-slate-900 text-slate-100 rounded-md p-3 pr-16 text-xs overflow-x-auto"><code x-text="authorizeCmd()"></code></pre>
+              <button type="button" @click="copyCmd(authorizeCmd())"
+                      class="absolute top-2 right-2 rounded bg-slate-700 hover:bg-slate-600 text-slate-100 px-2 py-1 text-xs">
+                {{ t('CLOUD_COPY') }}
+              </button>
+            </div>
+          </div>
+
+          <!-- Step 3: paste -->
+          <div>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('CLOUD_AUTH_STEP3') }}</label>
+            <textarea x-model="modal.fields.token" rows="3"
+                      class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-xs font-mono"
+                      placeholder='{"access_token":"...","refresh_token":"...","expiry":"..."}'></textarea>
+            <p x-show="modal.fields.token && !looksLikeToken(modal.fields.token)" class="text-xs text-rose-600 dark:text-rose-400 mt-1">
+              {{ t('CLOUD_TOKEN_INVALID') }}
+            </p>
+          </div>
+        </div>
+
+        <!-- B2 -->
+        <div x-show="modal.backend === 'b2'" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('CLOUD_B2_KEY_ID') }}</label>
+            <input type="text" x-model="modal.fields.account"
+                   class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm font-mono" />
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('CLOUD_B2_KEY_ID_HELP') }}</p>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('CLOUD_B2_KEY') }}</label>
+            <input type="password" x-model="modal.fields.key"
+                   class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm font-mono" />
+          </div>
+        </div>
+
+        <!-- S3 -->
+        <div x-show="modal.backend === 's3'" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div class="sm:col-span-2">
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('CLOUD_S3_ENDPOINT') }}</label>
+            <input type="text" x-model="modal.fields.endpoint" placeholder="https://s3.us-west-1.amazonaws.com"
+                   class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm font-mono" />
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('CLOUD_S3_ENDPOINT_HELP') }}</p>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('CLOUD_S3_PROVIDER') }}</label>
+            <input type="text" x-model="modal.fields.provider" placeholder="AWS"
+                   class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm font-mono" />
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('CLOUD_S3_PROVIDER_HELP') }}</p>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('CLOUD_S3_REGION') }}</label>
+            <input type="text" x-model="modal.fields.region" placeholder="us-west-1"
+                   class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm font-mono" />
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('CLOUD_S3_REGION_HELP') }}</p>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('CLOUD_S3_ACCESS_KEY') }}</label>
+            <input type="text" x-model="modal.fields.access_key_id"
+                   class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm font-mono" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('CLOUD_S3_SECRET_KEY') }}</label>
+            <input type="password" x-model="modal.fields.secret_access_key"
+                   class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm font-mono" />
+          </div>
+        </div>
+
+        <!-- WebDAV -->
+        <div x-show="modal.backend === 'webdav'" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div class="sm:col-span-2">
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('CLOUD_WEBDAV_URL') }}</label>
+            <input type="text" x-model="modal.fields.url" placeholder="https://nextcloud.example.com/remote.php/dav/files/USER"
+                   class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm font-mono" />
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('CLOUD_WEBDAV_URL_HELP') }}</p>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('CLOUD_WEBDAV_VENDOR') }}</label>
+            <input type="text" x-model="modal.fields.vendor" placeholder="nextcloud"
+                   class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm font-mono" />
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('CLOUD_WEBDAV_VENDOR_HELP') }}</p>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('CLOUD_WEBDAV_USER') }}</label>
+            <input type="text" x-model="modal.fields.user"
+                   class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm font-mono" />
+          </div>
+          <div class="sm:col-span-2">
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('CLOUD_WEBDAV_PASS') }}</label>
+            <input type="password" x-model="modal.fields.pass"
+                   class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm font-mono" />
+          </div>
+        </div>
+      </div>
+      <div class="px-6 py-4 bg-slate-50 dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-2">
+        <button @click="modal.open = false" class="rounded-md bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 px-4 py-2 text-sm">{{ t('CANCEL') }}</button>
+        <button @click="saveRemote()" :disabled="modal.saving"
+                class="rounded-md bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 text-sm font-medium disabled:opacity-50"
+                x-text="modal.saving ? labels.saving : labels.save"></button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  function detectOS() {
+    const ua = (navigator.userAgent || '').toLowerCase();
+    if (ua.includes('mac') || ua.includes('iphone') || ua.includes('ipad')) return 'mac';
+    if (ua.includes('windows')) return 'windows';
+    return 'linux';
+  }
+
+  function cloudPage() {
+    return {
+      remotes: {{ cloud_remotes | tojson }},
+      testResult: null,
+      quota: null,
+      quotaLoading: false,
+      labels: {
+        save:   {{ t('SAVE') | tojson }},
+        saving: {{ t('SAVING') | tojson }},
+        test:   {{ t('CLOUD_TEST') | tojson }},
+        delete: {{ t('CLOUD_DELETE_REMOTE') | tojson }},
+        saved:  {{ t('SAVED') | tojson }},
+        refresh:    {{ t('CLOUD_REFRESH') | tojson }},
+        loading:    {{ t('CLOUD_USAGE_LOADING') | tojson }},
+        used_pc:    {{ t('CLOUD_USED_BY_PAWCORDER') | tojson }},
+        used_others:{{ t('CLOUD_USED_BY_OTHERS') | tojson }},
+        days_label: {{ t('CLOUD_DAYS') | tojson }},
+        based_on:   {{ t('CLOUD_BASED_ON_USAGE') | tojson }},
+      },
+      form: {
+        cloud_enabled:           {{ config.cloud_enabled | tojson }},
+        cloud_remote_path:       {{ config.cloud_remote_path | tojson }},
+        cloud_upload_only_pets:  {{ config.cloud_upload_only_pets | tojson }},
+        cloud_upload_min_score:  {{ config.cloud_upload_min_score | tojson }},
+        cloud_retention_days:    {{ config.cloud_retention_days | tojson }},
+        cloud_max_size_gb:       {{ config.cloud_max_size_gb | tojson }},
+        cloud_size_mode:         {{ config.cloud_size_mode | tojson }},
+        cloud_adaptive_fraction: parseFloat({{ config.cloud_adaptive_fraction | tojson }}),
+      },
+      modal: {
+        open: false, saving: false,
+        backend: 'drive',
+        name: 'pawcorder',
+        os: detectOS(),
+        fields: {},
+      },
+      init() {
+        if (this.remotes.length > 0) this.refreshQuota();
+      },
+      pct(used, total) {
+        if (!total || used <= 0) return 0;
+        return Math.max(0, Math.min(100, (used / total) * 100));
+      },
+      formatBytes(b) {
+        if (!b || b <= 0) return '0 B';
+        const u = ['B', 'KB', 'MB', 'GB', 'TB']; let i = 0; let v = b;
+        while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+        return v.toFixed(v < 10 && i > 0 ? 1 : 0) + ' ' + u[i];
+      },
+      // Estimate of days a given GB cap will last assuming 2 GB/day average.
+      estimateDays(gb) {
+        if (!gb || gb <= 0) return '';
+        const days = Math.round(gb / 2);
+        return `(${this.labels.based_on} ~${days} ${this.labels.days_label})`;
+      },
+      adaptiveEstimate() {
+        if (!this.quota || !this.quota.quota_supported) return '';
+        const available = (this.quota.free_bytes || 0) + (this.quota.pawcorder_bytes || 0);
+        const cap = available * this.form.cloud_adaptive_fraction;
+        return `→ ${this.formatBytes(cap)}`;
+      },
+      async refreshQuota() {
+        this.quotaLoading = true;
+        try {
+          this.quota = await api('/api/cloud/quota');
+        } catch (e) {
+          this.quota = null;
+        } finally {
+          this.quotaLoading = false;
+        }
+      },
+      openNew() {
+        this.modal = {
+          open: true, saving: false,
+          backend: 'drive', name: 'pawcorder',
+          os: detectOS(),
+          fields: {},
+        };
+      },
+      installCmd() {
+        if (this.modal.os === 'mac') return 'brew install rclone';
+        if (this.modal.os === 'windows') return 'winget install Rclone.Rclone';
+        return 'curl https://rclone.org/install.sh | sudo bash';
+      },
+      authorizeCmd() {
+        return `rclone authorize "${this.modal.backend}"`;
+      },
+      async copyCmd(text) {
+        try {
+          await navigator.clipboard.writeText(text);
+          toast({{ t('COPIED') | tojson }}, 'success');
+        } catch (e) { toast({{ t('COPY_FAILED') | tojson }}, 'error'); }
+      },
+      looksLikeToken(s) {
+        const t = (s || '').trim();
+        if (!t.startsWith('{') || !t.endsWith('}')) return false;
+        try { const o = JSON.parse(t); return !!o.access_token; }
+        catch (_) { return false; }
+      },
+      async saveRemote() {
+        this.modal.saving = true;
+        try {
+          await api('/api/cloud/remote', {
+            method: 'POST',
+            body: { name: this.modal.name, backend: this.modal.backend, fields: this.modal.fields },
+          });
+          this.modal.open = false;
+          await this.refreshRemotes();
+          toast(this.labels.saved, 'success');
+        } catch (e) { toast(e.message, 'error'); }
+        finally { this.modal.saving = false; }
+      },
+      async refreshRemotes() {
+        const data = await api('/api/cloud/remotes');
+        this.remotes = data.remotes || [];
+      },
+      async testRemote(name) {
+        this.testResult = null;
+        try {
+          this.testResult = await api('/api/cloud/test', { method: 'POST', body: { name } });
+        } catch (e) { this.testResult = { ok: false, error: e.message }; }
+      },
+      async deleteRemote(name) {
+        if (!confirm(`Remove cloud remote "${name}"?`)) return;
+        try {
+          await api(`/api/cloud/remote/${encodeURIComponent(name)}`, { method: 'DELETE' });
+          await this.refreshRemotes();
+        } catch (e) { toast(e.message, 'error'); }
+      },
+      async savePolicy() {
+        try {
+          await api('/api/config/save', {
+            method: 'POST',
+            body: { section: 'cloud', data: this.form },
+          });
+          toast(this.labels.saved, 'success');
+        } catch (e) { toast(e.message, 'error'); }
+      },
+    };
+  }
+</script>
+{% endblock %}

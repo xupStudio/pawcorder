@@ -1,0 +1,163 @@
+{% extends "_layout.html" %}
+{% block title %}{{ t('MOBILE_TITLE') }} · pawcorder{% endblock %}
+{% block main %}
+<div x-data="mobilePage()" class="max-w-4xl">
+  <h1 class="text-2xl font-semibold tracking-tight">{{ t('MOBILE_TITLE') }}</h1>
+  <p class="text-sm text-slate-500 dark:text-slate-400 mb-6">{{ t('MOBILE_SUBTITLE') }}</p>
+
+  <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-6 mb-6">
+    <div class="mb-4">
+      <h2 class="text-base font-semibold tracking-tight">{{ t('MOBILE_LAN_HEADING') }}</h2>
+      <p class="text-xs text-slate-500 dark:text-slate-400">{{ t('MOBILE_LAN_HELP') }}</p>
+    </div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+      <div class="text-center">
+        <p class="text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">{{ t('MOBILE_FRIGATE') }}</p>
+        <div class="inline-block rounded-lg border border-slate-200 dark:border-slate-700 p-3 bg-white dark:bg-slate-900">
+          <img :src="qrSrc('{{ lan_frigate_url }}')" alt="QR" class="w-44 h-44 bg-white p-2 rounded" />
+        </div>
+        <p class="mt-2 font-mono text-xs text-slate-600 dark:text-slate-300 break-all">{{ lan_frigate_url }}</p>
+      </div>
+      <div class="text-center">
+        <p class="text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">{{ t('MOBILE_ADMIN') }}</p>
+        <div class="inline-block rounded-lg border border-slate-200 dark:border-slate-700 p-3 bg-white dark:bg-slate-900">
+          <img :src="qrSrc('{{ lan_admin_url }}')" alt="QR" class="w-44 h-44 bg-white p-2 rounded" />
+        </div>
+        <p class="mt-2 font-mono text-xs text-slate-600 dark:text-slate-300 break-all">{{ lan_admin_url }}</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-6 mb-6">
+    <div class="mb-4">
+      <h2 class="text-base font-semibold tracking-tight">{{ t('MOBILE_TS_HEADING') }}</h2>
+      <p class="text-xs text-slate-500 dark:text-slate-400">{{ t('MOBILE_TS_HELP') }}</p>
+    </div>
+
+    <div x-show="!form.tailscale_hostname" class="rounded-lg bg-amber-50 dark:bg-amber-900 border border-amber-200 dark:border-amber-800 p-4 mb-4 text-sm text-amber-800 dark:text-amber-200">
+      <p class="font-medium">{{ t('MOBILE_TS_NOT_SETUP') }}</p>
+      <p class="mt-1">
+        {{ t('MOBILE_TS_INSTR_BEFORE') }}
+        <code class="font-mono bg-amber-100 dark:bg-amber-900 px-1 py-0.5 rounded">./scripts/install-tailscale.sh</code>
+        {{ t('MOBILE_TS_INSTR_THEN') }}
+        <code class="font-mono bg-amber-100 dark:bg-amber-900 px-1 py-0.5 rounded">sudo tailscale up</code>.
+        {{ t('MOBILE_TS_INSTR_AFTER') }}
+        <code class="font-mono">machine.tailnet.ts.net</code>
+        {{ t('MOBILE_TS_INSTR_END') }}
+      </p>
+    </div>
+
+    <div class="flex gap-2 mb-4">
+      <input type="text" x-model="form.tailscale_hostname"
+             placeholder="{{ t('MOBILE_TS_PLACEHOLDER') }}"
+             class="flex-1 rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm font-mono" />
+      <button @click="saveTailscale()"
+              class="rounded-md bg-brand-500 hover:bg-brand-600 text-white px-3 py-2 text-sm font-medium">
+        {{ t('SAVE') }}
+      </button>
+    </div>
+
+    <div x-show="form.tailscale_hostname" class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+      <div class="text-center">
+        <p class="text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">{{ t('MOBILE_FRIGATE') }}</p>
+        <div class="inline-block rounded-lg border border-slate-200 dark:border-slate-700 p-3 bg-white dark:bg-slate-900">
+          <img :src="qrSrc(tailscaleFrigateUrl())" alt="QR" class="w-44 h-44 bg-white p-2 rounded" />
+        </div>
+        <p class="mt-2 font-mono text-xs text-slate-600 dark:text-slate-300 break-all" x-text="tailscaleFrigateUrl()"></p>
+      </div>
+      <div class="text-center">
+        <p class="text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">{{ t('MOBILE_ADMIN') }}</p>
+        <div class="inline-block rounded-lg border border-slate-200 dark:border-slate-700 p-3 bg-white dark:bg-slate-900">
+          <img :src="qrSrc(tailscaleAdminUrl())" alt="QR" class="w-44 h-44 bg-white p-2 rounded" />
+        </div>
+        <p class="mt-2 font-mono text-xs text-slate-600 dark:text-slate-300 break-all" x-text="tailscaleAdminUrl()"></p>
+      </div>
+    </div>
+  </div>
+
+  <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-6 mb-6">
+    <h2 class="text-base font-semibold tracking-tight mb-4">{{ t('MOBILE_HOMESCREEN') }}</h2>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-6 text-sm">
+      <div>
+        <p class="font-medium mb-2">{{ t('MOBILE_IPHONE') }}</p>
+        <ol class="list-decimal pl-5 space-y-1 text-slate-600 dark:text-slate-300">
+          {% if lang == 'zh-TW' %}
+            <li>用 Safari 打開上方的即時影像網址。</li>
+            <li>點底部 <span class="inline-block bg-slate-100 dark:bg-slate-800 px-1.5 rounded font-mono">分享</span> 按鈕。</li>
+            <li>下滑找到 <span class="inline-block bg-slate-100 dark:bg-slate-800 px-1.5 rounded">加入主畫面</span>。</li>
+            <li>命名為 "pawcorder"，按「新增」。</li>
+          {% else %}
+            <li>Open the live-view link above in Safari.</li>
+            <li>Tap the <span class="inline-block bg-slate-100 dark:bg-slate-800 px-1.5 rounded font-mono">Share</span> button.</li>
+            <li>Scroll down and tap <span class="inline-block bg-slate-100 dark:bg-slate-800 px-1.5 rounded">Add to Home Screen</span>.</li>
+            <li>Name it "pawcorder" and tap Add.</li>
+          {% endif %}
+        </ol>
+      </div>
+      <div>
+        <p class="font-medium mb-2">{{ t('MOBILE_ANDROID') }}</p>
+        <ol class="list-decimal pl-5 space-y-1 text-slate-600 dark:text-slate-300">
+          {% if lang == 'zh-TW' %}
+            <li>用 Chrome 打開上方的即時影像網址。</li>
+            <li>點右上角 <span class="inline-block bg-slate-100 dark:bg-slate-800 px-1.5 rounded font-mono">⋮</span> 選單。</li>
+            <li>選 <span class="inline-block bg-slate-100 dark:bg-slate-800 px-1.5 rounded">加到主畫面</span>。</li>
+            <li>確認後按「新增」。</li>
+          {% else %}
+            <li>Open the live-view link above in Chrome.</li>
+            <li>Tap the <span class="inline-block bg-slate-100 dark:bg-slate-800 px-1.5 rounded font-mono">⋮</span> menu (top right).</li>
+            <li>Tap <span class="inline-block bg-slate-100 dark:bg-slate-800 px-1.5 rounded">Add to Home screen</span>.</li>
+            <li>Confirm and tap Add.</li>
+          {% endif %}
+        </ol>
+      </div>
+    </div>
+  </div>
+
+  <div class="rounded-2xl bg-gradient-to-br from-brand-50 dark:from-brand-900 to-amber-50 dark:to-amber-900 border border-brand-200 dark:border-brand-800 p-6">
+    <h2 class="text-base font-semibold tracking-tight mb-2">{{ t('MOBILE_PUSH_HEADING') }}</h2>
+    <p class="text-sm text-slate-600 dark:text-slate-300 mb-4">{{ t('MOBILE_PUSH_PICK') }}</p>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <a href="/notifications" class="block rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-brand-400 p-4">
+        <p class="font-semibold text-sm">Telegram / LINE</p>
+        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ ('Lightest path. Snapshot in chat (Telegram).' if lang == 'en' else '最輕量。Telegram 可附上快照。') }}</p>
+        <p class="text-xs text-brand-600 mt-2 font-medium">{{ t('NAV_NOTIFICATIONS') }} →</p>
+      </a>
+      <a href="/home-assistant" class="block rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-brand-400 p-4">
+        <p class="font-semibold text-sm">Home Assistant</p>
+        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ ('Heavier setup, but you get a real iOS/Android app, automations, and home/away detection.' if lang == 'en' else '設定較複雜，但可換來原生 App、自動化、自動偵測在家/外出等功能。') }}</p>
+        <p class="text-xs text-brand-600 mt-2 font-medium">{{ t('HA_TITLE') }} →</p>
+      </a>
+    </div>
+  </div>
+</div>
+
+<script>
+  function mobilePage() {
+    return {
+      form: {
+        tailscale_hostname: {{ config.tailscale_hostname | tojson }},
+      },
+      qrSrc(url) {
+        return '/api/qrcode?url=' + encodeURIComponent(url);
+      },
+      tailscaleFrigateUrl() {
+        const h = (this.form.tailscale_hostname || '').trim();
+        return h ? `http://${h}:5000` : '';
+      },
+      tailscaleAdminUrl() {
+        const h = (this.form.tailscale_hostname || '').trim();
+        return h ? `http://${h}:8080` : '';
+      },
+      async saveTailscale() {
+        try {
+          await api('/api/config/save', {
+            method: 'POST',
+            body: { section: 'tailscale', data: { tailscale_hostname: this.form.tailscale_hostname } },
+          });
+          toast({{ t('SAVED') | tojson }}, 'success');
+        } catch (e) { toast(e.message, 'error'); }
+      },
+    };
+  }
+</script>
+{% endblock %}

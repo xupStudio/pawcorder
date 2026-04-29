@@ -1,0 +1,32 @@
+# Loose lower bounds so the same requirements file works across Python
+# 3.10 (Ubuntu 22.04 ship default), 3.12 (Ubuntu 24.04 / Debian 13), and
+# 3.13 (current macOS Homebrew default). We pin upper bounds to the next
+# major to avoid surprise breaking changes between deploys.
+fastapi>=0.115,<0.120
+uvicorn[standard]>=0.32,<0.40
+jinja2>=3.1.4,<4
+python-multipart>=0.0.12,<1
+itsdangerous>=2.2,<3
+httpx>=0.27,<1
+docker>=7.1,<8
+pyyaml>=6.0.2,<7
+qrcode>=7.4,<9
+distro>=1.9,<2
+py-cpuinfo>=9.0,<10
+# Pet recognition (embeddings.py + recognition.py).
+# Pillow is also a transitive of qrcode, but we depend on it directly so
+# the import in embeddings.py is explicit. onnxruntime is the smallest
+# inference backend we tested; numpy is its buddy. Bumped onnxruntime
+# floor to 1.20 because <1.20 ships no wheel for Python 3.13.
+numpy>=1.26,<3
+Pillow>=10.4,<12
+onnxruntime>=1.20,<2
+# Web Push (VAPID). pywebpush brings cryptography + http_ece for the
+# RFC 8030 / RFC 8291 dance. Apache 2.0.
+pywebpush>=2.0,<3
+# UniFi Protect controller API (admin/app/unifi_api.py). MIT-licensed,
+# the maintained successor to pyunifiprotect — same library Home
+# Assistant uses. Pinned <8 because 8.x ships the breaking API key /
+# public-API rework; 6.x and 7.x share the bootstrap.cameras shape we
+# rely on.
+uiprotect>=6.0,<8

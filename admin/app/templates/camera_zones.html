@@ -1,0 +1,266 @@
+{% extends "_layout.html" %}
+{% block title %}{{ t('ZONES_TITLE') }} · {{ camera.name }}{% endblock %}
+{% block main %}
+<div x-data='zonesEditor({{ camera | tojson }})' x-init="loadImage()" class="max-w-5xl mx-auto">
+  <div class="flex items-center justify-between mb-4 gap-2">
+    <div>
+      <h1 class="text-2xl font-semibold tracking-tight">{{ t('ZONES_TITLE') }}: <span x-text="camera.name" class="font-mono text-brand-600"></span></h1>
+      <p class="text-sm text-slate-500 dark:text-slate-400">{{ t('ZONES_SUBTITLE') }}</p>
+    </div>
+    <a :href="`/cameras`" class="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 dark:hover:text-slate-200">← {{ t('NAV_CAMERAS') }}</a>
+  </div>
+
+  <!-- Toolbar -->
+  <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-4 mb-4 flex flex-wrap items-center gap-3">
+    <div class="flex items-center gap-1 text-sm">
+      <button @click="mode = 'zones'"
+              :class="mode === 'zones' ? 'bg-brand-500 text-white' : 'bg-slate-100 dark:bg-slate-800'"
+              class="px-3 py-1.5 rounded-md font-medium">{{ t('ZONES_MODE_ZONES') }}</button>
+      <button @click="mode = 'privacy_masks'"
+              :class="mode === 'privacy_masks' ? 'bg-rose-500 text-white' : 'bg-slate-100 dark:bg-slate-800'"
+              class="px-3 py-1.5 rounded-md font-medium">{{ t('ZONES_MODE_PRIVACY') }}</button>
+    </div>
+    <div class="text-xs text-slate-500 dark:text-slate-400 flex-1">
+      <p x-show="mode === 'zones'">{{ t('ZONES_HELP') }}</p>
+      <p x-show="mode === 'privacy_masks'">{{ t('PRIVACY_MASK_HELP') }}</p>
+    </div>
+    <button @click="newPolygon()"
+            class="rounded-md bg-slate-900 dark:bg-slate-700 text-white px-3 py-1.5 text-sm font-medium">
+      + <span x-text="mode === 'zones' ? labels.add_zone : labels.add_mask"></span>
+    </button>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+    <!-- Canvas + image -->
+    <div class="lg:col-span-2 rounded-2xl bg-slate-900 overflow-hidden relative aspect-video">
+      <img :src="thumbUrl" alt="" class="absolute inset-0 w-full h-full object-contain"
+           x-show="thumbUrl" x-cloak />
+      <canvas x-ref="canvas" @click="onCanvasClick($event)"
+              @mousedown="onMouseDown($event)" @mousemove="onMouseMove($event)" @mouseup="onMouseUp($event)"
+              class="absolute inset-0 w-full h-full cursor-crosshair"></canvas>
+      <p x-show="!thumbUrl" class="absolute inset-0 flex items-center justify-center text-slate-400 dark:text-slate-500">
+        {{ t('ZONES_LOADING_IMAGE') }}
+      </p>
+      <p class="absolute bottom-2 left-2 right-2 text-xs text-slate-300 bg-black/40 backdrop-blur rounded px-2 py-1"
+         x-show="drawing">
+        {{ t('ZONES_DRAWING_HINT') }}
+      </p>
+    </div>
+
+    <!-- Polygon list -->
+    <div class="space-y-3">
+      <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-4">
+        <h2 class="text-sm font-semibold mb-2" x-text="mode === 'zones' ? labels.zone_list : labels.mask_list"></h2>
+        <ul class="space-y-1 text-sm" x-show="currentPolygons.length > 0">
+          <template x-for="(p, i) in currentPolygons" :key="i">
+            <li class="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 dark:border-slate-800 pb-1.5">
+              <input x-show="mode === 'zones'" type="text" x-model="p.name"
+                     placeholder="food_bowl"
+                     class="flex-1 mr-2 rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-2 py-1 text-xs font-mono" />
+              <span x-show="mode === 'privacy_masks'" class="font-mono text-xs text-slate-500 dark:text-slate-400"
+                    x-text="`mask #${i + 1}`"></span>
+              <span class="text-xs text-slate-400 dark:text-slate-500" x-text="(p.points || []).length + ' pts'"></span>
+              <button @click="removePolygon(i)" class="ml-2 text-rose-600 dark:text-rose-400 hover:text-rose-700 text-sm">×</button>
+            </li>
+          </template>
+        </ul>
+        <p x-show="currentPolygons.length === 0" class="text-xs text-slate-400 dark:text-slate-500">
+          {{ t('ZONES_NONE_YET') }}
+        </p>
+      </div>
+      <button @click="save()" :disabled="saving || drawing"
+              class="w-full rounded-md bg-brand-500 hover:bg-brand-600 text-white px-3 py-2 text-sm font-medium disabled:opacity-50"
+              x-text="saving ? labels.saving : labels.save"></button>
+    </div>
+  </div>
+</div>
+
+<script>
+  function zonesEditor(camera) {
+    return {
+      camera: camera,
+      mode: 'zones',
+      thumbUrl: '',
+      // Polygon being drawn — null when idle. Otherwise an object with
+      // points: [[x, y], ...] in 0..1 normalized coords.
+      drawing: null,
+      // Drag state for adjusting an existing point.
+      dragging: null,        // { polygon, point_index }
+      saving: false,
+      labels: {
+        save:        {{ t('SAVE') | tojson }},
+        saving:      {{ t('SAVING') | tojson }},
+        add_zone:    {{ t('ZONES_ADD_ZONE') | tojson }},
+        add_mask:    {{ t('PRIVACY_MASK_ADD') | tojson }},
+        zone_list:   {{ t('ZONES_LIST') | tojson }},
+        mask_list:   {{ t('PRIVACY_MASK_LIST') | tojson }},
+      },
+      get currentPolygons() {
+        return this.camera[this.mode] || [];
+      },
+      async loadImage() {
+        // Probe the camera thumbnail. If it 502s (Frigate not running)
+        // the canvas just shows a black background — still usable for
+        // re-positioning existing polygons against memory.
+        const url = `/api/cameras/${encodeURIComponent(this.camera.name)}/thumbnail?t=${Date.now()}`;
+        const probe = new Image();
+        probe.onload = () => { this.thumbUrl = url; this.$nextTick(() => this.redraw()); };
+        probe.onerror = () => { this.$nextTick(() => this.redraw()); };
+        probe.src = url;
+      },
+      ensureCanvasSize() {
+        const c = this.$refs.canvas;
+        if (!c) return null;
+        const rect = c.getBoundingClientRect();
+        if (c.width !== rect.width || c.height !== rect.height) {
+          c.width = rect.width; c.height = rect.height;
+        }
+        return c.getContext('2d');
+      },
+      redraw() {
+        const ctx = this.ensureCanvasSize();
+        if (!ctx) return;
+        const c = this.$refs.canvas;
+        ctx.clearRect(0, 0, c.width, c.height);
+        const drawPoly = (pts, fill, stroke, label) => {
+          if (!pts || pts.length === 0) return;
+          ctx.beginPath();
+          pts.forEach(([nx, ny], i) => {
+            const x = nx * c.width, y = ny * c.height;
+            if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+          });
+          if (pts.length >= 3) ctx.closePath();
+          ctx.fillStyle = fill;
+          ctx.strokeStyle = stroke;
+          ctx.lineWidth = 2;
+          if (pts.length >= 3) ctx.fill();
+          ctx.stroke();
+          // Vertices.
+          pts.forEach(([nx, ny]) => {
+            ctx.beginPath();
+            ctx.arc(nx * c.width, ny * c.height, 5, 0, Math.PI * 2);
+            ctx.fillStyle = stroke;
+            ctx.fill();
+          });
+          // Label at the centroid.
+          if (label && pts.length >= 3) {
+            const cx = pts.reduce((s, p) => s + p[0], 0) / pts.length * c.width;
+            const cy = pts.reduce((s, p) => s + p[1], 0) / pts.length * c.height;
+            ctx.fillStyle = 'white';
+            ctx.font = '12px system-ui';
+            ctx.textAlign = 'center';
+            ctx.fillText(label, cx, cy);
+          }
+        };
+        const colour = this.mode === 'zones'
+          ? { fill: 'rgba(243, 116, 22, 0.25)', stroke: '#f37416' }
+          : { fill: 'rgba(220, 38, 38, 0.4)', stroke: '#dc2626' };
+        for (const p of this.currentPolygons) {
+          drawPoly(p.points, colour.fill, colour.stroke, p.name);
+        }
+        // In-progress polygon
+        if (this.drawing) {
+          drawPoly(this.drawing.points, 'rgba(59, 130, 246, 0.25)', '#3b82f6', '');
+        }
+      },
+      newPolygon() {
+        this.drawing = { name: '', points: [] };
+      },
+      onCanvasClick(ev) {
+        if (!this.drawing) return;
+        if (this.dragging) return;  // mouseup of a drag fires a click; ignore.
+        const c = this.$refs.canvas;
+        const rect = c.getBoundingClientRect();
+        const nx = (ev.clientX - rect.left) / rect.width;
+        const ny = (ev.clientY - rect.top) / rect.height;
+
+        // Double-click to close: if we're within 12 px of the first
+        // point AND we have ≥3 points, finish the polygon.
+        if (this.drawing.points.length >= 3) {
+          const [fx, fy] = this.drawing.points[0];
+          const dx = (fx - nx) * rect.width, dy = (fy - ny) * rect.height;
+          if (Math.hypot(dx, dy) < 14) {
+            this.commitDrawing();
+            return;
+          }
+        }
+        this.drawing.points.push([nx, ny]);
+        this.redraw();
+      },
+      commitDrawing() {
+        if (!this.drawing || this.drawing.points.length < 3) {
+          this.drawing = null;
+          this.redraw();
+          return;
+        }
+        // Initialize the camera arrays if missing.
+        if (!Array.isArray(this.camera[this.mode])) this.camera[this.mode] = [];
+        const final = {
+          name: this.drawing.name || (this.mode === 'zones'
+            ? 'zone_' + (this.camera.zones.length + 1)
+            : ''),
+          points: this.drawing.points.map(p => [Math.round(p[0] * 1000) / 1000,
+                                                 Math.round(p[1] * 1000) / 1000]),
+        };
+        this.camera[this.mode].push(final);
+        this.drawing = null;
+        this.redraw();
+      },
+      // Hit-test for dragging existing points.
+      pointAt(x, y) {
+        const c = this.$refs.canvas;
+        for (const p of this.currentPolygons) {
+          for (let i = 0; i < (p.points || []).length; i++) {
+            const [nx, ny] = p.points[i];
+            const dx = (nx * c.width - x);
+            const dy = (ny * c.height - y);
+            if (Math.hypot(dx, dy) < 8) return { polygon: p, idx: i };
+          }
+        }
+        return null;
+      },
+      onMouseDown(ev) {
+        if (this.drawing) return;  // drawing mode handles via click only
+        const c = this.$refs.canvas;
+        const rect = c.getBoundingClientRect();
+        const x = ev.clientX - rect.left, y = ev.clientY - rect.top;
+        const hit = this.pointAt(x, y);
+        if (hit) this.dragging = hit;
+      },
+      onMouseMove(ev) {
+        if (!this.dragging) return;
+        const c = this.$refs.canvas;
+        const rect = c.getBoundingClientRect();
+        const nx = Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width));
+        const ny = Math.max(0, Math.min(1, (ev.clientY - rect.top) / rect.height));
+        this.dragging.polygon.points[this.dragging.idx] = [nx, ny];
+        this.redraw();
+      },
+      onMouseUp() {
+        if (this.dragging) {
+          this.dragging = null;
+          // Defer click so the click handler (next tick) doesn't add
+          // a stray point at mouseup.
+          setTimeout(() => {}, 0);
+        }
+      },
+      removePolygon(i) {
+        this.camera[this.mode].splice(i, 1);
+        this.redraw();
+      },
+      async save() {
+        if (this.drawing) this.commitDrawing();
+        this.saving = true;
+        try {
+          await api(`/api/cameras/${encodeURIComponent(this.camera.name)}/zones`, {
+            method: 'PUT',
+            body: { zones: this.camera.zones, privacy_masks: this.camera.privacy_masks },
+          });
+          toast({{ t('SAVED') | tojson }}, 'success');
+        } catch (e) { toast(e.message, 'error'); }
+        finally { this.saving = false; }
+      },
+    };
+  }
+</script>
+{% endblock %}

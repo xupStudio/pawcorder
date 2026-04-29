@@ -1,0 +1,189 @@
+{% extends "_layout.html" %}
+{% block title %}{{ t('USERS_TITLE') }} · pawcorder{% endblock %}
+{% block main %}
+<div x-data='usersPage({{ users | tojson }}, {{ legacy_mode | tojson }}, {{ roles | tojson }})' x-init="loadMe()">
+  <div class="flex items-center justify-between mb-6 gap-2">
+    <div>
+      <h1 class="text-2xl font-semibold tracking-tight">{{ t('USERS_TITLE') }}</h1>
+      <p class="text-sm text-slate-500 dark:text-slate-400">{{ t('USERS_SUBTITLE') }}</p>
+    </div>
+    <button @click="openNew()" class="rounded-md bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 text-sm font-medium">
+      {{ t('USERS_ADD') }}
+    </button>
+  </div>
+
+  <!-- Legacy-mode banner: still on the single-password setup -->
+  <div x-show="legacyMode" x-cloak
+       class="rounded-2xl bg-amber-50 dark:bg-amber-900 border border-amber-200 dark:border-amber-800 p-5 mb-6">
+    <h2 class="text-base font-semibold text-amber-900 dark:text-amber-200">{{ t('USERS_LEGACY_HEADING') }}</h2>
+    <p class="text-sm text-amber-800 dark:text-amber-200 dark:text-amber-300 mt-1">{{ t('USERS_LEGACY_HELP') }}</p>
+    <p class="text-xs text-amber-700 dark:text-amber-300 dark:text-amber-400 mt-2">{{ t('USERS_LEGACY_NEXT') }}</p>
+  </div>
+
+  <!-- Role legend — shown above the user list as quick-reference -->
+  <div class="rounded-2xl bg-slate-50 dark:bg-slate-800 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-4 mb-6 text-xs grid grid-cols-1 sm:grid-cols-3 gap-3">
+    <div>
+      <p class="font-semibold text-slate-700 dark:text-slate-300 dark:text-slate-200">👑 {{ t('USERS_ROLE_ADMIN') }}</p>
+      <p class="text-slate-500 dark:text-slate-400 mt-1">{{ t('USERS_ROLE_ADMIN_HELP') }}</p>
+    </div>
+    <div>
+      <p class="font-semibold text-slate-700 dark:text-slate-300 dark:text-slate-200">👨‍👩‍👧 {{ t('USERS_ROLE_FAMILY') }}</p>
+      <p class="text-slate-500 dark:text-slate-400 mt-1">{{ t('USERS_ROLE_FAMILY_HELP') }}</p>
+    </div>
+    <div>
+      <p class="font-semibold text-slate-700 dark:text-slate-300 dark:text-slate-200">🧒 {{ t('USERS_ROLE_KID') }}</p>
+      <p class="text-slate-500 dark:text-slate-400 mt-1">{{ t('USERS_ROLE_KID_HELP') }}</p>
+    </div>
+  </div>
+
+  <!-- User list -->
+  <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 overflow-hidden"
+       x-show="users.length > 0">
+    <table class="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
+      <thead class="bg-slate-50 dark:bg-slate-800">
+        <tr class="text-left text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">
+          <th class="px-4 py-3 font-medium">{{ t('USERS_NAME') }}</th>
+          <th class="px-4 py-3 font-medium">{{ t('USERS_ROLE_LABEL') }}</th>
+          <th class="px-4 py-3 font-medium">{{ t('USERS_LAST_LOGIN') }}</th>
+          <th class="px-4 py-3"></th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100 dark:divide-slate-700 dark:divide-slate-800 text-sm">
+        <template x-for="u in users" :key="u.username">
+          <tr>
+            <td class="px-4 py-3 font-medium" x-text="u.username"></td>
+            <td class="px-4 py-3">
+              <span class="inline-flex rounded-full px-2 py-0.5 text-xs font-medium"
+                    :class="{
+                      'bg-rose-50 dark:bg-rose-900 text-rose-700 dark:text-rose-300': u.role === 'admin',
+                      'bg-blue-50 dark:bg-blue-900 text-blue-700 dark:text-blue-300': u.role === 'family',
+                      'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300': u.role === 'kid',
+                    }"
+                    x-text="u.role"></span>
+            </td>
+            <td class="px-4 py-3 text-slate-600 dark:text-slate-300 dark:text-slate-400 text-xs"
+                x-text="u.last_login_at ? formatDate(u.last_login_at) : labels.never"></td>
+            <td class="px-4 py-3 text-right text-sm">
+              <button @click="openEdit(u)" class="text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100 dark:hover:text-slate-200">{{ t('EDIT') }}</button>
+              <button @click="remove(u)" class="text-rose-600 dark:text-rose-400 hover:text-rose-700 ml-3"
+                      x-show="u.username !== me.username">{{ t('REMOVE') }}</button>
+            </td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+  </div>
+
+  <div x-show="users.length === 0" class="rounded-2xl bg-white dark:bg-slate-900 border border-dashed border-slate-300 dark:border-slate-600 dark:border-slate-700 p-8 text-center">
+    <p class="text-sm text-slate-500 dark:text-slate-400">{{ t('USERS_EMPTY') }}</p>
+  </div>
+
+  <!-- Add / edit modal -->
+  <div x-show="modal.open" x-cloak
+       class="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/60 p-4"
+       @keydown.escape.window="modal.open = false">
+    <div class="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-md">
+      <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
+        <h2 class="text-lg font-semibold tracking-tight" x-text="modal.mode === 'edit' ? labels.edit_title : labels.new_title"></h2>
+        <button @click="modal.open = false" class="text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200">×</button>
+      </div>
+      <div class="px-6 py-5 space-y-4">
+        <div>
+          <label class="block text-sm font-medium">{{ t('USERS_NAME') }}</label>
+          <input type="text" x-model="form.username" :disabled="modal.mode === 'edit'"
+                 class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-3 py-2 border text-sm font-mono disabled:bg-slate-50 dark:disabled:bg-slate-800" />
+          <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('USERS_NAME_HELP') }}</p>
+        </div>
+        <div>
+          <label class="block text-sm font-medium">{{ t('USERS_ROLE_LABEL') }}</label>
+          <select x-model="form.role"
+                  class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-3 py-2 border text-sm">
+            <template x-for="r in roles" :key="r">
+              <option :value="r" x-text="r"></option>
+            </template>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium">{{ t('USERS_PASSWORD') }}</label>
+          <input type="password" x-model="form.password"
+                 :placeholder="modal.mode === 'edit' ? labels.password_keep : ''"
+                 class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-3 py-2 border text-sm" />
+          <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('USERS_PASSWORD_HELP') }}</p>
+        </div>
+      </div>
+      <div class="px-6 py-4 bg-slate-50 dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-2">
+        <button @click="modal.open = false" class="rounded-md bg-white dark:bg-slate-900 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 px-4 py-2 text-sm">{{ t('CANCEL') }}</button>
+        <button @click="save()" :disabled="saving"
+                class="rounded-md bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 text-sm font-medium disabled:opacity-50"
+                x-text="saving ? labels.saving : labels.save"></button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  function usersPage(initialUsers, initialLegacy, allRoles) {
+    return {
+      users: initialUsers || [],
+      legacyMode: initialLegacy,
+      roles: allRoles,
+      me: { username: null, role: null },
+      modal: { open: false, mode: 'new' },
+      form: { username: '', role: 'family', password: '' },
+      saving: false,
+      labels: {
+        new_title:    {{ t('USERS_NEW_TITLE') | tojson }},
+        edit_title:   {{ t('USERS_EDIT_TITLE') | tojson }},
+        save:         {{ t('SAVE') | tojson }},
+        saving:       {{ t('SAVING') | tojson }},
+        never:        {{ t('USERS_NEVER') | tojson }},
+        confirm_del:  {{ t('USERS_CONFIRM_DELETE') | tojson }},
+        password_keep:{{ t('USERS_PASSWORD_KEEP') | tojson }},
+      },
+      async loadMe() {
+        try { this.me = await api('/api/users/me'); } catch (e) {}
+      },
+      async refresh() {
+        try {
+          const data = await api('/api/users');
+          this.users = data.users || [];
+          this.legacyMode = !!data.legacy_mode;
+        } catch (e) { toast(e.message, 'error'); }
+      },
+      openNew() {
+        this.modal = { open: true, mode: 'new' };
+        this.form = { username: '', role: 'family', password: '' };
+      },
+      openEdit(u) {
+        this.modal = { open: true, mode: 'edit' };
+        this.form = { username: u.username, role: u.role, password: '' };
+      },
+      async save() {
+        this.saving = true;
+        try {
+          if (this.modal.mode === 'new') {
+            await api('/api/users', { method: 'POST', body: this.form });
+          } else {
+            const body = { role: this.form.role };
+            if (this.form.password) body.password = this.form.password;
+            await api('/api/users/' + encodeURIComponent(this.form.username), { method: 'PUT', body });
+          }
+          this.modal.open = false;
+          await this.refresh();
+        } catch (e) { toast(e.message, 'error'); }
+        finally { this.saving = false; }
+      },
+      async remove(u) {
+        if (!confirm(this.labels.confirm_del.replace('{name}', u.username))) return;
+        try {
+          await api('/api/users/' + encodeURIComponent(u.username), { method: 'DELETE' });
+          await this.refresh();
+        } catch (e) { toast(e.message, 'error'); }
+      },
+      formatDate(ts) {
+        return ts ? new Date(ts * 1000).toLocaleString() : '—';
+      },
+    };
+  }
+</script>
+{% endblock %}

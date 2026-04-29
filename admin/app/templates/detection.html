@@ -1,0 +1,241 @@
+{% extends "_layout.html" %}
+{% block title %}{{ t('DETECTION_TITLE') }} · pawcorder{% endblock %}
+{% block main %}
+<div x-data="detectionPage()" class="max-w-3xl">
+  <h1 class="text-2xl font-semibold tracking-tight">{{ t('DETECTION_TITLE') }}</h1>
+  <p class="text-sm text-slate-500 dark:text-slate-400 mb-6">{{ t('DETECTION_SUBTITLE') }}</p>
+
+  <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5 mb-6">
+    <div class="flex items-center justify-between mb-3">
+      <p class="text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">{{ t('DET_WATCHING_FOR') }}</p>
+      <p class="text-xs text-slate-500 dark:text-slate-400">{{ t('DET_TOGGLE_HINT') }}</p>
+    </div>
+    <div class="flex flex-wrap gap-2">
+      <button type="button" @click="toggleSpecies('cat')"
+              class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium transition"
+              x-bind:class="form.track_cat
+                ? 'bg-amber-50 dark:bg-amber-900 ring-1 ring-amber-200 dark:ring-amber-800 text-amber-800 dark:text-amber-200'
+                : 'bg-slate-50 dark:bg-slate-800 ring-1 ring-slate-200 dark:ring-slate-700 text-slate-400 dark:text-slate-500 line-through'">
+        <span x-bind:class="form.track_cat ? 'text-amber-500 dark:text-amber-400' : 'text-slate-300'"
+              x-text="form.track_cat ? '✓' : '×'"></span>
+        {{ t('DET_CATS') }}
+      </button>
+      <button type="button" @click="toggleSpecies('dog')"
+              class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium transition"
+              x-bind:class="form.track_dog
+                ? 'bg-amber-50 dark:bg-amber-900 ring-1 ring-amber-200 dark:ring-amber-800 text-amber-800 dark:text-amber-200'
+                : 'bg-slate-50 dark:bg-slate-800 ring-1 ring-slate-200 dark:ring-slate-700 text-slate-400 dark:text-slate-500 line-through'">
+        <span x-bind:class="form.track_dog ? 'text-amber-500 dark:text-amber-400' : 'text-slate-300'"
+              x-text="form.track_dog ? '✓' : '×'"></span>
+        {{ t('DET_DOGS') }}
+      </button>
+      <button type="button" @click="toggleSpecies('person')"
+              class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium transition"
+              x-bind:class="form.track_person
+                ? 'bg-slate-100 dark:bg-slate-800 ring-1 ring-slate-300 dark:ring-slate-700 text-slate-700 dark:text-slate-300'
+                : 'bg-slate-50 dark:bg-slate-800 ring-1 ring-slate-200 dark:ring-slate-700 text-slate-400 dark:text-slate-500 line-through'">
+        <span x-bind:class="form.track_person ? 'text-slate-500 dark:text-slate-400' : 'text-slate-300'"
+              x-text="form.track_person ? '✓' : '×'"></span>
+        {{ t('DET_PEOPLE') }}
+      </button>
+    </div>
+    <p x-show="!form.track_cat && !form.track_dog && !form.track_person"
+       class="text-xs text-rose-600 dark:text-rose-400 mt-3">{{ t('DET_NOTHING_TRACKED') }}</p>
+  </div>
+
+  <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-6 mb-6">
+    <h2 class="text-base font-semibold tracking-tight mb-1">{{ t('DET_SENSITIVITY') }}</h2>
+    <p class="text-sm text-slate-500 dark:text-slate-400 mb-5">{{ t('DET_SENSITIVITY_HELP') }}</p>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <template x-for="p in presets" :key="p.id">
+        <button @click="apply(p)" type="button"
+                class="relative text-left rounded-xl border p-4 transition"
+                x-bind:class="isCurrent(p) ? 'border-brand-500 ring-2 ring-brand-200 dark:ring-brand-800 bg-brand-50 dark:bg-brand-900' : 'border-slate-200 dark:border-slate-700 hover:border-slate-400 bg-white dark:bg-slate-900'">
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="font-semibold tracking-tight" x-text="p.label"></h3>
+            <span x-show="isCurrent(p)" class="text-xs font-medium text-brand-600" x-text="labels.current"></span>
+            <span x-show="p.id === 'balanced' && !isCurrent(p)" class="text-xs font-medium text-slate-500 dark:text-slate-400" x-text="labels.recommended"></span>
+          </div>
+          <p class="text-sm text-slate-600 dark:text-slate-300 mb-3" x-text="p.headline"></p>
+          <ul class="text-xs text-slate-500 dark:text-slate-400 space-y-1">
+            <template x-for="bullet in p.bullets" :key="bullet.text">
+              <li class="flex gap-1.5">
+                <span x-text="bullet.kind === 'pro' ? '✓' : '–'"
+                      x-bind:class="bullet.kind === 'pro' ? 'text-emerald-500 dark:text-emerald-400' : 'text-rose-400'"></span>
+                <span x-text="bullet.text"></span>
+              </li>
+            </template>
+          </ul>
+        </button>
+      </template>
+    </div>
+  </div>
+
+  <details class="rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-5 mb-6">
+    <summary class="text-sm font-medium cursor-pointer text-slate-700 dark:text-slate-300">{{ t('DET_HOW_IT_WORKS') }}</summary>
+    <div class="mt-4 text-sm text-slate-600 dark:text-slate-300 space-y-3">
+      <p>{{ ('pawcorder looks at every frame and gives each detected region a confidence score from 0 (definitely not a pet) to 1 (definitely a pet).' if lang == 'en' else 'pawcorder 會檢視每一張畫面，為每一個偵測到的區塊計算 0（絕對不是寵物）到 1（絕對是寵物）的信心值。') }}</p>
+      <p>{{ ('Two cutoffs decide what happens:' if lang == 'en' else '兩個閾值共同決定後續行為：') }}</p>
+      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-4 font-mono text-xs">
+        <div class="relative h-7 bg-gradient-to-r from-rose-100 dark:from-rose-900 via-amber-100 dark:via-amber-900 to-emerald-100 dark:to-emerald-900 dark:from-rose-900 dark:via-amber-900 dark:to-emerald-900 rounded">
+          <div class="absolute inset-y-0 flex items-center text-[10px] text-slate-700 dark:text-slate-300 font-sans"
+               x-bind:style="`left: ${form.pet_min_score * 100}%; transform: translateX(-50%)`">
+            <div class="-mt-9 whitespace-nowrap text-center">
+              <div class="font-semibold" x-text="labels.min"></div>
+              <div class="text-slate-500 dark:text-slate-400" x-text="form.pet_min_score.toFixed(2)"></div>
+            </div>
+            <div class="absolute inset-y-0 -translate-x-1/2 w-px bg-slate-700"></div>
+          </div>
+          <div class="absolute inset-y-0 flex items-center text-[10px] text-slate-700 dark:text-slate-300 font-sans"
+               x-bind:style="`left: ${form.pet_threshold * 100}%; transform: translateX(-50%)`">
+            <div class="-mb-9 absolute top-7 whitespace-nowrap text-center">
+              <div class="font-semibold" x-text="labels.event"></div>
+              <div class="text-slate-500 dark:text-slate-400" x-text="form.pet_threshold.toFixed(2)"></div>
+            </div>
+            <div class="absolute inset-y-0 -translate-x-1/2 w-px bg-slate-700"></div>
+          </div>
+          <div class="absolute left-0 -bottom-5 text-[10px] text-slate-500 dark:text-slate-400 font-sans">{{ ('0.0 not a pet' if lang == 'en' else '0.0 不是寵物') }}</div>
+          <div class="absolute right-0 -bottom-5 text-[10px] text-slate-500 dark:text-slate-400 font-sans">{{ ('1.0 confident' if lang == 'en' else '1.0 高度確定') }}</div>
+        </div>
+      </div>
+    </div>
+  </details>
+
+  <details class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5 mb-6">
+    <summary class="text-sm font-medium cursor-pointer text-slate-700 dark:text-slate-300">{{ t('DET_ADVANCED') }}</summary>
+    <div class="mt-5 space-y-5">
+      <div>
+        <div class="flex justify-between mb-2 text-sm">
+          <label class="font-medium text-slate-700 dark:text-slate-300">{{ t('DET_MIN_LABEL') }}</label>
+          <span class="font-mono text-slate-600 dark:text-slate-300" x-text="form.pet_min_score.toFixed(2)"></span>
+        </div>
+        <input type="range" min="0.30" max="0.95" step="0.05" x-model.number="form.pet_min_score"
+               class="w-full accent-brand-500" />
+        <div class="flex justify-between text-xs text-slate-500 dark:text-slate-400 mt-1">
+          <span>{{ t('DET_MIN_LO') }}</span>
+          <span>{{ t('DET_MIN_HI') }}</span>
+        </div>
+      </div>
+      <div>
+        <div class="flex justify-between mb-2 text-sm">
+          <label class="font-medium text-slate-700 dark:text-slate-300">{{ t('DET_EVENT_LABEL') }}</label>
+          <span class="font-mono text-slate-600 dark:text-slate-300" x-text="form.pet_threshold.toFixed(2)"></span>
+        </div>
+        <input type="range" min="0.40" max="0.99" step="0.05" x-model.number="form.pet_threshold"
+               class="w-full accent-brand-500" />
+        <div class="flex justify-between text-xs text-slate-500 dark:text-slate-400 mt-1">
+          <span>{{ t('DET_EVENT_LO') }}</span>
+          <span>{{ t('DET_EVENT_HI') }}</span>
+        </div>
+      </div>
+      <p class="text-xs text-slate-500 dark:text-slate-400">{{ t('DET_TIP') }}</p>
+    </div>
+  </details>
+
+  <div class="flex items-center gap-3 justify-end">
+    <span class="text-xs text-slate-500 dark:text-slate-400" x-show="dirty">{{ t('DET_UNSAVED') }}</span>
+    <button @click="save()" :disabled="saving || hasNothingTracked"
+            class="rounded-md bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            x-text="saving ? labels.saving : labels.save"></button>
+  </div>
+</div>
+
+<script>
+  function detectionPage() {
+    const initial = {
+      pet_min_score: parseFloat({{ config.pet_min_score | tojson }}),
+      pet_threshold: parseFloat({{ config.pet_threshold | tojson }}),
+      track_cat: {{ config.track_cat | tojson }},
+      track_dog: {{ config.track_dog | tojson }},
+      track_person: {{ config.track_person | tojson }},
+    };
+    return {
+      saving: false,
+      lastSaved: { ...initial },
+      form: { ...initial },
+      toggleSpecies(key) {
+        const next = !this.form[`track_${key}`];
+        this.form[`track_${key}`] = next;
+      },
+      labels: {
+        current:     {{ t('CURRENT') | tojson }},
+        recommended: {{ t('RECOMMENDED') | tojson }},
+        min:         {{ t('DET_MIN_LABEL') | tojson }},
+        event:       {{ t('DET_EVENT_LABEL') | tojson }},
+        save:        {{ t('DET_SAVE') | tojson }},
+        saving:      {{ t('SAVING') | tojson }},
+        restarting:  {{ t('DET_RESTARTING') | tojson }},
+      },
+      presets: [
+        { id: 'sensitive', label: {{ t('DET_PRESET_SENSITIVE') | tojson }}, headline: {{ t('DET_PRESET_SENSITIVE_HEAD') | tojson }},
+          min_score: 0.55, threshold: 0.60,
+          bullets: [
+            { kind: 'pro', text: {{ t('DET_SENSITIVE_PRO_1') | tojson }} },
+            { kind: 'pro', text: {{ t('DET_SENSITIVE_PRO_2') | tojson }} },
+            { kind: 'con', text: {{ t('DET_SENSITIVE_CON_1') | tojson }} },
+          ] },
+        { id: 'balanced', label: {{ t('DET_PRESET_BALANCED') | tojson }}, headline: {{ t('DET_PRESET_BALANCED_HEAD') | tojson }},
+          min_score: 0.65, threshold: 0.70,
+          bullets: [
+            { kind: 'pro', text: {{ t('DET_BALANCED_PRO_1') | tojson }} },
+            { kind: 'pro', text: {{ t('DET_BALANCED_PRO_2') | tojson }} },
+            { kind: 'con', text: {{ t('DET_BALANCED_CON_1') | tojson }} },
+          ] },
+        { id: 'strict', label: {{ t('DET_PRESET_STRICT') | tojson }}, headline: {{ t('DET_PRESET_STRICT_HEAD') | tojson }},
+          min_score: 0.75, threshold: 0.85,
+          bullets: [
+            { kind: 'pro', text: {{ t('DET_STRICT_PRO_1') | tojson }} },
+            { kind: 'pro', text: {{ t('DET_STRICT_PRO_2') | tojson }} },
+            { kind: 'con', text: {{ t('DET_STRICT_CON_1') | tojson }} },
+          ] },
+      ],
+      isCurrent(p) {
+        const tol = 0.025;
+        return Math.abs(this.form.pet_min_score - p.min_score) < tol
+            && Math.abs(this.form.pet_threshold - p.threshold) < tol;
+      },
+      apply(p) {
+        this.form.pet_min_score = p.min_score;
+        this.form.pet_threshold = p.threshold;
+      },
+      get dirty() {
+        return this.form.pet_min_score !== this.lastSaved.pet_min_score
+            || this.form.pet_threshold !== this.lastSaved.pet_threshold
+            || this.form.track_cat !== this.lastSaved.track_cat
+            || this.form.track_dog !== this.lastSaved.track_dog
+            || this.form.track_person !== this.lastSaved.track_person;
+      },
+      get hasNothingTracked() {
+        return !this.form.track_cat && !this.form.track_dog && !this.form.track_person;
+      },
+      async save() {
+        if (this.hasNothingTracked) {
+          toast({{ t('DET_NOTHING_TRACKED') | tojson }}, 'error');
+          return;
+        }
+        if (this.form.pet_threshold < this.form.pet_min_score) {
+          this.form.pet_threshold = this.form.pet_min_score;
+        }
+        this.saving = true;
+        try {
+          await api('/api/config/save', {
+            method: 'POST',
+            body: { section: 'detection', data: {
+              pet_min_score: this.form.pet_min_score.toFixed(2),
+              pet_threshold: this.form.pet_threshold.toFixed(2),
+              track_cat: this.form.track_cat,
+              track_dog: this.form.track_dog,
+              track_person: this.form.track_person,
+            } },
+          });
+          await api('/api/frigate/restart', { method: 'POST', body: {} }).catch(() => {});
+          this.lastSaved = { ...this.form };
+          toast(this.labels.restarting, 'success');
+        } catch (e) { toast(e.message, 'error'); }
+        finally { this.saving = false; }
+      },
+    };
+  }
+</script>
+{% endblock %}

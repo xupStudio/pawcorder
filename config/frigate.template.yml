@@ -1,0 +1,217 @@
+# pawcorder — Frigate configuration template (Jinja2).
+# Rendered to config/frigate.yml by the admin panel whenever cameras or
+# host config change. Don't edit the rendered file directly — edit this
+# template (and possibly cameras.yml) instead.
+
+mqtt:
+  enabled: false
+
+# Genai webhooks: Frigate POSTs every event start/update/end to the
+# admin container. The admin's /api/frigate/event handler then fans
+# out to Telegram / LINE / WebPush / pet recognition with sub-second
+# latency vs the 8-second polling fallback.
+#
+# The polling loop is still on as a backstop — webhook delivery is
+# best-effort and Frigate occasionally drops one. The dedup set on
+# the admin side prevents double-fires.
+review:
+  webhooks:
+    - url: "http://admin:8080/api/frigate/event"
+      events:
+        - new
+        - update
+        - end
+
+# Detector chosen by app.platform_detect.recommended_detector at install
+# time, overridable via the /hardware admin page.
+{% if detector_type == 'openvino' %}
+# OpenVINO on Intel iGPU.
+detectors:
+  ov:
+    type: openvino
+    device: GPU
+
+model:
+  width: 300
+  height: 300
+  input_tensor: nhwc
+  input_pixel_format: bgr
+  path: /openvino-model/ssdlite_mobilenet_v2.xml
+  labelmap_path: /openvino-model/coco_91cl_bkgr.txt
+
+# Hardware-accelerated decode via Intel iGPU (VAAPI).
+ffmpeg:
+  hwaccel_args: preset-vaapi
+{% elif detector_type == 'tensorrt' %}
+# NVIDIA GPU via TensorRT.
+detectors:
+  tensorrt:
+    type: tensorrt
+    device: 0
+
+model:
+  path: /trt-models/yolov7-320.trt
+  labelmap_path: /labelmap/coco-80.txt
+  input_tensor: nchw
+  input_pixel_format: rgb
+  width: 320
+  height: 320
+
+ffmpeg:
+  hwaccel_args: preset-nvidia-h264
+{% elif detector_type == 'edgetpu' %}
+# Google Coral USB / PCIe.
+detectors:
+  coral:
+    type: edgetpu
+    device: usb
+{% elif detector_type == 'hailo8l' %}
+# Hailo-8 / Hailo-8L PCIe accelerator.
+detectors:
+  hailo:
+    type: hailo8l
+    device: PCIe
+
+model:
+  width: 300
+  height: 300
+  input_tensor: nhwc
+  input_pixel_format: rgb
+  model_type: ssd
+  path: /config/model_cache/hailo/ssd_mobilenet_v1.hef
+{% else %}
+# CPU detector — works anywhere, including macOS / Windows under Docker
+# Desktop. Slower than hardware-accelerated options; aim for ≤ 2 cameras
+# at 5 fps.
+detectors:
+  cpu1:
+    type: cpu
+    num_threads: 3
+{% endif %}
+
+# go2rtc handles RTSP connections to each camera, so detect/record/web all
+# share one connection per stream (instead of the camera serving 3+ in
+# parallel).
+go2rtc:
+  streams:
+{% for c in cameras %}
+    {{ c.name }}:
+{% if c.two_way_audio %}      # two-way audio: open the camera's RTSP backchannel so the
+      # Frigate UI's "talk" button can push the mic stream upstream.
+      - "rtsp://{{ c.user_url }}:{{ c.password_url }}@{{ c.ip }}:{{ c.rtsp_port }}{{ c.rtsp_main_path }}#backchannel=1"
+{% else %}      - "rtsp://{{ c.user_url }}:{{ c.password_url }}@{{ c.ip }}:{{ c.rtsp_port }}{{ c.rtsp_main_path }}"
+{% endif %}      - "ffmpeg:{{ c.name }}#audio=opus"
+    {{ c.name }}_sub:
+      - "rtsp://{{ c.user_url }}:{{ c.password_url }}@{{ c.ip }}:{{ c.rtsp_port }}{{ c.rtsp_sub_path }}"
+{% endfor %}
+
+cameras:
+{% for c in cameras %}
+  {{ c.name }}:
+    # Energy mode: when this camera is in a scheduled "off" window
+    # (e.g. bedroom 22:00-06:00), Frigate skips it entirely — no
+    # detection, no recording, no decode. Saves ~1 % CPU per camera.
+    enabled: {{ "false" if (not c.enabled or c.energy_paused) else "true" }}
+    ffmpeg:
+      inputs:
+        # Sub stream for object detection (low resolution, low CPU).
+        - path: rtsp://127.0.0.1:8554/{{ c.name }}_sub
+          input_args: preset-rtsp-restream
+          roles:
+            - detect
+        # Main stream for recording (full quality).
+        - path: rtsp://127.0.0.1:8554/{{ c.name }}
+          input_args: preset-rtsp-restream
+          roles:
+            - record
+    # PTZ control via ONVIF — Frigate Web UI gets pan/tilt/zoom buttons.
+    onvif:
+      host: {{ c.ip }}
+      port: {{ c.onvif_port }}
+      user: {{ c.user | tojson }}
+      password: {{ c.password | tojson }}
+    detect:
+      enabled: true
+      width: {{ c.detect_width }}
+      height: {{ c.detect_height }}
+      fps: 5
+{% if c.audio_detection %}    audio:
+      enabled: true
+      # Frigate's built-in detector listens for these in the RTSP audio
+      # track. Toggling this on costs ~1 % CPU per camera. Tagged events
+      # show up in /api/events with label "bark" / "meow" / etc.
+      listen:
+        - bark
+        - meow
+        - yell
+        - scream
+        - glass_break
+        - smoke_alarm
+{% endif %}{% if c.privacy_masks %}    motion:
+      mask:
+{% for m in c.privacy_masks %}        - {{ m.points | tojson }}
+{% endfor %}{% endif %}{% if c.zones %}    zones:
+{% for z in c.zones %}      {{ z.name }}:
+        coordinates: {{ z.points | tojson }}
+{% if z.objects is defined and z.objects %}        objects: {{ z.objects | tojson }}
+{% endif %}{% endfor %}{% endif %}
+    objects:
+      track:
+{% if track_cat %}        - cat
+{% endif %}{% if track_dog %}        - dog
+{% endif %}{% if track_person %}        - person
+{% endif %}      filters:
+{% if track_cat %}        cat:
+          min_score: {{ pet_min_score }}
+          threshold: {{ pet_threshold }}
+          min_area: 1500
+{% endif %}{% if track_dog %}        dog:
+          min_score: {{ pet_min_score }}
+          threshold: {{ pet_threshold }}
+          min_area: 2000
+{% endif %}{% if track_person %}        person:
+          min_score: 0.6
+          threshold: 0.7
+{% endif %}
+    snapshots:
+      enabled: true
+      bounding_box: true
+      retain:
+        default: 14
+        objects:
+{% if track_cat %}          cat: 30
+{% endif %}{% if track_dog %}          dog: 30
+{% endif %}
+    record:
+      # Privacy mode: when the admin's privacy monitor reports
+      # recording_paused (Tailscale presence = "someone home", or
+      # manual override), this flips to false and Frigate stops
+      # writing recordings. Detection still runs so live view works.
+      enabled: {{ "false" if recording_paused else "true" }}
+      retain:
+        days: 2
+        mode: motion
+      alerts:
+        retain:
+          days: 30
+          mode: active_objects
+      detections:
+        retain:
+          days: 14
+          mode: active_objects
+    review:
+{% if track_cat or track_dog %}      alerts:
+        labels:
+{% if track_cat %}          - cat
+{% endif %}{% if track_dog %}          - dog
+{% endif %}{% endif %}{% if track_person %}      detections:
+        labels:
+          - person
+{% endif %}
+{% endfor %}
+
+birdseye:
+  enabled: true
+  mode: objects
+
+version: 0.15-1

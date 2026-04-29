@@ -1,0 +1,100 @@
+{% extends "_layout.html" %}
+{% block title %}{{ t('HA_TITLE') }} · pawcorder{% endblock %}
+{% block main %}
+<div x-data="haPage()" class="max-w-3xl">
+  <h1 class="text-2xl font-semibold tracking-tight">{{ t('HA_TITLE') }}</h1>
+  <p class="text-sm text-slate-500 dark:text-slate-400 mb-6">{{ t('HA_SUBTITLE') }}</p>
+
+  <div class="rounded-2xl bg-amber-50 dark:bg-amber-900 border border-amber-200 dark:border-amber-800 p-4 mb-6 text-sm text-amber-800 dark:text-amber-200">
+    <p class="font-medium">{{ t('HA_HEADS_UP_HEAD') }}</p>
+    <p class="mt-1">{{ t('HA_HEADS_UP_BODY') }} <a href="/notifications" class="underline">{{ t('HA_TG_LINK') }}</a></p>
+  </div>
+
+  <!-- Step 1 -->
+  <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-6 mb-6">
+    <h2 class="text-base font-semibold tracking-tight mb-3">{{ t('HA_STEP1_HEAD') }}</h2>
+    <p class="text-sm text-slate-600 dark:text-slate-300 mb-3">{{ t('HA_STEP1_INTRO') }}</p>
+    <pre class="bg-slate-900 text-slate-100 rounded-lg p-4 text-xs overflow-x-auto"><code>  homeassistant:
+    container_name: pawcorder-ha
+    image: ghcr.io/home-assistant/home-assistant:stable
+    restart: unless-stopped
+    volumes:
+      - ./homeassistant:/config
+      - /etc/localtime:/etc/localtime:ro
+    network_mode: host
+    privileged: true
+    environment:
+      TZ: "${TZ:-Asia/Taipei}"</code></pre>
+    <button @click="copy('  homeassistant:\n    container_name: pawcorder-ha\n    image: ghcr.io/home-assistant/home-assistant:stable\n    restart: unless-stopped\n    volumes:\n      - ./homeassistant:/config\n      - /etc/localtime:/etc/localtime:ro\n    network_mode: host\n    privileged: true\n    environment:\n      TZ: \"${TZ:-Asia/Taipei}\"')"
+            class="mt-2 text-xs text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100">{{ t('HA_STEP1_COPY') }}</button>
+
+    <p class="text-sm text-slate-600 dark:text-slate-300 mt-4">{{ t('HA_STEP1_THEN') }}</p>
+    <pre class="bg-slate-900 text-slate-100 rounded-lg p-4 text-xs overflow-x-auto"><code>docker compose up -d homeassistant</code></pre>
+
+    <p class="text-sm text-slate-600 dark:text-slate-300 mt-4">{{ t('HA_STEP1_OPEN') }}</p>
+  </div>
+
+  <!-- Step 2 -->
+  <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-6 mb-6">
+    <h2 class="text-base font-semibold tracking-tight mb-3">{{ t('HA_STEP2_HEAD') }}</h2>
+    <ol class="list-decimal pl-5 space-y-2 text-sm text-slate-600 dark:text-slate-300">
+      <li>{{ t('HA_STEP2_1') }}</li>
+      <li>{{ t('HA_STEP2_2') }}</li>
+      <li>{{ t('HA_STEP2_3') }}</li>
+      <li>{{ t('HA_STEP2_4') }}</li>
+    </ol>
+  </div>
+
+  <!-- Step 3 -->
+  <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-6 mb-6">
+    <h2 class="text-base font-semibold tracking-tight mb-3">{{ t('HA_STEP3_HEAD') }}</h2>
+    <ol class="list-decimal pl-5 space-y-2 text-sm text-slate-600 dark:text-slate-300">
+      <li>{{ t('HA_STEP3_1') }}
+        <a href="https://apps.apple.com/app/home-assistant/id1099568401" target="_blank" rel="noopener" class="text-brand-600 underline">iOS</a> /
+        <a href="https://play.google.com/store/apps/details?id=io.homeassistant.companion.android" target="_blank" rel="noopener" class="text-brand-600 underline">Android</a>
+      </li>
+      <li>{{ t('HA_STEP3_2') }}</li>
+      <li>{{ t('HA_STEP3_3') }}</li>
+    </ol>
+  </div>
+
+  <!-- Step 4 -->
+  <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-6 mb-6">
+    <h2 class="text-base font-semibold tracking-tight mb-3">{{ t('HA_STEP4_HEAD') }}</h2>
+    <p class="text-sm text-slate-600 dark:text-slate-300 mb-3">{{ t('HA_STEP4_INTRO') }}</p>
+    <pre class="bg-slate-900 text-slate-100 rounded-lg p-4 text-xs overflow-x-auto"><code>{% raw %}alias: pawcorder — pet detected
+trigger:
+  - platform: mqtt
+    topic: frigate/events
+    payload: new
+    value_template: "{{ value_json.type }}"
+condition:
+  - condition: template
+    value_template: "{{ trigger.payload_json['after']['label'] in ['cat','dog'] }}"
+action:
+  - service: notify.mobile_app_<your-phone-name>
+    data:
+      title: "{{ trigger.payload_json['after']['label']|capitalize }} detected"
+      message: "in {{ trigger.payload_json['after']['camera'] }}"
+      data:
+        image: "/api/frigate/notifications/{{ trigger.payload_json['after']['id'] }}/snapshot.jpg"{% endraw %}</code></pre>
+    <p class="text-sm text-slate-600 dark:text-slate-300 mt-3">{{ t('HA_STEP4_NOTE') }}</p>
+    <p class="text-xs text-slate-500 dark:text-slate-400 mt-2">{{ t('HA_STEP4_MQTT') }}</p>
+  </div>
+
+  <p class="text-sm text-slate-500 dark:text-slate-400">{{ t('HA_FOOTER') }}</p>
+</div>
+
+<script>
+  function haPage() {
+    return {
+      async copy(text) {
+        try {
+          await navigator.clipboard.writeText(text);
+          toast({{ t('COPIED') | tojson }}, 'success');
+        } catch (e) { toast({{ t('COPY_FAILED') | tojson }}, 'error'); }
+      },
+    };
+  }
+</script>
+{% endblock %}

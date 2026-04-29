@@ -1,0 +1,229 @@
+{% extends "base.html" %}
+{% block body %}
+{# Primary nav stays in the top bar — daily-use pages only.
+   Everything in `nav_more` collapses behind a "更多" / More dropdown
+   so we never overflow on a 1280px screen. The mobile drawer
+   flattens both lists back into one. #}
+{% set nav = [
+  ('/',              t('NAV_DASHBOARD')),
+  ('/cameras',       t('NAV_CAMERAS')),
+  ('/pets',          t('NAV_PETS')),
+  ('/timelapse',     t('NAV_TIMELAPSE')),
+  ('/detection',     t('NAV_DETECTION')),
+] %}
+{% set nav_more = [
+  ('/privacy',       t('NAV_PRIVACY')),
+  ('/mobile',        t('NAV_MOBILE')),
+  ('/notifications', t('NAV_NOTIFICATIONS')),
+  ('/cloud',         t('NAV_CLOUD')),
+  ('/hardware',      t('NAV_HARDWARE')),
+  ('/users',         t('NAV_USERS')),
+  ('/system',        t('NAV_SYSTEM')),
+] %}
+<div class="min-h-full" x-data="{ navOpen: false }">
+  <header class="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700">
+    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 flex h-16 items-center justify-between gap-4">
+      <div class="flex items-center gap-2">
+        <button @click="navOpen = !navOpen"
+                class="lg:hidden inline-flex items-center justify-center h-9 w-9 rounded-md text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 dark:hover:bg-slate-800"
+                aria-label="Toggle navigation">
+          <svg x-show="!navOpen" class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+          </svg>
+          <svg x-show="navOpen" class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+        <a href="/" class="flex items-center gap-2 shrink-0">
+          <span class="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-brand-500 text-white font-bold">P</span>
+          <div class="leading-tight">
+            <div class="text-base font-semibold tracking-tight">{{ t('APP_NAME') }}</div>
+            <div class="text-xs text-slate-500 dark:text-slate-400 hidden sm:block">{{ t('APP_TAGLINE') }}</div>
+          </div>
+        </a>
+      </div>
+      <nav class="hidden lg:flex items-center gap-1 flex-1 justify-center" x-data="{ moreOpen: false }">
+        {% for href, label in nav %}
+          <a href="{{ href }}"
+             class="whitespace-nowrap px-3 py-2 rounded-md text-sm font-medium {{ 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:bg-slate-800 dark:text-slate-100' if request.url.path == href else 'text-slate-600 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100' }}">{{ label }}</a>
+        {% endfor %}
+
+        <!-- "More" dropdown for the secondary pages -->
+        {% set in_more = request.url.path in nav_more|map(attribute=0)|list %}
+        <div class="relative" @click.outside="moreOpen = false">
+          <button type="button" @click="moreOpen = !moreOpen"
+                  class="whitespace-nowrap inline-flex items-center gap-1 px-3 py-2 rounded-md text-sm font-medium {{ 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:bg-slate-800 dark:text-slate-100' if in_more else 'text-slate-600 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-800' }}">
+            {{ t('NAV_MORE') }}
+            <svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" :class="moreOpen ? 'rotate-180' : ''">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
+          </button>
+          <div x-show="moreOpen" x-cloak x-transition.opacity
+               class="absolute left-1/2 -translate-x-1/2 mt-1 min-w-44 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-lg overflow-hidden z-30 dark:border-slate-700 dark:bg-slate-800">
+            {% for href, label in nav_more %}
+              <a href="{{ href }}"
+                 class="block whitespace-nowrap px-4 py-2 text-sm {{ 'bg-slate-50 dark:bg-slate-800 font-medium text-slate-900 dark:bg-slate-700 dark:text-slate-100' if request.url.path == href else 'text-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-700' }}">{{ label }}</a>
+            {% endfor %}
+          </div>
+        </div>
+      </nav>
+      <div class="flex items-center gap-3 shrink-0" x-data='Object.assign({}, langSwitcher({{ lang | tojson }}), themeSwitcher())'>
+        <!-- theme toggle: cycles auto → light → dark → auto -->
+        <button type="button" @click="cycleTheme()"
+                class="rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 dark:bg-slate-800 px-2 py-1.5 text-xs"
+                :title="themeLabel()">
+          <span x-text="themeIcon()"></span>
+        </button>
+        <div class="relative" @click.outside="open = false">
+          <button type="button" @click="open = !open"
+                  class="inline-flex items-center gap-1.5 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 dark:bg-slate-800 px-2.5 py-1.5 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700">
+            <span class="text-slate-400 dark:text-slate-500 hidden sm:inline">{{ t('LANG_LABEL') }}:</span>
+            <span class="font-medium" x-text="currentLabel()"></span>
+            <svg class="h-3 w-3 text-slate-400 dark:text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
+          </button>
+          <div x-show="open" x-cloak x-transition.opacity
+               class="absolute right-0 mt-1 w-36 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 dark:bg-slate-800 shadow-lg overflow-hidden z-30">
+            <button type="button" @click="set('zh-TW'); open = false"
+                    class="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center justify-between"
+                    :class="lang === 'zh-TW' ? 'bg-slate-50 dark:bg-slate-800 dark:bg-slate-700 font-medium text-slate-900 dark:text-slate-100' : 'text-slate-700 dark:text-slate-300'">
+              <span>中文 (繁體)</span>
+              <span x-show="lang === 'zh-TW'" class="text-emerald-600 dark:text-emerald-400">✓</span>
+            </button>
+            <button type="button" @click="set('en'); open = false"
+                    class="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center justify-between border-t border-slate-100 dark:border-slate-700"
+                    :class="lang === 'en' ? 'bg-slate-50 dark:bg-slate-800 dark:bg-slate-700 font-medium text-slate-900 dark:text-slate-100' : 'text-slate-700 dark:text-slate-300'">
+              <span>English</span>
+              <span x-show="lang === 'en'" class="text-emerald-600 dark:text-emerald-400">✓</span>
+            </button>
+          </div>
+        </div>
+        <form method="post" action="/logout">
+          <button type="submit" class="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 dark:hover:text-slate-200">{{ t('SIGN_OUT') }}</button>
+        </form>
+      </div>
+    </div>
+  </header>
+
+  <!-- Mobile drawer (visible when navOpen) -->
+  <div x-show="navOpen" x-cloak class="lg:hidden border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 dark:border-slate-700">
+    <nav class="mx-auto max-w-7xl px-2 py-2 flex flex-col">
+      {% for href, label in nav + nav_more %}
+        <a href="{{ href }}"
+           class="px-3 py-2 rounded-md text-sm font-medium {{ 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:bg-slate-800 dark:text-slate-100' if request.url.path == href else 'text-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-800' }}">{{ label }}</a>
+      {% endfor %}
+    </nav>
+  </div>
+
+  {% if not setup_complete and request.url.path != '/setup' %}
+  <div class="bg-amber-50 dark:bg-amber-900 border-b border-amber-200 dark:border-amber-800">
+    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between gap-2">
+      <p class="text-sm text-amber-800 dark:text-amber-200">{{ t('SETUP_INCOMPLETE') }}</p>
+      <a href="/setup" class="text-sm font-medium text-amber-900 dark:text-amber-200 hover:text-amber-700 underline whitespace-nowrap">{{ t('OPEN_SETUP_WIZARD') }}</a>
+    </div>
+  </div>
+  {% endif %}
+
+  <main class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
+    {% block main %}{% endblock %}
+  </main>
+</div>
+
+<div x-data="{ msg: null, kind: 'info' }"
+     x-on:toast.window="msg = $event.detail.msg; kind = $event.detail.kind || 'info'; setTimeout(() => msg = null, 4000)"
+     x-cloak
+     class="fixed bottom-6 right-6 z-50">
+  <template x-if="msg">
+    <div class="rounded-lg shadow-lg px-4 py-3 text-sm text-white"
+         x-bind:class="{ 'bg-emerald-600': kind === 'success', 'bg-rose-600': kind === 'error', 'bg-slate-800': kind === 'info' }"
+         x-text="msg"></div>
+  </template>
+</div>
+
+<script>
+  async function api(path, options = {}) {
+    const opts = {
+      method: options.method || 'GET',
+      credentials: 'same-origin',
+      headers: {
+        'Accept': 'application/json',
+        // CSRF guard: matched by app.auth.has_csrf_header. Browsers
+        // refuse to forge custom headers cross-origin without CORS,
+        // so this provides defence-in-depth on top of samesite=lax.
+        'X-Requested-With': 'pawcorder',
+      },
+    };
+    if (options.body !== undefined) {
+      opts.headers['Content-Type'] = 'application/json';
+      opts.body = JSON.stringify(options.body);
+    }
+    const resp = await fetch(path, opts);
+    if (resp.status === 401) {
+      window.location = '/login';
+      throw new Error('not authenticated');
+    }
+    let data = null;
+    try { data = await resp.json(); } catch (_) {}
+    if (!resp.ok) {
+      throw new Error((data && data.error) || resp.statusText);
+    }
+    return data;
+  }
+  // Multipart helper for file uploads — keeps the CSRF guard while
+  // letting the browser set the multipart boundary.
+  async function apiUpload(path, formData) {
+    const resp = await fetch(path, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'X-Requested-With': 'pawcorder' },
+      body: formData,
+    });
+    let data = null;
+    try { data = await resp.json(); } catch (_) {}
+    if (!resp.ok) {
+      throw new Error((data && data.error) || resp.statusText);
+    }
+    return data;
+  }
+  function toast(msg, kind = 'info') {
+    window.dispatchEvent(new CustomEvent('toast', { detail: { msg, kind } }));
+  }
+  function langSwitcher(initial) {
+    const labels = { 'zh-TW': '中文', 'en': 'English', 'ja': '日本語', 'ko': '한국어' };
+    return {
+      lang: initial,
+      open: false,
+      currentLabel() { return labels[this.lang] || this.lang; },
+      async set(lang) {
+        if (lang === this.lang) return;
+        try {
+          await api('/api/lang', { method: 'POST', body: { lang } });
+          window.location.reload();
+        } catch (e) { toast(e.message, 'error'); }
+      },
+    };
+  }
+  function themeSwitcher() {
+    // 'auto' (default) follows OS, 'light' / 'dark' override.
+    return {
+      theme: localStorage.getItem('pawcorder_theme') || 'auto',
+      themeIcon() {
+        return this.theme === 'dark' ? '🌙' : (this.theme === 'light' ? '☀️' : '🌗');
+      },
+      themeLabel() {
+        return this.theme === 'auto' ? 'Theme: auto'
+             : this.theme === 'dark' ? 'Theme: dark' : 'Theme: light';
+      },
+      cycleTheme() {
+        const next = { 'auto': 'light', 'light': 'dark', 'dark': 'auto' }[this.theme] || 'auto';
+        this.theme = next;
+        localStorage.setItem('pawcorder_theme', next);
+        const dark = next === 'dark' ||
+          (next === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.classList.toggle('dark', dark);
+      },
+    };
+  }
+</script>
+{% endblock %}

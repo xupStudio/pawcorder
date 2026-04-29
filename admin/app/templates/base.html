@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en" class="h-full bg-slate-50 dark:bg-slate-950">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{% block title %}pawcorder{% endblock %}</title>
+  <script>
+    // Apply theme BEFORE Tailwind loads so we don't get a light-mode flash.
+    // 'auto' is system-default; user's explicit choice wins.
+    (function () {
+      var t = localStorage.getItem('pawcorder_theme') || 'auto';
+      var systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      var dark = (t === 'dark') || (t === 'auto' && systemDark);
+      if (dark) document.documentElement.classList.add('dark');
+    })();
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50:  '#fef7ed',
+              100: '#fdedd4',
+              200: '#fbd7a8',
+              300: '#f8ba71',
+              400: '#f59239',
+              500: '#f37416',
+              600: '#e4590c',
+              700: '#bd420c',
+              800: '#963512',
+              900: '#7a2e12',
+            },
+          },
+          fontFamily: {
+            sans: ['"Inter"', 'system-ui', 'sans-serif'],
+          },
+        },
+      },
+    };
+  </script>
+  <link rel="preconnect" href="https://rsms.me/" />
+  <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
+  <link rel="manifest" href="/static/manifest.json" />
+  <link rel="icon" type="image/svg+xml" href="/static/icon.svg" />
+  <link rel="apple-touch-icon" href="/static/icon.svg" />
+  <meta name="theme-color" content="#f37416" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="pawcorder" />
+  <style>
+    [x-cloak] { display: none !important; }
+    /* Tailwind's class-mode dark variant uses a descendant selector
+       (.dark .dark\:bg-...), so dark:bg-* on the <html> element itself
+       (the element holding the .dark class) doesn't apply. Set the page
+       bg on <html> directly via plain CSS so over-scroll matches the
+       page in both modes; <body> below also paints itself for the
+       normal viewport. */
+    html { background-color: rgb(248 250 252); }     /* slate-50 */
+    html.dark { background-color: rgb(2 6 23); }     /* slate-950 */
+    /* Default form-control appearance in dark mode for inputs/textareas/selects
+       that don't carry an explicit Tailwind bg-* class. Specificity is low so
+       any element with explicit dark:bg-* / dark:border-* utilities wins. */
+    html.dark input:not([type=checkbox]):not([type=radio]):not([type=submit]):not([type=button]):not([type=reset]):not([type=range]):not([type=color]):not([type=file]),
+    html.dark textarea,
+    html.dark select {
+      background-color: rgb(30 41 59);   /* slate-800 */
+      border-color: rgb(51 65 85);       /* slate-700 */
+      color: rgb(241 245 249);           /* slate-100 */
+    }
+    html.dark input::placeholder,
+    html.dark textarea::placeholder { color: rgb(100 116 139); }   /* slate-500 */
+    html.dark select option { background-color: rgb(30 41 59); color: rgb(241 245 249); }
+  </style>
+  <script>
+    // Register the service worker on load. Older browsers without SW just skip.
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("/static/sw.js").catch(() => {});
+      });
+    }
+  </script>
+</head>
+<body class="h-full font-sans bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200 antialiased">
+  {% block body %}{% endblock %}
+</body>
+</html>

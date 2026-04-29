@@ -1,0 +1,727 @@
+{% extends "_layout.html" %}
+{% block title %}{{ t('SYSTEM_TITLE') }} · pawcorder{% endblock %}
+{% block main %}
+<div x-data="systemPage()" x-init="loadHealth(); checkUpdate(); loadPerf(); loadSchedule(); loadKeys(); loadEnergy(); loadAiTokens()" class="max-w-4xl">
+  <h1 class="text-2xl font-semibold tracking-tight">{{ t('SYSTEM_TITLE') }}</h1>
+  <p class="text-sm text-slate-500 dark:text-slate-400 mb-6">{{ t('SYSTEM_SUBTITLE') }}</p>
+
+  <!-- Health summary -->
+  <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5 mb-6">
+    <div class="flex items-start justify-between gap-3">
+      <div>
+        <h2 class="text-base font-semibold tracking-tight">{{ t('HEALTH_HEADING') }}</h2>
+        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1" x-text="health.overall_ok ? labels.health_ok : labels.health_warn"></p>
+      </div>
+      <span class="inline-flex h-3 w-3 rounded-full mt-1"
+            x-bind:class="health.overall_ok ? 'bg-emerald-500' : 'bg-amber-500'"></span>
+    </div>
+    <ul class="mt-4 space-y-2 text-sm">
+      <li class="flex items-start gap-2">
+        <span class="inline-flex h-2 w-2 rounded-full mt-1.5 shrink-0"
+              x-bind:class="health.storage?.ok ? 'bg-emerald-500' : 'bg-amber-500'"></span>
+        <div class="flex-1 min-w-0">
+          <div class="font-medium">{{ t('HEALTH_STORAGE') }}</div>
+          <div class="text-xs text-slate-500 dark:text-slate-400" x-text="health.storage?.message || '—'"></div>
+        </div>
+      </li>
+      <li class="flex items-start gap-2">
+        <span class="inline-flex h-2 w-2 rounded-full mt-1.5 shrink-0"
+              x-bind:class="health.frigate?.ok ? 'bg-emerald-500' : 'bg-amber-500'"></span>
+        <div class="flex-1 min-w-0">
+          <div class="font-medium">{{ t('HEALTH_FRIGATE') }}</div>
+          <div class="text-xs text-slate-500 dark:text-slate-400" x-text="health.frigate?.message || '—'"></div>
+        </div>
+      </li>
+      <template x-for="c in (health.cameras || [])" :key="c.name">
+        <li class="flex items-start gap-2">
+          <span class="inline-flex h-2 w-2 rounded-full mt-1.5 shrink-0"
+                x-bind:class="c.ok ? 'bg-emerald-500' : 'bg-amber-500'"></span>
+          <div class="flex-1 min-w-0">
+            <div class="font-medium" x-text="c.name"></div>
+            <div class="text-xs text-slate-500 dark:text-slate-400" x-text="c.message || '—'"></div>
+          </div>
+        </li>
+      </template>
+    </ul>
+    <div class="mt-3 flex justify-end">
+      <button @click="loadHealth(true)" class="text-xs text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100"
+              x-text="loadingHealth ? labels.refreshing : labels.recheck"></button>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+    <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5">
+      <h2 class="text-base font-semibold tracking-tight">{{ t('SYS_RECORDER_HEADING') }}</h2>
+      <dl class="mt-3 text-sm space-y-1">
+        <div class="flex justify-between"><dt class="text-slate-500 dark:text-slate-400">{{ t('SYS_STATUS') }}</dt><dd class="font-mono">{{ frigate_status.status }}</dd></div>
+        <div class="flex justify-between"><dt class="text-slate-500 dark:text-slate-400">{{ t('SYS_HEALTH') }}</dt><dd class="font-mono">{{ frigate_status.health or '—' }}</dd></div>
+        <div class="flex justify-between"><dt class="text-slate-500 dark:text-slate-400">{{ t('SYS_IMAGE') }}</dt><dd class="font-mono text-xs truncate">{{ frigate_status.image or '—' }}</dd></div>
+      </dl>
+      <div class="mt-4 flex gap-2">
+        <button @click="restart()" class="rounded-md bg-slate-900 text-white px-3 py-2 text-sm hover:bg-slate-800">{{ t('SYS_RESTART') }}</button>
+        <button @click="reloadLogs()" class="rounded-md bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-700">{{ t('SYS_REFRESH_LOGS') }}</button>
+      </div>
+    </div>
+
+    <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5">
+      <h2 class="text-base font-semibold tracking-tight">{{ t('SYS_CHANGE_PASSWORD') }}</h2>
+      <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('SYS_PASSWORD_HELP') }}</p>
+      <div class="mt-3 space-y-2">
+        <input type="password" x-model="newPassword" placeholder="{{ t('SYS_NEW_PASSWORD') }}"
+               class="w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm" />
+        <input type="password" x-model="newPasswordConfirm" placeholder="{{ t('SYS_CONFIRM') }}"
+               class="w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm" />
+        <button @click="changePassword()"
+                :disabled="!newPassword || newPassword !== newPasswordConfirm || newPassword.length < 8"
+                class="rounded-md bg-brand-500 hover:bg-brand-600 text-white px-3 py-2 text-sm font-medium disabled:opacity-50">
+          {{ t('SYS_UPDATE_PASSWORD') }}
+        </button>
+      </div>
+    </div>
+  </div>
+
+  {# AI tokens — OSS users bring their own OpenAI key; Pro users paste a
+     license key issued by pawcorder cloud, which proxies the LLM calls
+     so they never expose their key. The same input fields drive both —
+     whichever is non-empty wins. #}
+  <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5 mb-6">
+    <h2 class="text-base font-semibold tracking-tight">{{ t('SYS_AI_TOKENS_HEADING') }}</h2>
+    <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('SYS_AI_TOKENS_HELP') }}</p>
+    <div class="mt-3 space-y-3">
+      <div>
+        <label class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">{{ t('SYS_PRO_LICENSE_LABEL') }}</label>
+        <input type="password" x-model="proLicenseKey" placeholder="pro_xxxxxxxxxxxxxxxxxx"
+               class="w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm font-mono" />
+        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('SYS_PRO_LICENSE_HELP') }}</p>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">{{ t('SYS_OPENAI_KEY_LABEL') }}</label>
+        <input type="password" x-model="openaiApiKey" placeholder="sk-..."
+               class="w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm font-mono" />
+        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('SYS_OPENAI_KEY_HELP') }}</p>
+      </div>
+      <button @click="saveAiTokens()"
+              class="rounded-md bg-brand-500 hover:bg-brand-600 text-white px-3 py-2 text-sm font-medium">
+        {{ t('SAVE') }}
+      </button>
+    </div>
+  </div>
+
+  <!-- Resource usage per container -->
+  <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5 mb-6">
+    <h2 class="text-base font-semibold tracking-tight">{{ t('PERF_HEADING') }}</h2>
+    <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('PERF_HELP') }}</p>
+    <div class="mt-3 space-y-2 text-sm" x-show="perf.length > 0">
+      <template x-for="row in perf" :key="row.name">
+        <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-2 last:border-0 last:pb-0">
+          <div class="font-mono text-xs" x-text="row.name"></div>
+          <div class="flex items-center gap-3 text-xs text-slate-600 dark:text-slate-300 dark:text-slate-400">
+            <span x-show="!row.running" class="text-slate-400 dark:text-slate-500">stopped</span>
+            <span x-show="row.running" x-text="'CPU ' + row.cpu_percent + '%'"></span>
+            <span x-show="row.running" x-text="'RAM ' + humanMB(row.memory_used_bytes) + (row.memory_limit_bytes > 0 ? ' / ' + humanMB(row.memory_limit_bytes) : '')"></span>
+            <span x-show="row.running" class="text-slate-400 dark:text-slate-500" x-text="'net ' + humanMB(row.network_rx_bytes + row.network_tx_bytes)"></span>
+          </div>
+        </div>
+      </template>
+    </div>
+    <p x-show="perf.length === 0" class="text-xs text-slate-400 dark:text-slate-500 mt-2">{{ t('PERF_LOADING') }}</p>
+    <button @click="loadPerf()" class="mt-3 text-xs text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 dark:hover:text-slate-200">
+      {{ t('SYS_REFRESH_LOGS') }}
+    </button>
+  </div>
+
+  <!-- Version + updates -->
+  <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5 mb-6">
+    <div class="flex items-start justify-between gap-3">
+      <div class="min-w-0">
+        <h2 class="text-base font-semibold tracking-tight">{{ t('VERSION_HEADING') }}</h2>
+        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('VERSION_HELP') }}</p>
+        <div class="mt-3 text-sm">
+          <span class="text-slate-500 dark:text-slate-400">{{ t('VERSION_CURRENT') }}:</span>
+          <span class="font-mono font-medium" x-text="update.current_version"></span>
+        </div>
+        <template x-if="update.update_available">
+          <div class="mt-2 rounded-lg bg-amber-50 dark:bg-amber-900 border border-amber-200 dark:border-amber-800 p-3 text-sm text-amber-900 dark:text-amber-200">
+            <div class="font-medium" x-text="labels.update_available + ' ' + update.latest_version"></div>
+            <a x-show="update.release_url" :href="update.release_url" target="_blank"
+               class="text-xs underline mt-1 inline-block">{{ t('VERSION_RELEASE_NOTES') }}</a>
+          </div>
+        </template>
+        <template x-if="update.error">
+          <div class="mt-2 text-xs text-slate-500 dark:text-slate-400" x-text="update.error"></div>
+        </template>
+      </div>
+      <button @click="checkUpdate(true)" class="rounded-md bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-700 shrink-0"
+              x-text="checkingUpdate ? labels.checking : labels.check_update"></button>
+    </div>
+  </div>
+
+  <!-- Backup link + scheduled cloud backup -->
+  <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5 mb-6">
+    <div class="flex items-start justify-between gap-3 mb-4">
+      <div>
+        <h2 class="text-base font-semibold tracking-tight">{{ t('BACKUP_HEADING') }}</h2>
+        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('BACKUP_HELP') }}</p>
+      </div>
+      <a href="/backup" class="rounded-md bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 px-3 py-2 text-sm shrink-0">{{ t('BACKUP_OPEN') }}</a>
+    </div>
+    <details class="text-sm">
+      <summary class="cursor-pointer text-slate-600 dark:text-slate-300">{{ t('BACKUP_SCHEDULE_HEADING') }}</summary>
+      <div class="mt-3 space-y-3">
+        <label class="flex items-center gap-2">
+          <input type="checkbox" x-model="schedule.enabled" @change="saveSchedule()" />
+          {{ t('BACKUP_SCHEDULE_ENABLE') }}
+        </label>
+        <label class="flex items-center gap-2">
+          <input type="checkbox" x-model="schedule.encrypt" @change="saveSchedule()" />
+          {{ t('BACKUP_SCHEDULE_ENCRYPT') }}
+        </label>
+        <input type="password" x-model="schedule.encryption_password"
+               x-show="schedule.encrypt"
+               placeholder="{{ t('BACKUP_SCHEDULE_PASSWORD') }}"
+               class="w-full rounded-md border border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-3 py-2 text-sm" />
+        <input type="text" x-model="schedule.cloud_path"
+               placeholder="pawcorder/backups"
+               class="w-full rounded-md border border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-3 py-2 text-sm font-mono" />
+        <div class="flex items-center gap-3">
+          <button @click="saveSchedule()" class="rounded-md bg-brand-500 hover:bg-brand-600 text-white px-3 py-1.5 text-xs">{{ t('SAVE') }}</button>
+          <button @click="runBackupNow()" :disabled="backupRunning"
+                  class="rounded-md bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 text-xs"
+                  x-text="backupRunning ? labels.bk_running : labels.bk_now"></button>
+          <span class="text-xs text-slate-500 dark:text-slate-400" x-show="schedule.last_run_ok_at"
+                x-text="labels.bk_last_ok + ' ' + new Date(schedule.last_run_ok_at * 1000).toLocaleString()"></span>
+        </div>
+        <p x-show="schedule.last_error" class="text-xs text-rose-600 dark:text-rose-400" x-text="schedule.last_error"></p>
+      </div>
+    </details>
+  </div>
+
+  <!-- API keys + Energy mode + Web Push -->
+  <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5 mb-6">
+    <h2 class="text-base font-semibold tracking-tight">{{ t('POWER_HEADING') }}</h2>
+    <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('POWER_HELP') }}</p>
+
+    <!-- API keys -->
+    <details class="mt-4 text-sm">
+      <summary class="cursor-pointer text-slate-700 dark:text-slate-300 dark:text-slate-200">{{ t('APIKEYS_HEADING') }}</summary>
+      <div class="mt-3 space-y-3">
+        <p class="text-xs text-slate-500 dark:text-slate-400">{{ t('APIKEYS_HELP') }}
+          <a href="/docs/api" class="text-brand-600 hover:text-brand-700 underline ml-1">{{ t('APIKEYS_DOCS_LINK') }} →</a>
+        </p>
+        <div class="flex gap-2">
+          <input type="text" x-model="newKeyName" placeholder="Home Assistant"
+                 class="flex-1 rounded-md border border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-3 py-2 text-sm" />
+          <button @click="createKey()" class="rounded-md bg-brand-500 hover:bg-brand-600 text-white px-3 py-1.5 text-sm">{{ t('APIKEYS_CREATE') }}</button>
+        </div>
+        <div x-show="newPlainKey" class="rounded-md bg-amber-50 dark:bg-amber-900 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 p-3 text-xs">
+          <p class="font-medium text-amber-900 dark:text-amber-200">{{ t('APIKEYS_NEW_NOTICE') }}</p>
+          <pre class="mt-1 font-mono break-all" x-text="newPlainKey"></pre>
+        </div>
+        <ul class="text-xs space-y-1">
+          <template x-for="k in apiKeys" :key="k.key_id">
+            <li class="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-1">
+              <span><span class="font-medium" x-text="k.name"></span> <span class="text-slate-400 dark:text-slate-500 font-mono" x-text="k.preview"></span></span>
+              <button @click="revokeKey(k.key_id)" class="text-rose-600 dark:text-rose-400 hover:text-rose-700">{{ t('REMOVE') }}</button>
+            </li>
+          </template>
+          <li x-show="apiKeys.length === 0" class="text-slate-400 dark:text-slate-500">{{ t('APIKEYS_EMPTY') }}</li>
+        </ul>
+      </div>
+    </details>
+
+    <!-- Energy mode -->
+    <details class="mt-4 text-sm">
+      <summary class="cursor-pointer text-slate-700 dark:text-slate-300 dark:text-slate-200">{{ t('ENERGY_HEADING') }}</summary>
+      <div class="mt-3 space-y-3">
+        <p class="text-xs text-slate-500 dark:text-slate-400">{{ t('ENERGY_HELP') }}</p>
+        <label class="flex items-center gap-2">
+          <input type="checkbox" x-model="energy.enabled" @change="saveEnergy()" />
+          {{ t('ENERGY_ENABLE') }}
+        </label>
+        <template x-for="(s, i) in energy.schedules" :key="i">
+          <div class="flex flex-wrap gap-2 items-center text-xs">
+            <input type="text" x-model="s.cameras_csv" placeholder="bedroom,office"
+                   class="flex-1 rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-2 py-1 font-mono" />
+            <input type="number" min="0" max="23" x-model.number="s.start_hour"
+                   class="w-16 rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-2 py-1" />
+            <span class="text-slate-400 dark:text-slate-500">→</span>
+            <input type="number" min="0" max="23" x-model.number="s.end_hour"
+                   class="w-16 rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-2 py-1" />
+            <button @click="energy.schedules.splice(i, 1)" class="text-rose-600 dark:text-rose-400">×</button>
+          </div>
+        </template>
+        <button @click="addEnergyRow()" class="rounded-md bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 px-2 py-1 text-xs">+ {{ t('ENERGY_ADD_ROW') }}</button>
+        <button @click="saveEnergy()" class="rounded-md bg-brand-500 hover:bg-brand-600 text-white px-2 py-1 text-xs ml-2">{{ t('SAVE') }}</button>
+      </div>
+    </details>
+
+    <!-- Web Push -->
+    <details class="mt-4 text-sm">
+      <summary class="cursor-pointer text-slate-700 dark:text-slate-300 dark:text-slate-200">{{ t('WEBPUSH_HEADING') }}</summary>
+      <div class="mt-3 space-y-2">
+        <p class="text-xs text-slate-500 dark:text-slate-400">{{ t('WEBPUSH_HELP') }}</p>
+        <div class="flex gap-2">
+          <button @click="subscribePush()" class="rounded-md bg-brand-500 hover:bg-brand-600 text-white px-3 py-1.5 text-xs">{{ t('WEBPUSH_SUBSCRIBE') }}</button>
+          <button @click="testPush()" class="rounded-md bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 text-xs">{{ t('WEBPUSH_TEST') }}</button>
+        </div>
+        <p class="text-xs" :class="pushStatusClass" x-text="pushStatus"></p>
+      </div>
+    </details>
+  </div>
+
+  <!-- Open-source acknowledgements -->
+  <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5 mb-6">
+    <h2 class="text-base font-semibold tracking-tight">{{ t('OSS_HEADING') }}</h2>
+    <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('OSS_HELP') }}</p>
+    <div class="mt-3">
+      <a href="/api/system/notices" target="_blank"
+         class="inline-flex items-center gap-1 text-sm text-brand-600 hover:text-brand-700">
+        {{ t('OSS_VIEW') }} →
+      </a>
+    </div>
+  </div>
+
+  <div class="rounded-2xl bg-slate-900 text-slate-100 p-4">
+    <div class="flex items-center justify-between mb-2 gap-2 flex-wrap">
+      <div class="flex items-center gap-1">
+        <button @click="logsTab = 'frigate'; reloadLogs()"
+                :class="logsTab === 'frigate' ? 'bg-slate-700 text-white' : 'text-slate-400 dark:text-slate-500 hover:text-white'"
+                class="px-2.5 py-1 rounded text-xs font-medium">{{ t('SYS_LOGS_TAB_FRIGATE') }}</button>
+        <button @click="logsTab = 'admin'; reloadLogs()"
+                :class="logsTab === 'admin' ? 'bg-slate-700 text-white' : 'text-slate-400 dark:text-slate-500 hover:text-white'"
+                class="px-2.5 py-1 rounded text-xs font-medium">{{ t('SYS_LOGS_TAB_ADMIN') }}</button>
+      </div>
+      <span class="text-xs text-slate-400 dark:text-slate-500" x-text="updated"></span>
+    </div>
+    <pre class="text-xs leading-snug overflow-x-auto whitespace-pre" x-text="logs"></pre>
+  </div>
+
+  <!-- Danger zone: uninstall + reset.
+       Three tiers, each spelled out so the user knows EXACTLY what
+       gets touched and what stays. Reset is in-place; full / nuke
+       generate a shell command (admin can't kill itself reliably). -->
+  <div class="mt-10 rounded-2xl border-2 border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-900/40 p-5"
+       x-data="uninstallPanel()" x-init="loadInventory()">
+    <h2 class="text-base font-semibold tracking-tight text-rose-900 dark:text-rose-200">{{ t('UNINSTALL_HEADING') }}</h2>
+    <p class="text-sm text-rose-800 dark:text-rose-200 mt-1">{{ t('UNINSTALL_SUBTITLE') }}</p>
+
+    <!-- Inventory: what's where -->
+    <div class="mt-5 rounded-lg bg-white dark:bg-slate-900 border border-rose-200 dark:border-rose-800 p-4">
+      <h3 class="text-sm font-semibold">{{ t('UNINSTALL_INVENTORY_HEADING') }}</h3>
+      <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('UNINSTALL_INVENTORY_HELP') }}</p>
+
+      <div x-show="!inventory" class="mt-3 text-sm text-slate-500 dark:text-slate-400">{{ t('SAVING') }}</div>
+
+      <template x-if="inventory">
+        <div class="mt-3 space-y-3 text-sm">
+          <div class="space-y-1">
+            <p class="font-medium text-slate-700 dark:text-slate-300">{{ t('UNINSTALL_INV_APP_DATA') }}</p>
+            <ul class="text-xs text-slate-600 dark:text-slate-300 ml-4 space-y-0.5">
+              <template x-for="f in [...(inventory.config_files||[]), ...(inventory.config_dirs||[]),
+                                      inventory.env_file].filter(Boolean)" :key="f.path">
+                <li class="flex justify-between">
+                  <span class="font-mono truncate" x-text="f.path"></span>
+                  <span class="ml-2 text-slate-500 dark:text-slate-400" x-text="f.exists ? human(f.size_bytes) : '—'"></span>
+                </li>
+              </template>
+            </ul>
+            <p class="text-xs text-slate-600 dark:text-slate-300 pt-1 border-t border-slate-100 dark:border-slate-700">
+              <span class="font-medium">{{ t('UNINSTALL_INV_TOTAL_APP') }}:</span>
+              <span x-text="human(inventory.total_app_data_bytes)"></span>
+            </p>
+          </div>
+
+          <div class="space-y-1" x-show="inventory.storage_path">
+            <p class="font-medium text-slate-700 dark:text-slate-300">{{ t('UNINSTALL_INV_RECORDINGS') }}</p>
+            <p class="text-xs text-slate-600 dark:text-slate-300 ml-4">
+              <span class="font-mono" x-text="inventory.storage_path?.path"></span> —
+              <span x-text="inventory.storage_path?.exists ? human(inventory.storage_path.size_bytes) : labels.not_present"></span>
+            </p>
+          </div>
+
+          <div class="space-y-1">
+            <p class="font-medium text-slate-700 dark:text-slate-300">{{ t('UNINSTALL_INV_CONTAINERS') }}</p>
+            <ul class="text-xs text-slate-600 dark:text-slate-300 ml-4 space-y-0.5">
+              <template x-for="c in (inventory.containers||[])" :key="c.name">
+                <li class="flex justify-between">
+                  <span class="font-mono" x-text="c.name"></span>
+                  <span x-text="c.running ? labels.running : labels.stopped"
+                        :class="c.running ? 'text-emerald-700 dark:text-emerald-300' : 'text-slate-500 dark:text-slate-400'"></span>
+                </li>
+              </template>
+            </ul>
+          </div>
+
+          <button @click="loadInventory()" class="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100">
+            {{ t('SYS_REFRESH_LOGS') }}
+          </button>
+        </div>
+      </template>
+    </div>
+
+    <!-- Tier 1: in-place reset -->
+    <div class="mt-5 rounded-lg bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-700 p-4">
+      <h3 class="text-sm font-semibold text-amber-900 dark:text-amber-200">{{ t('UNINSTALL_TIER1_HEADING') }}</h3>
+      <p class="text-xs text-slate-600 dark:text-slate-300 mt-1">{{ t('UNINSTALL_TIER1_HELP') }}</p>
+      <details class="mt-2 text-xs text-slate-600 dark:text-slate-300">
+        <summary class="cursor-pointer">{{ t('UNINSTALL_WHAT_HAPPENS') }}</summary>
+        <ul class="list-disc ml-5 mt-2 space-y-1">
+          <li>{{ t('UNINSTALL_TIER1_DELETES') }}: cameras.yml, pets.yml, sightings, privacy.json, rclone.conf, pet 照片, embedding model</li>
+          <li>{{ t('UNINSTALL_TIER1_KEEPS') }}: {{ t('UNINSTALL_KEEPS_PASSWORD') }}, {{ t('UNINSTALL_KEEPS_RECORDINGS') }}</li>
+          <li>{{ t('UNINSTALL_TIER1_AFTER') }}</li>
+        </ul>
+      </details>
+      <button @click="confirmReset()" :disabled="resetting"
+              class="mt-3 rounded-md bg-amber-600 hover:bg-amber-700 text-white px-3 py-2 text-sm font-medium disabled:opacity-50"
+              x-text="resetting ? labels.resetting : labels.reset_now"></button>
+      <template x-if="resetResult">
+        <div class="mt-3 text-xs text-slate-700 dark:text-slate-300 rounded-md bg-emerald-50 dark:bg-emerald-900 border border-emerald-200 dark:border-emerald-800 p-2">
+          <p class="font-medium" x-text="labels.reset_done + ' (' + (resetResult.removed?.length || 0) + ')'"></p>
+          <ul class="mt-1 ml-4 list-disc">
+            <template x-for="r in resetResult.removed" :key="r"><li class="font-mono truncate" x-text="r"></li></template>
+          </ul>
+        </div>
+      </template>
+    </div>
+
+    <!-- Tier 2 + 3: command generator -->
+    <div class="mt-5 rounded-lg bg-white dark:bg-slate-900 border border-rose-300 dark:border-rose-700 p-4">
+      <h3 class="text-sm font-semibold text-rose-900 dark:text-rose-200">{{ t('UNINSTALL_TIER2_HEADING') }}</h3>
+      <p class="text-xs text-slate-600 dark:text-slate-300 mt-1">{{ t('UNINSTALL_TIER2_HELP') }}</p>
+
+      <div class="mt-3 space-y-2 text-sm">
+        <label class="flex items-start gap-2 cursor-pointer">
+          <input type="radio" x-model="level" value="soft" class="mt-1" />
+          <span>
+            <span class="font-medium">{{ t('UNINSTALL_LEVEL_SOFT') }}</span>
+            <span class="block text-xs text-slate-500 dark:text-slate-400">{{ t('UNINSTALL_LEVEL_SOFT_HELP') }}</span>
+          </span>
+        </label>
+        <label class="flex items-start gap-2 cursor-pointer">
+          <input type="radio" x-model="level" value="full" class="mt-1" />
+          <span>
+            <span class="font-medium">{{ t('UNINSTALL_LEVEL_FULL') }}</span>
+            <span class="block text-xs text-slate-500 dark:text-slate-400">{{ t('UNINSTALL_LEVEL_FULL_HELP') }}</span>
+          </span>
+        </label>
+        <label class="flex items-start gap-2 cursor-pointer">
+          <input type="radio" x-model="level" value="nuke" class="mt-1" />
+          <span>
+            <span class="font-medium text-rose-700 dark:text-rose-300">{{ t('UNINSTALL_LEVEL_NUKE') }}</span>
+            <span class="block text-xs text-slate-500 dark:text-slate-400">{{ t('UNINSTALL_LEVEL_NUKE_HELP') }}</span>
+            <span x-show="level === 'nuke' && inventory?.storage_path?.exists"
+                  class="block text-xs text-rose-700 dark:text-rose-300 font-medium mt-0.5"
+                  x-text="labels.nuke_warn + human(inventory.storage_path.size_bytes)"></span>
+          </span>
+        </label>
+      </div>
+
+      <button @click="generate()"
+              class="mt-4 rounded-md bg-rose-600 hover:bg-rose-700 text-white px-3 py-2 text-sm font-medium">
+        {{ t('UNINSTALL_GENERATE_COMMAND') }}
+      </button>
+
+      <template x-if="generatedCommand">
+        <div class="mt-4 rounded-md bg-slate-900 text-slate-100 p-3">
+          <p class="text-xs text-slate-400 dark:text-slate-500 mb-2">{{ t('UNINSTALL_RUN_THIS') }}</p>
+          <pre class="text-xs leading-relaxed overflow-x-auto whitespace-pre-wrap break-all" x-text="generatedCommand"></pre>
+          <button @click="copyCommand()" class="mt-3 text-xs text-slate-300 hover:text-white"
+                  x-text="copied ? labels.copied : labels.copy_command"></button>
+        </div>
+      </template>
+
+      <p class="mt-4 text-xs text-slate-500 dark:text-slate-400 italic">{{ t('UNINSTALL_NO_AUTO_RUN') }}</p>
+    </div>
+  </div>
+</div>
+
+<script>
+  function systemPage() {
+    return {
+      logs: {{ frigate_logs | tojson }},
+      logsTab: 'frigate',
+      newPassword: '',
+      newPasswordConfirm: '',
+      proLicenseKey: '',
+      openaiApiKey: '',
+      updated: '',
+      health: { overall_ok: true, storage: null, frigate: null, cameras: [] },
+      loadingHealth: false,
+      perf: [],
+      loadingPerf: false,
+      schedule: { enabled: false, encrypt: false, encryption_password: '', cloud_path: '', last_run_ok_at: 0, last_error: '' },
+      backupRunning: false,
+      apiKeys: [],
+      newKeyName: '',
+      newPlainKey: '',
+      energy: { enabled: false, schedules: [] },
+      pushStatus: '',
+      pushStatusClass: 'text-slate-500 dark:text-slate-400',
+      update: { current_version: '—', latest_version: null, update_available: false, release_url: '', error: '' },
+      checkingUpdate: false,
+      labels: {
+        recheck:           {{ t('SYS_REFRESH_LOGS') | tojson }},
+        refreshing:        {{ t('SAVING') | tojson }},
+        health_ok:         {{ t('HEALTH_ALL_OK') | tojson }},
+        health_warn:       {{ t('HEALTH_WARN') | tojson }},
+        check_update:      {{ t('VERSION_CHECK') | tojson }},
+        checking:          {{ t('VERSION_CHECKING') | tojson }},
+        update_available:  {{ t('VERSION_UPDATE_AVAILABLE') | tojson }},
+        bk_running:        {{ t('BACKUP_SCHEDULE_RUNNING') | tojson }},
+        bk_now:            {{ t('BACKUP_SCHEDULE_RUN_NOW') | tojson }},
+        bk_last_ok:        {{ t('BACKUP_SCHEDULE_LAST_OK') | tojson }},
+      },
+      async restart() {
+        try {
+          await api('/api/frigate/restart', { method: 'POST', body: {} });
+          toast({{ t('SAVED') | tojson }}, 'success');
+        } catch (e) { toast(e.message, 'error'); }
+      },
+      async reloadLogs() {
+        const url = this.logsTab === 'admin' ? '/api/admin/logs' : '/api/frigate/logs';
+        try {
+          const resp = await fetch(url, {
+            credentials: 'same-origin',
+            headers: { 'X-Requested-With': 'pawcorder' },
+          });
+          this.logs = await resp.text();
+          this.updated = new Date().toLocaleTimeString();
+        } catch (e) { toast(e.message, 'error'); }
+      },
+      async changePassword() {
+        try {
+          await api('/api/admin/password', { method: 'POST', body: { new_password: this.newPassword } });
+          this.newPassword = ''; this.newPasswordConfirm = '';
+          toast({{ t('SAVED') | tojson }}, 'success');
+        } catch (e) { toast(e.message, 'error'); }
+      },
+      async loadAiTokens() {
+        try {
+          const r = await api('/api/system/ai-tokens');
+          // Server returns masked-presence flags rather than the raw secret —
+          // we render placeholders so users see "已設定" without exposing the key.
+          this.proLicenseKey = r.has_pro_license ? '••••••••' : '';
+          this.openaiApiKey  = r.has_openai_key  ? '••••••••' : '';
+        } catch (e) {}
+      },
+      async saveAiTokens() {
+        const body = {};
+        // Empty means "unchanged" (don't submit dots), explicit empty means "clear".
+        if (this.proLicenseKey && this.proLicenseKey !== '••••••••') body.pawcorder_pro_license_key = this.proLicenseKey;
+        if (this.openaiApiKey  && this.openaiApiKey  !== '••••••••') body.openai_api_key             = this.openaiApiKey;
+        try {
+          await api('/api/system/ai-tokens', { method: 'POST', body });
+          toast({{ t('SAVED') | tojson }}, 'success');
+          this.loadAiTokens();
+        } catch (e) { toast(e.message, 'error'); }
+      },
+      async loadHealth(force = false) {
+        this.loadingHealth = true;
+        try {
+          this.health = await api('/api/system/health');
+        } catch (e) { toast(e.message, 'error'); }
+        finally { this.loadingHealth = false; }
+      },
+      async loadPerf() {
+        this.loadingPerf = true;
+        try {
+          const data = await api('/api/system/perf');
+          this.perf = data.snapshots || [];
+        } catch (e) { /* silent — best-effort */ }
+        finally { this.loadingPerf = false; }
+      },
+      humanMB(n) {
+        if (n == null || n <= 0) return '0';
+        if (n < 1024 * 1024) return (n / 1024).toFixed(0) + 'K';
+        if (n < 1024 * 1024 * 1024) return (n / 1024 / 1024).toFixed(0) + 'M';
+        return (n / 1024 / 1024 / 1024).toFixed(1) + 'G';
+      },
+
+      // ---- Backup schedule ----
+      async loadSchedule() {
+        try {
+          const s = await api('/api/backup/schedule');
+          // password is never returned — keep our local copy blank.
+          this.schedule = Object.assign(this.schedule, s, { encryption_password: '' });
+        } catch (e) {}
+      },
+      async saveSchedule() {
+        const body = { enabled: this.schedule.enabled, encrypt: this.schedule.encrypt,
+                       cloud_path: this.schedule.cloud_path };
+        if (this.schedule.encryption_password) body.encryption_password = this.schedule.encryption_password;
+        try {
+          await api('/api/backup/schedule', { method: 'POST', body });
+          toast({{ t('SAVED') | tojson }}, 'success');
+          this.schedule.encryption_password = '';  // never display the saved value
+        } catch (e) { toast(e.message, 'error'); }
+      },
+      async runBackupNow() {
+        this.backupRunning = true;
+        try {
+          const out = await api('/api/backup/run-now', { method: 'POST', body: {} });
+          if (out.ok) toast({{ t('SAVED') | tojson }}, 'success');
+          else toast(out.error || 'failed', 'error');
+          await this.loadSchedule();
+        } catch (e) { toast(e.message, 'error'); }
+        finally { this.backupRunning = false; }
+      },
+
+      // ---- API keys ----
+      async loadKeys() {
+        try { this.apiKeys = (await api('/api/system/api-keys')).keys || []; } catch (e) {}
+      },
+      async createKey() {
+        if (!this.newKeyName.trim()) return;
+        try {
+          const out = await api('/api/system/api-keys', { method: 'POST', body: { name: this.newKeyName } });
+          this.newPlainKey = out.key;
+          this.newKeyName = '';
+          await this.loadKeys();
+        } catch (e) { toast(e.message, 'error'); }
+      },
+      async revokeKey(keyId) {
+        if (!confirm({{ t('APIKEYS_REVOKE_CONFIRM') | tojson }})) return;
+        try { await api(`/api/system/api-keys/${encodeURIComponent(keyId)}`, { method: 'DELETE' });
+              await this.loadKeys(); }
+        catch (e) { toast(e.message, 'error'); }
+      },
+
+      // ---- Energy mode ----
+      async loadEnergy() {
+        try {
+          const e = await api('/api/energy-mode');
+          this.energy = {
+            enabled: !!e.enabled,
+            // Flatten cameras list into a CSV string for the input box.
+            schedules: (e.schedules || []).map(s => Object.assign({}, s,
+              { cameras_csv: (s.cameras || []).join(',') })),
+          };
+        } catch (e) {}
+      },
+      addEnergyRow() {
+        this.energy.schedules.push({ cameras_csv: '', start_hour: 22, end_hour: 6 });
+      },
+      async saveEnergy() {
+        const body = {
+          enabled: this.energy.enabled,
+          schedules: this.energy.schedules.map(s => ({
+            cameras: s.cameras_csv.split(',').map(c => c.trim()).filter(Boolean),
+            start_hour: s.start_hour | 0,
+            end_hour: s.end_hour | 0,
+          })),
+        };
+        try {
+          await api('/api/energy-mode', { method: 'POST', body });
+          toast({{ t('SAVED') | tojson }}, 'success');
+        } catch (e) { toast(e.message, 'error'); }
+      },
+
+      // ---- Web Push ----
+      async subscribePush() {
+        if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+          this.pushStatus = '此瀏覽器不支援 Web Push';
+          this.pushStatusClass = 'text-rose-600 dark:text-rose-400';
+          return;
+        }
+        try {
+          const reg = await navigator.serviceWorker.ready;
+          const { public_key } = await api('/api/webpush/public-key');
+          if (!public_key) {
+            this.pushStatus = 'Web Push 未啟用（未生成 VAPID）';
+            this.pushStatusClass = 'text-rose-600 dark:text-rose-400';
+            return;
+          }
+          // urlsafe base64 → Uint8Array.
+          const pad = '='.repeat((4 - public_key.length % 4) % 4);
+          const b64 = (public_key + pad).replace(/-/g, '+').replace(/_/g, '/');
+          const raw = atob(b64);
+          const arr = new Uint8Array(raw.length);
+          for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+          const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: arr });
+          await api('/api/webpush/subscribe', { method: 'POST', body: { subscription: sub.toJSON() } });
+          this.pushStatus = '已訂閱 ✓';
+          this.pushStatusClass = 'text-emerald-700 dark:text-emerald-300';
+        } catch (e) {
+          this.pushStatus = e.message || '訂閱失敗';
+          this.pushStatusClass = 'text-rose-600 dark:text-rose-400';
+        }
+      },
+      async testPush() {
+        try {
+          const r = await api('/api/webpush/test', { method: 'POST', body: {} });
+          this.pushStatus = `已送 ${r.sent} 個（${r.errors} 失敗）`;
+          this.pushStatusClass = 'text-slate-600 dark:text-slate-300';
+        } catch (e) { this.pushStatus = e.message; this.pushStatusClass = 'text-rose-600 dark:text-rose-400'; }
+      },
+      async checkUpdate(force = false) {
+        this.checkingUpdate = true;
+        try {
+          const u = await api('/api/system/update-check' + (force ? '?force=true' : ''));
+          this.update = u;
+        } catch (e) { /* silent — non-essential */ }
+        finally { this.checkingUpdate = false; }
+      },
+    };
+  }
+
+  function uninstallPanel() {
+    return {
+      inventory: null,
+      level: 'full',
+      generatedCommand: '',
+      resetting: false,
+      resetResult: null,
+      copied: false,
+      labels: {
+        running:     {{ t('STATE_RUNNING') | tojson }},
+        stopped:     {{ t('STATE_STOPPED') | tojson }},
+        not_present: {{ t('UNINSTALL_NOT_PRESENT') | tojson }},
+        reset_now:   {{ t('UNINSTALL_TIER1_BUTTON') | tojson }},
+        resetting:   {{ t('UNINSTALL_TIER1_RUNNING') | tojson }},
+        reset_done:  {{ t('UNINSTALL_TIER1_DONE') | tojson }},
+        copy_command:{{ t('UNINSTALL_COPY_COMMAND') | tojson }},
+        copied:      {{ t('COPIED') | tojson }},
+        nuke_warn:   {{ t('UNINSTALL_NUKE_WARN') | tojson }},
+      },
+      async loadInventory() {
+        try {
+          this.inventory = await api('/api/uninstall/inventory');
+        } catch (e) { toast(e.message, 'error'); }
+      },
+      async confirmReset() {
+        const msg = {{ t('UNINSTALL_TIER1_CONFIRM') | tojson }};
+        if (!confirm(msg)) return;
+        this.resetting = true;
+        this.resetResult = null;
+        try {
+          this.resetResult = await api('/api/uninstall/reset', { method: 'POST', body: {} });
+          await this.loadInventory();
+          toast({{ t('UNINSTALL_TIER1_DONE') | tojson }}, 'success');
+        } catch (e) { toast(e.message, 'error'); }
+        finally { this.resetting = false; }
+      },
+      async generate() {
+        this.copied = false;
+        try {
+          const data = await api('/api/uninstall/command?level=' + encodeURIComponent(this.level));
+          this.generatedCommand = data.command;
+        } catch (e) { toast(e.message, 'error'); }
+      },
+      async copyCommand() {
+        try {
+          await navigator.clipboard.writeText(this.generatedCommand);
+          this.copied = true;
+          setTimeout(() => this.copied = false, 2000);
+        } catch (e) {}
+      },
+      human(n) {
+        if (n == null) return '—';
+        if (n < 1024) return n + ' B';
+        if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+        if (n < 1024 * 1024 * 1024) return (n / 1024 / 1024).toFixed(1) + ' MB';
+        return (n / 1024 / 1024 / 1024).toFixed(1) + ' GB';
+      },
+    };
+  }
+</script>
+{% endblock %}

@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}{{ t('NAV_DASHBOARD') }} · pawcorder{% endblock %}
+{% block body %}
+<div class="min-h-full flex items-center justify-center px-4 py-12">
+  <div class="w-full max-w-sm">
+    <div class="flex flex-col items-center mb-8">
+      <span class="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-500 text-white text-xl font-bold">P</span>
+      <h1 class="mt-4 text-2xl font-semibold tracking-tight">{{ t('APP_NAME') }}</h1>
+      <p class="text-sm text-slate-500 dark:text-slate-400">{{ t('LOGIN_TITLE') }}</p>
+    </div>
+    <form method="post" action="/login" class="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 p-6 space-y-4">
+      <!-- Username field shown only if multi-user is set up.
+           Legacy single-password installs hide it (login still works). -->
+      {% if multi_user %}
+      <div>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 dark:text-slate-200">{{ t('LOGIN_USERNAME_LABEL') }}</label>
+        <input type="text" name="username" required autofocus autocomplete="username"
+               class="mt-1 block w-full rounded-md border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-3 py-2 border" />
+      </div>
+      {% endif %}
+      <div>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 dark:text-slate-200">{{ t('LOGIN_PASSWORD_LABEL') }}</label>
+        <input type="password" name="password" required {% if not multi_user %}autofocus{% endif %} autocomplete="current-password"
+               class="mt-1 block w-full rounded-md border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-3 py-2 border" />
+      </div>
+      {% if error %}
+      <p class="text-sm text-rose-600 dark:text-rose-400">{{ t('LOGIN_INVALID') }}</p>
+      {% endif %}
+      <button type="submit"
+              class="w-full inline-flex justify-center rounded-md bg-brand-500 hover:bg-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm">
+        {{ t('SIGN_IN') }}
+      </button>
+      <p class="text-xs text-slate-500 dark:text-slate-400 text-center pt-2">{{ t('LOGIN_LOST_PASSWORD') }}</p>
+    </form>
+    <div class="flex justify-center mt-6 text-xs" x-data='langSwitcher({{ lang | tojson }})'>
+      <div class="relative" @click.outside="open = false">
+        <button type="button" @click="open = !open"
+                class="inline-flex items-center gap-1.5 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">
+          <span class="text-slate-400 dark:text-slate-500">{{ t('LANG_LABEL') }}:</span>
+          <span class="font-medium" x-text="currentLabel()"></span>
+          <svg class="h-3 w-3 text-slate-400 dark:text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+          </svg>
+        </button>
+        <div x-show="open" x-cloak x-transition.opacity
+             class="absolute left-1/2 -translate-x-1/2 mt-1 w-36 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-lg overflow-hidden z-30">
+          <button type="button" @click="set('zh-TW'); open = false"
+                  class="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center justify-between"
+                  :class="lang === 'zh-TW' ? 'bg-slate-50 dark:bg-slate-800 font-medium text-slate-900 dark:text-slate-100' : 'text-slate-700 dark:text-slate-300'">
+            <span>中文 (繁體)</span>
+            <span x-show="lang === 'zh-TW'" class="text-emerald-600 dark:text-emerald-400">✓</span>
+          </button>
+          <button type="button" @click="set('en'); open = false"
+                  class="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center justify-between border-t border-slate-100 dark:border-slate-700"
+                  :class="lang === 'en' ? 'bg-slate-50 dark:bg-slate-800 font-medium text-slate-900 dark:text-slate-100' : 'text-slate-700 dark:text-slate-300'">
+            <span>English</span>
+            <span x-show="lang === 'en'" class="text-emerald-600 dark:text-emerald-400">✓</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  async function api(path, options = {}) {
+    const opts = { method: options.method || 'GET', credentials: 'same-origin',
+      headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' } };
+    if (options.body !== undefined) opts.body = JSON.stringify(options.body);
+    const resp = await fetch(path, opts);
+    if (!resp.ok) throw new Error(resp.statusText);
+    return resp.json();
+  }
+  function langSwitcher(initial) {
+    const labels = { 'zh-TW': '中文', 'en': 'English' };
+    return {
+      lang: initial,
+      open: false,
+      currentLabel() { return labels[this.lang] || this.lang; },
+      async set(lang) {
+        if (lang === this.lang) return;
+        try { await api('/api/lang', { method: 'POST', body: { lang } }); window.location.reload(); }
+        catch (e) {}
+      },
+    };
+  }
+</script>
+{% endblock %}

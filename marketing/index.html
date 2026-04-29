@@ -1,0 +1,568 @@
+<!doctype html>
+<html lang="zh-TW">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>pawcorder — 自架寵物攝影機，0 月費</title>
+  <meta name="description" content="自架寵物攝影機 NVR。用你既有的 Google Drive / Dropbox / NAS 當儲存，不上 Furbo / Wyze 的雲端，0 月費。" />
+  <meta property="og:title" content="pawcorder — 自架寵物攝影機，0 月費" />
+  <meta property="og:description" content="自架寵物攝影機 NVR。用你自己的 Google Drive / Dropbox / NAS 當儲存。" />
+  <link rel="icon" type="image/svg+xml" href="../admin/app/static/icon.svg" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { theme: { extend: { colors: { brand: {
+      50: '#fef7ed', 100: '#fdedd4', 200: '#fbd7a8', 300: '#f8ba71',
+      400: '#f59239', 500: '#f37416', 600: '#e4590c', 700: '#bd420c',
+      800: '#963512', 900: '#7a2e12',
+    } } } } };
+  </script>
+  <link rel="preconnect" href="https://rsms.me/" />
+  <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
+  <style>html { font-family: 'Inter', system-ui, sans-serif; }</style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+
+<!-- Hero -->
+<section class="bg-white border-b border-slate-200">
+  <div class="max-w-5xl mx-auto px-6 py-16 sm:py-24 text-center">
+    <span class="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-500 text-white text-2xl font-bold mb-6">P</span>
+    <h1 class="text-4xl sm:text-5xl font-bold tracking-tight mb-4">
+      pawcorder
+    </h1>
+    <p class="text-xl text-slate-600 max-w-2xl mx-auto mb-8">
+      自架寵物攝影機 NVR。<strong>影片留你家</strong>，雲端用你自己的 Google Drive / Dropbox / NAS。
+      <span class="block mt-2 text-brand-600 font-semibold">買硬體一次付清，月費 NT$0。</span>
+    </p>
+    <div class="flex flex-wrap items-center justify-center gap-4">
+      <a href="https://github.com/xupStudio/pawcorder" class="inline-flex items-center rounded-md bg-brand-500 hover:bg-brand-600 text-white px-6 py-3 text-base font-medium shadow-sm">
+        看 GitHub →
+      </a>
+      <a href="#features" class="inline-flex items-center rounded-md bg-white hover:bg-slate-50 border border-slate-300 text-slate-800 px-6 py-3 text-base font-medium">
+        功能總覽
+      </a>
+      <a href="#how-it-works" class="inline-flex items-center rounded-md bg-white hover:bg-slate-50 border border-slate-300 text-slate-800 px-6 py-3 text-base font-medium">
+        運作原理
+      </a>
+    </div>
+    <!-- One-line install -->
+    <div class="mt-10 max-w-2xl mx-auto">
+      <p class="text-xs uppercase tracking-wider text-slate-500 mb-2">一行安裝（Linux · macOS · Windows + WSL2）</p>
+      <div class="flex items-center gap-2 rounded-lg bg-slate-900 text-slate-100 font-mono text-sm px-4 py-3 text-left overflow-x-auto">
+        <span class="text-emerald-400 select-none shrink-0">$</span>
+        <code class="shrink-0">curl -fsSL https://raw.githubusercontent.com/xupStudio/pawcorder/main/scripts/bootstrap.sh | bash</code>
+      </div>
+      <p class="mt-2 text-xs text-slate-500">
+        Linux 自動裝 Docker、Mac 自動裝 Docker Desktop、Windows 走 WSL2 內 Docker Engine。
+        然後抓 Frigate image、生隨機密碼、選對你硬體的 AI 加速器。
+        不放心 curl|bash？
+        <a href="https://github.com/xupStudio/pawcorder/blob/main/scripts/bootstrap.sh" class="underline hover:text-slate-700">先讀 source</a>。
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- Top-level pitch grid (短版，3 個重點) -->
+<section class="max-w-5xl mx-auto px-6 py-12">
+  <div class="grid grid-cols-1 sm:grid-cols-3 gap-6">
+    <div class="rounded-2xl bg-white border border-slate-200 p-6">
+      <h3 class="text-lg font-semibold tracking-tight mb-2">影片留你家</h3>
+      <p class="text-sm text-slate-600">100% 在家裡網路內處理。雲端備份用<strong>你自己的</strong> Google Drive / Dropbox / NAS。pawcorder 看不到、也存不到你的影像。</p>
+    </div>
+    <div class="rounded-2xl bg-white border border-slate-200 p-6">
+      <h3 class="text-lg font-semibold tracking-tight mb-2">買硬體 → 0 月費</h3>
+      <p class="text-sm text-slate-600">Furbo 4 支 3 年 NT$48,000。pawcorder 一次性 NT$10,000–19,000，之後 <strong>NT$0</strong>。差價買台 iPad。</p>
+    </div>
+    <div class="rounded-2xl bg-white border border-slate-200 p-6">
+      <h3 class="text-lg font-semibold tracking-tight mb-2">寵物個體辨識</h3>
+      <p class="text-sm text-slate-600">不只「有狗出現」，是「<strong>Mochi 今天出現 47 次</strong>」。MobileNet ONNX 本機推論，跨攝影機追同一隻。</p>
+    </div>
+  </div>
+</section>
+
+<!-- Full feature list -->
+<section id="features" class="bg-white border-y border-slate-200">
+  <div class="max-w-5xl mx-auto px-6 py-16">
+    <h2 class="text-3xl font-bold tracking-tight text-center mb-2">功能總覽</h2>
+    <p class="text-center text-slate-600 mb-12">所有功能都已實作、有單元測試、MIT 開源。</p>
+
+    <!-- 錄影 + AI -->
+    <div class="mb-12">
+      <h3 class="text-xl font-semibold tracking-tight mb-4 flex items-center gap-2">
+        <span class="text-2xl">📹</span> 錄影與 AI
+      </h3>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div class="rounded-xl bg-slate-50 border border-slate-200 p-5">
+          <h4 class="font-semibold mb-1">攝影機相容</h4>
+          <p class="text-sm text-slate-600">10+ 主流品牌一鍵自動設定（見下方相容表），其他任何 ONVIF / RTSP IP cam 也能接。</p>
+        </div>
+        <div class="rounded-xl bg-slate-50 border border-slate-200 p-5">
+          <h4 class="font-semibold mb-1">硬體加速自動選擇</h4>
+          <p class="text-sm text-slate-600">Intel iGPU 用 OpenVINO、NVIDIA 用 TensorRT、Coral 用 Edge TPU、Pi5 + Hailo 用 Hailo、其他走 CPU。</p>
+        </div>
+        <div class="rounded-xl bg-slate-50 border border-slate-200 p-5">
+          <h4 class="font-semibold mb-1">即時直播</h4>
+          <p class="text-sm text-slate-600">後台儀表板與單機畫面內建 HLS / WebRTC 播放器，支援雙向對講（按住按鈕）。</p>
+        </div>
+        <div class="rounded-xl bg-slate-50 border border-slate-200 p-5">
+          <h4 class="font-semibold mb-1">音訊事件</h4>
+          <p class="text-sm text-slate-600">Frigate 內建音訊模型偵測吠叫、喵叫、玻璃破裂、尖叫、煙霧警報，跟視覺事件走同一條推播。</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 寵物辨識 -->
+    <div class="mb-12">
+      <h3 class="text-xl font-semibold tracking-tight mb-4 flex items-center gap-2">
+        <span class="text-2xl">🐾</span> 寵物個體辨識
+      </h3>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div class="rounded-xl bg-slate-50 border border-slate-200 p-5">
+          <h4 class="font-semibold mb-1">幾張照片教會它</h4>
+          <p class="text-sm text-slate-600">每隻寵物上傳 3–5 張照片，MobileNetV3 抽 576 維向量，餘弦相似度 ≥ 0.78 才認定。</p>
+        </div>
+        <div class="rounded-xl bg-slate-50 border border-slate-200 p-5">
+          <h4 class="font-semibold mb-1">跨攝影機時間軸</h4>
+          <p class="text-sm text-slate-600">每隻寵物的一日活動軌跡，跨所有攝影機合併在一條時間軸上。</p>
+        </div>
+        <div class="rounded-xl bg-slate-50 border border-slate-200 p-5">
+          <h4 class="font-semibold mb-1">回溯辨識</h4>
+          <p class="text-sm text-slate-600">新增寵物後一鍵套用到過去 7 天的事件，補回原本叫「unknown」的紀錄。</p>
+        </div>
+        <div class="rounded-xl bg-slate-50 border border-slate-200 p-5">
+          <h4 class="font-semibold mb-1">健康異常警示</h4>
+          <p class="text-sm text-slate-600">每隻寵物有自己的活動量基準，z-score ≥ 2σ 偏低或低於硬性下限就推播提醒。</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 後台介面 -->
+    <div class="mb-12">
+      <h3 class="text-xl font-semibold tracking-tight mb-4 flex items-center gap-2">
+        <span class="text-2xl">🖥️</span> 後台介面
+      </h3>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div class="rounded-xl bg-slate-50 border border-slate-200 p-5">
+          <h4 class="font-semibold mb-1">多使用者 + 角色權限</h4>
+          <p class="text-sm text-slate-600">admin / family / kid 三層。最後一個 admin 不能刪不能降，避免把自己鎖在外面。</p>
+        </div>
+        <div class="rounded-xl bg-slate-50 border border-slate-200 p-5">
+          <h4 class="font-semibold mb-1">儀表板</h4>
+          <p class="text-sm text-slate-600">即時縮圖、今日精選時刻、最近事件、Frigate log 即時瀏覽、CPU/RAM/磁碟狀態。</p>
+        </div>
+        <div class="rounded-xl bg-slate-50 border border-slate-200 p-5">
+          <h4 class="font-semibold mb-1">區域編輯器</h4>
+          <p class="text-sm text-slate-600">Canvas 拖點畫多邊形，分為偵測區域（橘）與隱私遮罩（紅）。直接寫進 Frigate 設定。</p>
+        </div>
+        <div class="rounded-xl bg-slate-50 border border-slate-200 p-5">
+          <h4 class="font-semibold mb-1">PTZ 預設位置</h4>
+          <p class="text-sm text-slate-600">把鏡頭轉到「餵食點」「貓砂盆」按下儲存，下次一鍵跳回。走 ONVIF 標準。</p>
+        </div>
+        <div class="rounded-xl bg-slate-50 border border-slate-200 p-5">
+          <h4 class="font-semibold mb-1">隱私模式</h4>
+          <p class="text-sm text-slate-600">手機在家裡 Wi-Fi 自動暫停錄影，回到外網才恢復。也支援手動或排程。</p>
+        </div>
+        <div class="rounded-xl bg-slate-50 border border-slate-200 p-5">
+          <h4 class="font-semibold mb-1">每日精選 + 縮時影片</h4>
+          <p class="text-sm text-slate-600">凌晨 2 點自動 ffmpeg stream-copy 出 30 秒精華（保留 14 天）+ 每分鐘抽幀做縮時（保留 30 天）。</p>
+        </div>
+        <div class="rounded-xl bg-slate-50 border border-slate-200 p-5">
+          <h4 class="font-semibold mb-1">活動熱力圖</h4>
+          <p class="text-sm text-slate-600">每支攝影機 30 天的移動密度，疊加在縮圖上的半透明 PNG。</p>
+        </div>
+        <div class="rounded-xl bg-slate-50 border border-slate-200 p-5">
+          <h4 class="font-semibold mb-1">省電模式</h4>
+          <p class="text-sm text-slate-600">設定一個低 FPS / 動態觸發的時段（例：02–06 點），睡覺時 iGPU 不全速跑。</p>
+        </div>
+        <div class="rounded-xl bg-slate-50 border border-slate-200 p-5">
+          <h4 class="font-semibold mb-1">深色模式 + 雙語</h4>
+          <p class="text-sm text-slate-600">繁中 / 英文完整翻譯，日文 / 韓文骨架已開好等翻譯。深色 / 淺色 / 自動三檔。</p>
+        </div>
+        <div class="rounded-xl bg-slate-50 border border-slate-200 p-5">
+          <h4 class="font-semibold mb-1">API key + Web Push</h4>
+          <p class="text-sm text-slate-600">Bearer token 給腳本用，PWA 走 VAPID 推播；iOS 退回 Telegram fallback。</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 儲存 -->
+    <div class="mb-12">
+      <h3 class="text-xl font-semibold tracking-tight mb-4 flex items-center gap-2">
+        <span class="text-2xl">💾</span> 儲存
+      </h3>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div class="rounded-xl bg-slate-50 border border-slate-200 p-5">
+          <h4 class="font-semibold mb-1">NAS 掛載精靈</h4>
+          <p class="text-sm text-slate-600">瀏覽器設定 NFS / SMB：先試掛、再寫進 fstab、立即掛上。SMB 密碼放 0600 憑證檔，不寫進 fstab。</p>
+        </div>
+        <div class="rounded-xl bg-slate-50 border border-slate-200 p-5">
+          <h4 class="font-semibold mb-1">雲端備份（rclone）</h4>
+          <p class="text-sm text-slate-600">8 種後端：Drive / Dropbox / OneDrive / B2 / S3 / Wasabi / R2 / WebDAV。可選 AES-256-GCM 加密。</p>
+        </div>
+        <div class="rounded-xl bg-slate-50 border border-slate-200 p-5">
+          <h4 class="font-semibold mb-1">排程備份</h4>
+          <p class="text-sm text-slate-600">每天自動把 cameras.yml / pets.yml / users.yml 等設定上傳到你的雲。</p>
+        </div>
+        <div class="rounded-xl bg-slate-50 border border-slate-200 p-5">
+          <h4 class="font-semibold mb-1">Schema 版本遷移</h4>
+          <p class="text-sm text-slate-600">每個設定檔有 schema_version，啟動時自動跑遷移；升級不會把舊資料弄壞。</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 通知 + 遠端 -->
+    <div class="mb-12">
+      <h3 class="text-xl font-semibold tracking-tight mb-4 flex items-center gap-2">
+        <span class="text-2xl">🔔</span> 通知與遠端
+      </h3>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div class="rounded-xl bg-slate-50 border border-slate-200 p-5">
+          <h4 class="font-semibold mb-1">Telegram + LINE</h4>
+          <p class="text-sm text-slate-600">貓狗出現秒殺通知。Telegram 附快照、LINE 純文字。免 MQTT broker。</p>
+        </div>
+        <div class="rounded-xl bg-slate-50 border border-slate-200 p-5">
+          <h4 class="font-semibold mb-1">PWA 推播</h4>
+          <p class="text-sm text-slate-600">桌面 / Android 走 VAPID 標準推播；iOS 受 Safari 限制自動退回 Telegram。</p>
+        </div>
+        <div class="rounded-xl bg-slate-50 border border-slate-200 p-5">
+          <h4 class="font-semibold mb-1">Frigate Webhook</h4>
+          <p class="text-sm text-slate-600">事件秒級到達，取代輪詢；含 dedup 不會重複推。</p>
+        </div>
+        <div class="rounded-xl bg-slate-50 border border-slate-200 p-5">
+          <h4 class="font-semibold mb-1">Tailscale 一鍵</h4>
+          <p class="text-sm text-slate-600">內建腳本接你的 tailnet，外網看貓不用 DDNS、不用打洞。</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 維運 -->
+    <div>
+      <h3 class="text-xl font-semibold tracking-tight mb-4 flex items-center gap-2">
+        <span class="text-2xl">🛠️</span> 維運品質
+      </h3>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div class="rounded-xl bg-slate-50 border border-slate-200 p-5">
+          <h4 class="font-semibold mb-1">一行安裝（三平台）</h4>
+          <p class="text-sm text-slate-600">Linux / macOS / Windows + WSL2 都可以 <code>curl | bash</code> 一鍵裝好——含 Docker 自動安裝、密碼產生、detector 選擇、stack 啟動。Mac 上想先試試也行。也提供 USB 預燒映像。</p>
+        </div>
+        <div class="rounded-xl bg-slate-50 border border-slate-200 p-5">
+          <h4 class="font-semibold mb-1">OTA 更新</h4>
+          <p class="text-sm text-slate-600">後台會抓 GitHub Releases 顯示「有新版」徽章。<code>make update</code> 一行更新。</p>
+        </div>
+        <div class="rounded-xl bg-slate-50 border border-slate-200 p-5">
+          <h4 class="font-semibold mb-1">備份 / 還原</h4>
+          <p class="text-sm text-slate-600">系統頁一鍵下載整個後台狀態的加密 tarball，新機器還原直接接手。</p>
+        </div>
+        <div class="rounded-xl bg-slate-50 border border-slate-200 p-5">
+          <h4 class="font-semibold mb-1">乾淨解除安裝</h4>
+          <p class="text-sm text-slate-600">soft reset（保留錄影、清設定）或完全移除，每個檔案清單都列出來給你看。</p>
+        </div>
+        <div class="rounded-xl bg-slate-50 border border-slate-200 p-5">
+          <h4 class="font-semibold mb-1">API 文件頁</h4>
+          <p class="text-sm text-slate-600">後台 <code>/docs/api</code> 有完整端點清單，附 curl / Home Assistant / iOS 捷徑範例。</p>
+        </div>
+        <div class="rounded-xl bg-slate-50 border border-slate-200 p-5">
+          <h4 class="font-semibold mb-1">~525 個自動化測試</h4>
+          <p class="text-sm text-slate-600">FastAPI route smoke、設定 round-trip、i18n key 覆蓋、CSRF / RBAC、NAS fstab idempotency 全有測試。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Camera brand support matrix -->
+<section id="cameras" class="bg-slate-50 border-y border-slate-200">
+  <div class="max-w-5xl mx-auto px-6 py-16">
+    <h2 class="text-3xl font-bold tracking-tight text-center mb-2">攝影機相容清單</h2>
+    <p class="text-center text-slate-600 mb-10">10 個主流品牌已測過。沒列的品牌只要支援 ONVIF / RTSP 也都能接。</p>
+
+    <div class="overflow-x-auto">
+      <table class="min-w-full text-sm bg-white border border-slate-200 rounded-2xl overflow-hidden">
+        <thead>
+          <tr class="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
+            <th class="px-4 py-3 font-medium">品牌</th>
+            <th class="px-4 py-3 font-medium">設定難度</th>
+            <th class="px-4 py-3 font-medium">雙向對講</th>
+            <th class="px-4 py-3 font-medium">說明</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          <tr class="bg-emerald-50/40">
+            <td class="px-4 py-3 font-medium">Reolink</td>
+            <td class="px-4 py-3"><span class="text-emerald-700 font-medium">完全自動</span></td>
+            <td class="px-4 py-3 text-emerald-700">✓</td>
+            <td class="px-4 py-3 text-slate-600">E1 / E1 Pro / E1 Outdoor PoE 推薦款。設成 H.264 後直接接好。</td>
+          </tr>
+          <tr>
+            <td class="px-4 py-3 font-medium">Hikvision</td>
+            <td class="px-4 py-3"><span class="text-emerald-700 font-medium">完全自動</span></td>
+            <td class="px-4 py-3 text-slate-400">—</td>
+            <td class="px-4 py-3 text-slate-600">ISAPI 自動偵測，含 Annke / LTS / Hilook OEM。</td>
+          </tr>
+          <tr>
+            <td class="px-4 py-3 font-medium">Dahua / Amcrest</td>
+            <td class="px-4 py-3"><span class="text-emerald-700 font-medium">完全自動</span></td>
+            <td class="px-4 py-3 text-emerald-700">Amcrest ✓</td>
+            <td class="px-4 py-3 text-slate-600">CGI 自動設定，Amcrest 是 Dahua OEM 共用。</td>
+          </tr>
+          <tr>
+            <td class="px-4 py-3 font-medium">Axis</td>
+            <td class="px-4 py-3"><span class="text-emerald-700 font-medium">完全自動</span></td>
+            <td class="px-4 py-3 text-slate-400">—</td>
+            <td class="px-4 py-3 text-slate-600">VAPIX，RTSP 預設開。LW/WV 機型自動辨識為 WiFi。</td>
+          </tr>
+          <tr>
+            <td class="px-4 py-3 font-medium">Foscam</td>
+            <td class="px-4 py-3"><span class="text-emerald-700 font-medium">完全自動</span></td>
+            <td class="px-4 py-3 text-slate-400">—</td>
+            <td class="px-4 py-3 text-slate-600">CGI 自動偵測。</td>
+          </tr>
+          <tr class="bg-amber-50/40">
+            <td class="px-4 py-3 font-medium">Ubiquiti UniFi Protect</td>
+            <td class="px-4 py-3"><span class="text-amber-700 font-medium">需在 UI 開啟 RTSP</span></td>
+            <td class="px-4 py-3 text-slate-400">—</td>
+            <td class="px-4 py-3 text-slate-600">Controller 介面內逐 cam 啟用 RTSP；controller-driven 多 cam onboarding 後續版本支援。</td>
+          </tr>
+          <tr class="bg-amber-50/40">
+            <td class="px-4 py-3 font-medium">TP-Link Tapo</td>
+            <td class="px-4 py-3"><span class="text-amber-700 font-medium">需在 App 開帳號</span></td>
+            <td class="px-4 py-3 text-emerald-700">✓</td>
+            <td class="px-4 py-3 text-slate-600">後台會直接顯示 step-by-step 在 Tapo App 內建立 RTSP 帳號的步驟。</td>
+          </tr>
+          <tr class="bg-amber-50/40">
+            <td class="px-4 py-3 font-medium">Imou</td>
+            <td class="px-4 py-3"><span class="text-amber-700 font-medium">需在 App 開 RTSP</span></td>
+            <td class="px-4 py-3 text-slate-400">—</td>
+            <td class="px-4 py-3 text-slate-600">Imou Life App → 本地設定 → RTSP，後台有圖文步驟。</td>
+          </tr>
+          <tr class="bg-amber-50/40">
+            <td class="px-4 py-3 font-medium">Wyze</td>
+            <td class="px-4 py-3"><span class="text-amber-700 font-medium">需特殊韌體</span></td>
+            <td class="px-4 py-3 text-slate-400">—</td>
+            <td class="px-4 py-3 text-slate-600">原廠韌體不支援 RTSP，要刷非官方韌體或跑 docker-wyze-bridge。</td>
+          </tr>
+          <tr>
+            <td class="px-4 py-3 font-medium">其他 ONVIF / RTSP</td>
+            <td class="px-4 py-3"><span class="text-slate-700 font-medium">ONVIF 自動偵測 + 手動 fallback</span></td>
+            <td class="px-4 py-3 text-slate-400">—</td>
+            <td class="px-4 py-3 text-slate-600">先試 ONVIF Profile S 自動找串流；找不到再手動填 URL。</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="mt-6 text-center text-xs text-slate-500">完全自動 = 後台輸入 IP/帳密後一鍵完成；其他要先在攝影機自家 App 點幾下，後台會給逐步說明。</p>
+  </div>
+</section>
+
+<!-- Comparison table -->
+<section class="bg-white border-y border-slate-200">
+  <div class="max-w-5xl mx-auto px-6 py-16">
+    <h2 class="text-3xl font-bold tracking-tight text-center mb-2">相比之下</h2>
+    <p class="text-center text-slate-600 mb-10">4 支攝影機的家用情境</p>
+    <div class="overflow-x-auto">
+      <table class="min-w-full text-sm">
+        <thead>
+          <tr class="border-b border-slate-200 text-left">
+            <th class="py-3 pr-4 font-medium text-slate-500"></th>
+            <th class="py-3 px-4 font-medium text-center">Furbo Dog Nanny</th>
+            <th class="py-3 px-4 font-medium text-center">Wyze Cam Plus</th>
+            <th class="py-3 px-4 font-medium text-center">Apple HKSV</th>
+            <th class="py-3 px-4 font-medium text-center bg-brand-50 text-brand-800">pawcorder</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          <tr>
+            <td class="py-3 pr-4 text-slate-600">硬體一次性</td>
+            <td class="py-3 px-4 text-center">NT$24,000</td>
+            <td class="py-3 px-4 text-center">NT$3,600</td>
+            <td class="py-3 px-4 text-center">~NT$25,000</td>
+            <td class="py-3 px-4 text-center bg-brand-50 font-semibold">NT$11,200</td>
+          </tr>
+          <tr>
+            <td class="py-3 pr-4 text-slate-600">每月</td>
+            <td class="py-3 px-4 text-center">NT$199 × 4</td>
+            <td class="py-3 px-4 text-center">NT$120 × 4</td>
+            <td class="py-3 px-4 text-center">NT$99（iCloud+）</td>
+            <td class="py-3 px-4 text-center bg-brand-50 font-semibold text-emerald-600">NT$0</td>
+          </tr>
+          <tr>
+            <td class="py-3 pr-4 text-slate-600">影片儲存位置</td>
+            <td class="py-3 px-4 text-center">Furbo 雲</td>
+            <td class="py-3 px-4 text-center">Wyze 雲</td>
+            <td class="py-3 px-4 text-center">你的 iCloud</td>
+            <td class="py-3 px-4 text-center bg-brand-50 font-semibold">你的 NAS / 你的 Drive</td>
+          </tr>
+          <tr>
+            <td class="py-3 pr-4 text-slate-600">寵物專屬 AI</td>
+            <td class="py-3 px-4 text-center">✓</td>
+            <td class="py-3 px-4 text-center">✗</td>
+            <td class="py-3 px-4 text-center">✗</td>
+            <td class="py-3 px-4 text-center bg-brand-50">✓</td>
+          </tr>
+          <tr>
+            <td class="py-3 pr-4 text-slate-600">3 年總花費</td>
+            <td class="py-3 px-4 text-center">NT$52,656</td>
+            <td class="py-3 px-4 text-center">NT$20,880</td>
+            <td class="py-3 px-4 text-center">NT$28,564</td>
+            <td class="py-3 px-4 text-center bg-brand-50 font-semibold text-emerald-600">NT$11,200</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- How it works -->
+<section id="how-it-works" class="max-w-5xl mx-auto px-6 py-16">
+  <h2 class="text-3xl font-bold tracking-tight text-center mb-10">怎麼運作的</h2>
+  <ol class="space-y-6">
+    <li class="flex gap-4">
+      <span class="shrink-0 inline-flex h-8 w-8 items-center justify-center rounded-full bg-brand-500 text-white font-semibold">1</span>
+      <div>
+        <h3 class="font-semibold mb-1">準備一台小主機 + Reolink E1 Outdoor PoE 攝影機 + PoE 交換器</h3>
+        <p class="text-sm text-slate-600">主機可以是新買的 N100 迷你 PC（推薦，CP 值高），也可以是你現有的 Pi 5、Synology x86、舊筆電。總價 NT$3,500–19,000 看怎麼配。所有零件 PChome / 蝦皮都有。</p>
+      </div>
+    </li>
+    <li class="flex gap-4">
+      <span class="shrink-0 inline-flex h-8 w-8 items-center justify-center rounded-full bg-brand-500 text-white font-semibold">2</span>
+      <div>
+        <h3 class="font-semibold mb-1">USB 安裝映像 dd 進去開機</h3>
+        <p class="text-sm text-slate-600">10 分鐘後主機自己跑完 Ubuntu 安裝、Docker 啟動、pawcorder 上線。家裡 Wi-Fi 任一裝置開瀏覽器到 <code>pawcorder.local:8080</code>。</p>
+      </div>
+    </li>
+    <li class="flex gap-4">
+      <span class="shrink-0 inline-flex h-8 w-8 items-center justify-center rounded-full bg-brand-500 text-white font-semibold">3</span>
+      <div>
+        <h3 class="font-semibold mb-1">圖形化精靈 5 步驟</h3>
+        <p class="text-sm text-slate-600">掃網段找攝影機 → 設儲存 → 設靈敏度 → 改密碼 → 完成。中文介面，每個欄位都有解釋。</p>
+      </div>
+    </li>
+    <li class="flex gap-4">
+      <span class="shrink-0 inline-flex h-8 w-8 items-center justify-center rounded-full bg-brand-500 text-white font-semibold">4</span>
+      <div>
+        <h3 class="font-semibold mb-1">手機 QR Code 一掃連線</h3>
+        <p class="text-sm text-slate-600">設定頁有 QR Code，掃了就在手機開 Frigate 即時影像。要在外面看？一行指令裝 Tailscale。</p>
+      </div>
+    </li>
+  </ol>
+</section>
+
+<!-- pawcorder Pro — pre-launch waitlist -->
+<section id="pro" class="bg-gradient-to-br from-brand-50 via-amber-50 to-rose-50 border-y border-brand-200">
+  <div class="max-w-3xl mx-auto px-6 py-16">
+    <div class="text-center mb-8">
+      <span class="inline-block bg-brand-500 text-white text-xs uppercase tracking-wider font-semibold px-2 py-1 rounded">即將推出</span>
+      <h2 class="mt-3 text-3xl font-bold tracking-tight">pawcorder Pro</h2>
+      <p class="mt-2 text-slate-600">免費版永遠夠用——Pro 是「把伺服器、API 帳單、bug 修復都丟給我們」的省心包。技術派自架走免費版，懶人派月費 NT$149 一鍵到位。</p>
+    </div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+      <div class="rounded-xl bg-white border border-slate-200 p-5">
+        <p class="text-2xl">📔</p>
+        <h3 class="mt-2 font-semibold">LLM 寵物日記</h3>
+        <p class="text-sm text-slate-600 mt-1">「Mochi 今天比平常黏人 30%」— LLM 寫得像真人筆記。<strong>Pro 包 OpenAI 帳單</strong>，自架版自帶 API key。</p>
+      </div>
+      <div class="rounded-xl bg-white border border-slate-200 p-5">
+        <p class="text-2xl">🌐</p>
+        <h3 class="mt-2 font-semibold">pawcorder Connect 遠端看貓</h3>
+        <p class="text-sm text-slate-600 mt-1">註冊送你 <code>mochi.pawcorder.io</code> 子網域 + TLS 中繼。手機不用設 Tailscale、不用 DDNS，掃 QR 直接看。</p>
+      </div>
+      <div class="rounded-xl bg-white border border-slate-200 p-5">
+        <p class="text-2xl">🩺</p>
+        <h3 class="mt-2 font-semibold">健康警示 + 多寵物精準辨識</h3>
+        <p class="text-sm text-slate-600 mt-1">連續沒進食、活動量驟減自動推播；雲端 GPU 為你家貓 fine-tune 專屬模型，兩隻黑貓也分得清。</p>
+      </div>
+    </div>
+
+    <p class="text-xs text-center text-slate-500 mb-6">含智慧通知摘要／月度健檢／24h bug 修復承諾。雲備份 tier 後續推出。技術細節在 <a href="https://github.com/xupStudio/pawcorder" class="underline">GitHub</a>。</p>
+
+    <!-- Waitlist form -->
+    <div id="proWaitlist" class="rounded-2xl bg-white border border-slate-200 p-6 max-w-xl mx-auto">
+      <p class="text-center text-sm font-medium text-slate-900">前 100 名候補名單半價</p>
+      <p class="text-center text-xs text-slate-500 mt-1">推出時月費 NT$149，候補名單優惠 NT$75/月，前 6 個月半價。</p>
+
+      <form id="proSignupForm" class="mt-4 flex flex-col sm:flex-row gap-2"
+            onsubmit="return submitProSignup(event)">
+        <input type="email" name="email" required
+               placeholder="your@email.com"
+               class="flex-1 rounded-md border-slate-300 px-3 py-2 border text-sm" />
+        <button type="submit"
+                class="rounded-md bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 text-sm font-medium">
+          加入候補名單
+        </button>
+      </form>
+      <p id="proSignupMsg" class="mt-3 text-sm text-center"></p>
+      <p class="mt-4 text-xs text-slate-400 text-center">
+        我們不發垃圾信，不轉售名單，預計推出時寄一封通知，這樣而已。隨時可以回信退訂。
+      </p>
+    </div>
+
+    <p class="mt-8 text-center text-xs text-slate-500">
+      P.S. 免費版的所有錄影、雲端備份、推播功能會永遠免費。Pro 只是想要 AI 加值的人才需要。
+    </p>
+  </div>
+</section>
+
+<script>
+  // The signup endpoint lives in the admin container. By default we
+  // assume the marketing site is hosted alongside (same origin); set
+  // window.PAWCORDER_SIGNUP_URL if you're hosting marketing separately.
+  async function submitProSignup(event) {
+    event.preventDefault();
+    const form = event.target;
+    const msg = document.getElementById('proSignupMsg');
+    const email = form.email.value.trim();
+    if (!email) return false;
+
+    const url = window.PAWCORDER_SIGNUP_URL || '/api/marketing/signup';
+    msg.textContent = '送出中…';
+    msg.className = 'mt-3 text-sm text-center text-slate-500';
+    try {
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, source: 'pro_landing', locale: navigator.language || '' }),
+      });
+      const body = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        if (resp.status === 429) {
+          msg.textContent = '今天送太多次了，請稍後再試。';
+        } else {
+          msg.textContent = body.error === 'invalid email'
+            ? 'email 格式不太對，再確認一下？'
+            : '送出失敗：' + (body.error || resp.statusText);
+        }
+        msg.className = 'mt-3 text-sm text-center text-rose-600';
+        return false;
+      }
+      if (body.duplicate) {
+        msg.textContent = '已經在候補名單上了，謝謝！推出時會通知你。';
+      } else {
+        msg.textContent = '✓ 加入候補名單成功，謝謝！我們推出時會寄信通知你。';
+      }
+      msg.className = 'mt-3 text-sm text-center text-emerald-700';
+      form.reset();
+    } catch (e) {
+      msg.textContent = '網路問題，請稍後再試。';
+      msg.className = 'mt-3 text-sm text-center text-rose-600';
+    }
+    return false;
+  }
+</script>
+
+<!-- CTA / footer -->
+<section class="bg-slate-900 text-slate-100">
+  <div class="max-w-5xl mx-auto px-6 py-12 text-center">
+    <h2 class="text-2xl font-semibold mb-4">想看程式碼？</h2>
+    <p class="text-slate-400 mb-6">完整 MIT 授權開源，可商用、可修改、可白標。</p>
+    <a href="https://github.com/xupStudio/pawcorder" class="inline-flex items-center rounded-md bg-white text-slate-900 hover:bg-slate-100 px-6 py-3 text-base font-medium">
+      GitHub →
+    </a>
+  </div>
+</section>
+
+<footer class="bg-slate-900 border-t border-slate-800 text-slate-500 text-sm text-center py-6">
+  Built on Frigate, FastAPI, rclone, Tailwind, Alpine.js — all MIT / BSD / Apache 2.0.
+</footer>
+</body>
+</html>

@@ -1,0 +1,218 @@
+{% extends "_layout.html" %}
+{% block title %}{{ t('NOTIF_TITLE') }} · pawcorder{% endblock %}
+{% block main %}
+<div x-data="notificationsPage()" class="max-w-3xl">
+  <h1 class="text-2xl font-semibold tracking-tight">{{ t('NOTIF_TITLE') }}</h1>
+  <p class="text-sm text-slate-500 dark:text-slate-400 mb-6">{{ t('NOTIF_SUBTITLE') }}</p>
+
+  <details class="rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-5 mb-6">
+    <summary class="text-sm font-semibold tracking-tight cursor-pointer">{{ t('NOTIF_HOW') }}</summary>
+    <div class="mt-3 text-sm text-slate-600 dark:text-slate-300 space-y-2">
+      <p>{{ t('NOTIF_HOW_BODY_1') }}</p>
+      <p>{{ t('NOTIF_HOW_BODY_2') }}</p>
+    </div>
+  </details>
+
+  <!-- iOS heads-up: PWA push notifications are unreliable on iOS, so we
+       quietly steer iPhone users towards Telegram. -->
+  <div x-show="isIOS()" x-cloak
+       class="rounded-2xl bg-blue-50 dark:bg-blue-900 border border-blue-200 dark:border-blue-800 p-4 mb-6 text-sm text-blue-900 dark:text-blue-200">
+    <p class="font-medium">{{ t('NOTIF_IOS_HEADING') }}</p>
+    <p class="mt-1 text-blue-800 dark:text-blue-200">{{ t('NOTIF_IOS_BODY') }}</p>
+  </div>
+
+  <!-- Telegram section -->
+  <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-6 mb-6">
+    <div class="flex items-center justify-between mb-1">
+      <h2 class="text-base font-semibold tracking-tight">{{ t('NOTIF_TG_HEADING') }}</h2>
+      <span class="inline-flex rounded-full px-2 py-0.5 text-xs font-medium bg-emerald-50 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-200 dark:ring-emerald-800">{{ t('RECOMMENDED') }}</span>
+    </div>
+    <p class="text-sm text-slate-500 dark:text-slate-400 mb-5">{{ t('NOTIF_TG_NOTE') }}</p>
+
+    <details class="text-sm text-slate-600 dark:text-slate-300 mb-5">
+      <summary class="font-medium cursor-pointer">{{ t('NOTIF_TG_STEP1') }}</summary>
+      <ol class="mt-2 list-decimal pl-5 space-y-1.5 text-slate-600 dark:text-slate-300">
+        {% if lang == 'zh-TW' %}
+          <li>用 Telegram 找 <a href="https://t.me/BotFather" target="_blank" rel="noopener" class="text-brand-600 underline font-mono">@BotFather</a>。</li>
+          <li>傳送 <code class="font-mono bg-slate-100 dark:bg-slate-800 px-1.5 rounded">/newbot</code>，自取一個名字、和以 <code class="font-mono">_bot</code> 結尾的 username。</li>
+          <li>BotFather 會回給你一段 token（像 <code class="font-mono text-xs">12345:ABC-defGhij...</code>），<strong>複製起來</strong>就是 Bot token。</li>
+          <li>打開你新建的 bot 對話視窗，按 Start。（bot 必須先有人開始對話才能傳訊。）</li>
+        {% else %}
+          <li>In Telegram, message <a href="https://t.me/BotFather" target="_blank" rel="noopener" class="text-brand-600 underline font-mono">@BotFather</a>.</li>
+          <li>Send <code class="font-mono bg-slate-100 dark:bg-slate-800 px-1.5 rounded">/newbot</code>. Pick a name and a username ending in <code class="font-mono">_bot</code>.</li>
+          <li>BotFather replies with a token like <code class="font-mono text-xs">12345:ABC-defGhij...</code>. <strong>Copy it</strong>.</li>
+          <li>Open a chat with your new bot and tap Start.</li>
+        {% endif %}
+      </ol>
+    </details>
+
+    <details class="text-sm text-slate-600 dark:text-slate-300 mb-5">
+      <summary class="font-medium cursor-pointer">{{ t('NOTIF_TG_STEP2') }}</summary>
+      <ol class="mt-2 list-decimal pl-5 space-y-1.5 text-slate-600 dark:text-slate-300">
+        {% if lang == 'zh-TW' %}
+          <li>在 Telegram 找 <a href="https://t.me/userinfobot" target="_blank" rel="noopener" class="text-brand-600 underline font-mono">@userinfobot</a>。</li>
+          <li>它會回給你一個數字 ID（例如 <code class="font-mono">123456789</code>），那就是 chat ID。</li>
+          <li>想推到群組的話，把你的 bot 跟 <code class="font-mono">@userinfobot</code> 都加進群組，然後在群組裡發 <code class="font-mono">/start@userinfobot</code>，回傳的負數就是群組 chat ID。</li>
+        {% else %}
+          <li>In Telegram, message <a href="https://t.me/userinfobot" target="_blank" rel="noopener" class="text-brand-600 underline font-mono">@userinfobot</a>.</li>
+          <li>It replies with your numeric ID (e.g. <code class="font-mono">123456789</code>). That's the Chat ID.</li>
+          <li>For a group: add your bot AND <code class="font-mono">@userinfobot</code> to the group, then send <code class="font-mono">/start@userinfobot</code>. The negative number is the group chat ID.</li>
+        {% endif %}
+      </ol>
+    </details>
+
+    <div class="space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('NOTIF_TG_BOT_TOKEN') }}</label>
+        <input type="text" x-model="tg.telegram_bot_token" placeholder="123456789:ABCdef..."
+               class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm font-mono" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('NOTIF_TG_CHAT_ID') }}</label>
+        <input type="text" x-model="tg.telegram_chat_id" placeholder="123456789"
+               class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm font-mono" />
+      </div>
+      <label class="inline-flex items-center gap-2 text-sm">
+        <input type="checkbox" x-model="tg.telegram_enabled"
+               class="rounded border-slate-300 dark:border-slate-600 text-brand-500 focus:ring-brand-500" />
+        <span>{{ t('NOTIF_TG_FORWARD') }}</span>
+      </label>
+      <div class="flex items-center gap-3 flex-wrap">
+        <button @click="save('telegram')" class="rounded-md bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 text-sm font-medium">{{ t('SAVE') }}</button>
+        <button @click="test('telegram')" :disabled="testing.telegram || !tg.telegram_bot_token || !tg.telegram_chat_id"
+                class="rounded-md bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 text-sm font-medium disabled:opacity-50"
+                x-text="testing.telegram ? labels.sending : labels.send_test"></button>
+        <span x-show="result.telegram" class="text-sm" x-bind:class="result.telegram?.ok ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'">
+          <span x-show="result.telegram?.ok" x-text="labels.sent"></span>
+          <span x-show="!result.telegram?.ok" x-text="labels.failed_prefix + ' ' + (result.telegram?.error || '?')"></span>
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <!-- LINE section -->
+  <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-6 mb-6">
+    <h2 class="text-base font-semibold tracking-tight mb-1">{{ t('NOTIF_LINE_HEADING') }}</h2>
+    <p class="text-sm text-slate-500 dark:text-slate-400 mb-4">{{ t('NOTIF_LINE_NOTE') }}</p>
+
+    <details class="text-sm text-slate-600 dark:text-slate-300 mb-5">
+      <summary class="font-medium cursor-pointer">{{ t('NOTIF_LINE_STEP1') }}</summary>
+      <ol class="mt-2 list-decimal pl-5 space-y-1.5 text-slate-600 dark:text-slate-300">
+        {% if lang == 'zh-TW' %}
+          <li>到 <a href="https://developers.line.biz/console/" target="_blank" rel="noopener" class="text-brand-600 underline">LINE Developers Console</a> 用 LINE 帳號登入。</li>
+          <li>建立一個 Provider（如果還沒有），底下建立一個「Messaging API」channel。</li>
+          <li>建好後到 <strong>Messaging API</strong> 分頁底部，按「Issue」產生 <strong>Channel access token (long-lived)</strong>，<strong>複製</strong>下來。</li>
+          <li>同一頁開 <strong>Allow bot to join group chats</strong>（如果想推群組）。</li>
+        {% else %}
+          <li>Sign into <a href="https://developers.line.biz/console/" target="_blank" rel="noopener" class="text-brand-600 underline">LINE Developers Console</a>.</li>
+          <li>Create a Provider (if you don't have one), then create a "Messaging API" channel under it.</li>
+          <li>Open the channel's <strong>Messaging API</strong> tab. Scroll to the bottom and Issue a long-lived Channel access token. Copy it.</li>
+          <li>On the same tab, allow bots to join groups if you want group notifications.</li>
+        {% endif %}
+      </ol>
+    </details>
+
+    <details class="text-sm text-slate-600 dark:text-slate-300 mb-5">
+      <summary class="font-medium cursor-pointer">{{ t('NOTIF_LINE_STEP2') }}</summary>
+      <ol class="mt-2 list-decimal pl-5 space-y-1.5 text-slate-600 dark:text-slate-300">
+        {% if lang == 'zh-TW' %}
+          <li>用 LINE App 掃描 channel 頁面上方的 QR Code 加你新 bot 為好友。</li>
+          <li>對 bot 傳一句話（例如 "hi"）。</li>
+          <li>到 channel 的 Messaging API 分頁、最底下的 webhook 區會列出 Recent events 或用 LINE Developers 的 webhook log 看 <code class="font-mono">userId</code> 欄位。複製這串 ID（以 <code class="font-mono">U</code> 開頭）就是 Target ID。</li>
+          <li>群組或多人聊天室也可以做為目標，但要先把 bot 邀進去並讀取 webhook log 取得 <code class="font-mono">groupId</code> 或 <code class="font-mono">roomId</code>。</li>
+        {% else %}
+          <li>Use LINE on your phone to scan the QR code at the top of the channel page and add your new bot as a friend.</li>
+          <li>Send your bot any message (e.g. "hi") so it has a destination to push to.</li>
+          <li>In the channel's Messaging API tab, look at the webhook log to find the <code class="font-mono">userId</code> (starts with <code class="font-mono">U</code>). Copy that — it's your Target ID.</li>
+          <li>For a group or multi-person chat, add the bot and read the webhook log for <code class="font-mono">groupId</code> or <code class="font-mono">roomId</code>.</li>
+        {% endif %}
+      </ol>
+    </details>
+
+    <div class="space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('NOTIF_LINE_TOKEN') }}</label>
+        <input type="text" x-model="line.line_channel_token"
+               class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm font-mono" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('NOTIF_LINE_TARGET') }}</label>
+        <input type="text" x-model="line.line_target_id" placeholder="U..."
+               class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm font-mono" />
+      </div>
+      <label class="inline-flex items-center gap-2 text-sm">
+        <input type="checkbox" x-model="line.line_enabled"
+               class="rounded border-slate-300 dark:border-slate-600 text-brand-500 focus:ring-brand-500" />
+        <span>{{ t('NOTIF_LINE_FORWARD') }}</span>
+      </label>
+      <div class="flex items-center gap-3 flex-wrap">
+        <button @click="save('line')" class="rounded-md bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 text-sm font-medium">{{ t('SAVE') }}</button>
+        <button @click="test('line')" :disabled="testing.line || !line.line_channel_token || !line.line_target_id"
+                class="rounded-md bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 text-sm font-medium disabled:opacity-50"
+                x-text="testing.line ? labels.sending : labels.send_test"></button>
+        <span x-show="result.line" class="text-sm" x-bind:class="result.line?.ok ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'">
+          <span x-show="result.line?.ok" x-text="labels.sent"></span>
+          <span x-show="!result.line?.ok" x-text="labels.failed_prefix + ' ' + (result.line?.error || '?')"></span>
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <p class="text-xs text-slate-500 dark:text-slate-400">{{ t('NOTIF_LATENCY_TIP') }}</p>
+</div>
+
+<script>
+  function notificationsPage() {
+    return {
+      testing: { telegram: false, line: false },
+      result: { telegram: null, line: null },
+      labels: {
+        send_test:     {{ t('NOTIF_SEND_TEST') | tojson }},
+        sending:       {{ t('NOTIF_SENDING') | tojson }},
+        sent:          {{ t('NOTIF_SENT') | tojson }},
+        failed_prefix: {{ t('NOTIF_FAILED') | tojson }},
+        saved:         {{ t('SAVED') | tojson }},
+      },
+      tg: {
+        telegram_bot_token: {{ config.telegram_bot_token | tojson }},
+        telegram_chat_id:   {{ config.telegram_chat_id | tojson }},
+        telegram_enabled:   {{ config.telegram_enabled | tojson }},
+      },
+      line: {
+        line_channel_token: {{ config.line_channel_token | tojson }},
+        line_target_id:     {{ config.line_target_id | tojson }},
+        line_enabled:       {{ config.line_enabled | tojson }},
+      },
+      async save(channel) {
+        try {
+          const data = channel === 'telegram' ? this.tg : this.line;
+          await api('/api/config/save', {
+            method: 'POST',
+            body: { section: channel, data },
+          });
+          toast(this.labels.saved, 'success');
+        } catch (e) { toast(e.message, 'error'); }
+      },
+      async test(channel) {
+        this.testing[channel] = true;
+        this.result[channel] = null;
+        try {
+          const body = { channel, ...(channel === 'telegram' ? this.tg : this.line) };
+          this.result[channel] = await api('/api/notifications/test', { method: 'POST', body });
+        } catch (e) {
+          this.result[channel] = { ok: false, error: e.message };
+        } finally {
+          this.testing[channel] = false;
+        }
+      },
+      isIOS() {
+        // iPhone, iPad, iPod — also catches iPad on iPadOS 13+ which
+        // identifies as Mac unless we sniff for `MaxTouchPoints`.
+        const ua = navigator.userAgent || '';
+        if (/iPhone|iPad|iPod/.test(ua)) return true;
+        return navigator.platform === 'MacIntel' && (navigator.maxTouchPoints || 0) > 1;
+      },
+    };
+  }
+</script>
+{% endblock %}

@@ -1,0 +1,85 @@
+services:
+  # Auto-pulls updated container images every 6h. Disabled-by-default
+  # at the application level: the user enables it from the /system page
+  # by setting WATCHTOWER_ENABLED=1 in .env. We still launch the
+  # container (zero-cost when no labels match) so the user doesn't have
+  # to recompose to opt in.
+  watchtower:
+    container_name: pawcorder-watchtower
+    image: containrrr/watchtower:1.7.1
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      WATCHTOWER_CLEANUP: "true"
+      WATCHTOWER_INCLUDE_RESTARTING: "true"
+      WATCHTOWER_LABEL_ENABLE: "true"   # only update containers we explicitly mark
+      WATCHTOWER_POLL_INTERVAL: "${WATCHTOWER_POLL_INTERVAL:-21600}"  # 6h
+      TZ: "${TZ:-Asia/Taipei}"
+
+  admin:
+    container_name: pawcorder-admin
+    build: ./admin
+    image: pawcorder/admin:local
+    restart: unless-stopped
+    labels:
+      # Watchtower only auto-updates containers tagged with this label.
+      com.centurylinklabs.watchtower.enable: "true"
+    volumes:
+      # Mount the project root so the admin panel can read/write .env
+      # and render config/frigate.yml from the template.
+      - ./:/data
+      # Required to control the Frigate container.
+      - /var/run/docker.sock:/var/run/docker.sock
+      # OSS acknowledgements (read-only) for /api/system/notices.
+      - ./NOTICES.md:/data/NOTICES.md:ro
+      # Integrations guide rendered in /docs/api.
+      - ./docs/INTEGRATIONS.md:/data/INTEGRATIONS.md:ro
+    environment:
+      PAWCORDER_DATA_DIR: /data
+      FRIGATE_CONTAINER: pawcorder-frigate
+      COMPOSE_PROJECT_NAME: pawcorder
+      TZ: "${TZ:-Asia/Taipei}"
+    ports:
+      - "8080:8080"
+    # Joins the same default network as Frigate so api calls can resolve it
+    # by container name if needed.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/login').read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  frigate:
+    container_name: pawcorder-frigate
+    image: ghcr.io/blakeblackshear/frigate:stable
+    restart: unless-stopped
+    shm_size: "256mb"
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
+    # Hardware-specific device mounts live in docker-compose.linux-igpu.yml
+    # and other override files — install.sh wires the right one via
+    # COMPOSE_FILE in .env based on platform_detect.
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ./config:/config
+      - ${STORAGE_PATH:-./storage}:/media/frigate
+      - type: tmpfs
+        target: /tmp/cache
+        tmpfs:
+          size: 1g
+    ports:
+      - "5000:5000"      # Frigate Web UI (HTTP)
+      - "8554:8554"      # go2rtc RTSP restream
+      - "8555:8555/tcp"  # WebRTC (TCP)
+      - "8555:8555/udp"  # WebRTC (UDP)
+    environment:
+      FRIGATE_RTSP_PASSWORD: "${FRIGATE_RTSP_PASSWORD:-changeme}"
+      TZ: "${TZ:-Asia/Taipei}"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:5000/api/version"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s

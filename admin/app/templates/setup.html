@@ -1,0 +1,372 @@
+{% extends "_layout.html" %}
+{% block title %}{{ t('SETUP_TITLE') }} · pawcorder{% endblock %}
+{% block main %}
+<div x-data="wizard()" x-init="init()" class="max-w-3xl mx-auto">
+  <h1 class="text-2xl font-semibold tracking-tight">{{ t('SETUP_TITLE') }}</h1>
+  <p class="text-sm text-slate-500 dark:text-slate-400 mb-6">{{ t('SETUP_SUBTITLE') }}</p>
+
+  <ol class="flex items-center gap-2 mb-8 text-xs">
+    <template x-for="(label, i) in steps" :key="i">
+      <li class="flex items-center gap-2 flex-1">
+        <span class="inline-flex items-center justify-center h-7 w-7 rounded-full text-xs font-semibold border"
+              x-bind:class="step === i ? 'bg-brand-500 text-white border-brand-500' : (step > i ? 'bg-slate-900 text-white border-slate-900' : 'bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border-slate-300 dark:border-slate-600')"
+              x-text="i + 1"></span>
+        <span class="hidden sm:inline" x-text="label"
+              x-bind:class="step === i ? 'font-semibold text-slate-900 dark:text-slate-100' : 'text-slate-500 dark:text-slate-400'"></span>
+        <span x-show="i < steps.length - 1" class="flex-1 h-px bg-slate-200 dark:bg-slate-700"></span>
+      </li>
+    </template>
+  </ol>
+
+  <!-- Step 1: Welcome -->
+  <div x-show="step === 0" class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-6">
+    <h2 class="text-xl font-semibold tracking-tight">{{ t('SETUP_WELCOME_HEAD') }}</h2>
+    <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">{{ t('SETUP_WELCOME_INTRO') }}</p>
+    <ul class="mt-3 list-disc pl-5 text-sm text-slate-600 dark:text-slate-300 space-y-1">
+      <li>{{ t('SETUP_WELCOME_BULLET_1') }}</li>
+      <li>{{ t('SETUP_WELCOME_BULLET_2') }}</li>
+      <li>{{ t('SETUP_WELCOME_BULLET_3') }}</li>
+      <li>{{ t('SETUP_WELCOME_BULLET_4') }}</li>
+      <li>{{ t('SETUP_WELCOME_BULLET_5') }}</li>
+    </ul>
+    <p class="mt-4 text-sm text-slate-500 dark:text-slate-400">{{ t('SETUP_WELCOME_NOTE') }}</p>
+    <div class="mt-6 flex justify-end">
+      <button @click="next()" class="rounded-md bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 text-sm font-medium">{{ t('SETUP_GET_STARTED') }}</button>
+    </div>
+  </div>
+
+  <!-- Step 2: Cameras -->
+  <div x-show="step === 1" class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-6 space-y-5">
+    <div>
+      <h2 class="text-xl font-semibold tracking-tight">{{ t('SETUP_CAM_HEAD') }}</h2>
+      <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{ t('SETUP_CAM_HELP') }}</p>
+    </div>
+
+    <!-- Already-added list -->
+    <div x-show="addedCameras.length > 0" class="rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900 p-3">
+      <p class="text-xs font-medium uppercase tracking-wider text-emerald-700 dark:text-emerald-300 mb-2">{{ t('SETUP_CAM_ADDED') }}</p>
+      <ul class="space-y-1 text-sm">
+        <template x-for="c in addedCameras" :key="c.name">
+          <li class="flex items-center justify-between">
+            <span class="flex items-center gap-2">
+              <span class="font-medium" x-text="c.name"></span>
+              <span class="text-slate-500 dark:text-slate-400 font-mono" x-text="c.ip"></span>
+              <span x-show="c.connection_type && c.connection_type !== 'unknown'"
+                    class="inline-flex rounded-full px-2 py-0.5 text-xs font-medium"
+                    x-bind:class="{
+                      'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300': c.connection_type === 'wifi',
+                      'bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300': c.connection_type === 'wired',
+                    }"
+                    x-text="c.connection_type === 'wifi' ? 'Wi-Fi' : 'Wired'"></span>
+            </span>
+            <button @click="removeAdded(c.name)" class="text-rose-600 dark:text-rose-400 hover:text-rose-700 text-xs">Remove</button>
+          </li>
+        </template>
+      </ul>
+    </div>
+
+    <!-- Subnet scan -->
+    <div class="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-4">
+      <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('SCAN_LABEL') }}</label>
+      <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('SCAN_HELP') }}</p>
+      <div class="mt-2 flex gap-2">
+        <input type="text" x-model="cidr" placeholder="192.168.1.0/24"
+               class="flex-1 rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm font-mono" />
+        <button @click="scan()" :disabled="scanning"
+                class="rounded-md bg-slate-900 text-white px-3 py-2 text-sm hover:bg-slate-800 disabled:opacity-50"
+                x-text="scanning ? {{ t('SCANNING') | tojson }} : {{ t('SCAN') | tojson }}"></button>
+      </div>
+      <ul x-show="candidates.length > 0" class="mt-3 grid grid-cols-2 gap-2">
+        <template x-for="c in candidates" :key="c.ip">
+          <li>
+            <button @click="form.ip = c.ip"
+                    class="w-full text-left text-sm rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 hover:border-brand-500 px-3 py-2 font-mono"
+                    x-text="c.ip"></button>
+          </li>
+        </template>
+      </ul>
+    </div>
+
+    <!-- New camera form -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('CAM_NAME') }}</label>
+        <input type="text" x-model="form.name" placeholder="living_room"
+               class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm font-mono" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('CAM_IP') }}</label>
+        <input type="text" x-model="form.ip" placeholder="192.168.1.100"
+               class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm font-mono" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('CAM_USER') }}</label>
+        <input type="text" x-model="form.user"
+               class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('CAM_PASSWORD') }}</label>
+        <input type="password" x-model="form.password"
+               class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('CAM_RTSP_PORT') }}</label>
+        <input type="number" x-model.number="form.rtsp_port"
+               class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('CAM_ONVIF_PORT') }}</label>
+        <input type="number" x-model.number="form.onvif_port"
+               class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm" />
+      </div>
+    </div>
+
+    <div class="flex items-center gap-3 flex-wrap">
+      <button @click="testCurrent()" :disabled="testing || !form.ip || !form.password"
+              class="rounded-md bg-slate-900 text-white px-3 py-2 text-sm hover:bg-slate-800 disabled:opacity-50"
+              x-text="testing ? {{ t('TESTING') | tojson }} : {{ t('TEST_CONNECTION') | tojson }}"></button>
+      <button @click="addCurrent()" :disabled="adding || !canAdd()"
+              class="rounded-md bg-brand-500 hover:bg-brand-600 text-white px-3 py-2 text-sm hover:opacity-90 disabled:opacity-50"
+              x-text="adding ? {{ t('SAVING') | tojson }} : {{ t('SETUP_CAM_ADD_TO_LIST') | tojson }}"></button>
+      <div x-show="testResult" class="text-sm flex items-center gap-2 flex-wrap">
+        {# Manual sentinel — see cameras.html for the matching block. #}
+        <span x-show="testResult?.reolink_login?.manual"
+              class="inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-900 px-2 py-0.5 text-xs font-medium text-amber-800 dark:text-amber-200">
+          {{ t('BRAND_MANUAL_RETEST_HINT') }}
+        </span>
+        <span x-show="!testResult?.reolink_login?.manual"
+              x-bind:class="testResult?.ok ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'">
+          <span x-show="testResult?.ok">Connected. <span x-text="formatStream(testResult.rtsp_main)"></span></span>
+          <span x-show="!testResult?.ok" x-text="formatError()"></span>
+        </span>
+        <span x-show="testResult?.connection_type && testResult.connection_type !== 'unknown'"
+              class="inline-flex rounded-full px-2 py-0.5 text-xs font-medium"
+              x-bind:class="{
+                'bg-blue-50 dark:bg-blue-900 text-blue-700 dark:text-blue-300 ring-1 ring-blue-200 dark:ring-blue-800': testResult?.connection_type === 'wifi',
+                'bg-emerald-50 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-200 dark:ring-emerald-800': testResult?.connection_type === 'wired',
+              }"
+              x-text="testResult?.connection_type === 'wifi' ? 'Detected: Wi-Fi' : 'Detected: Wired'"></span>
+      </div>
+    </div>
+
+    <div class="flex justify-between pt-2">
+      <button @click="prev()" class="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200">{{ t('BACK') }}</button>
+      <button @click="next()" :disabled="addedCameras.length === 0"
+              class="rounded-md bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed">
+        {{ t('CONTINUE') }}
+      </button>
+    </div>
+  </div>
+
+  <!-- Step 3: Storage -->
+  <div x-show="step === 2" class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-6 space-y-5">
+    <div>
+      <h2 class="text-xl font-semibold tracking-tight">{{ t('SETUP_STORAGE_HEAD') }}</h2>
+      <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{ t('SETUP_STORAGE_HELP') }}</p>
+    </div>
+    <div>
+      <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('SETUP_STORAGE_LABEL') }}</label>
+      <input type="text" x-model="storage_path" placeholder="/mnt/pawcorder"
+             class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm font-mono" />
+      <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('SETUP_STORAGE_NOTE') }}</p>
+    </div>
+    <div class="flex justify-between pt-2">
+      <button @click="prev()" class="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200">{{ t('BACK') }}</button>
+      <button @click="saveAndNext('storage', { storage_path: storage_path })"
+              :disabled="!storage_path"
+              class="rounded-md bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 text-sm font-medium disabled:opacity-50">
+        {{ t('CONTINUE') }}
+      </button>
+    </div>
+  </div>
+
+  <!-- Step 4: Detection -->
+  <div x-show="step === 3" class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-6 space-y-5">
+    <div>
+      <h2 class="text-xl font-semibold tracking-tight">{{ t('SETUP_DET_HEAD') }}</h2>
+      <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{ t('SETUP_DET_HELP') }}</p>
+    </div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('DET_MIN_LABEL') }}</label>
+        <input type="number" min="0.3" max="0.95" step="0.05" x-model="pet_min_score"
+               class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('DET_EVENT_LABEL') }}</label>
+        <input type="number" min="0.4" max="0.99" step="0.05" x-model="pet_threshold"
+               class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm" />
+      </div>
+    </div>
+    <div class="flex justify-between pt-2">
+      <button @click="prev()" class="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200">{{ t('BACK') }}</button>
+      <button @click="saveAndNext('detection', { pet_min_score: pet_min_score, pet_threshold: pet_threshold })"
+              class="rounded-md bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 text-sm font-medium">{{ t('CONTINUE') }}</button>
+    </div>
+  </div>
+
+  <!-- Step 5: Admin password & finish -->
+  <div x-show="step === 4" class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-6 space-y-5">
+    <div>
+      <h2 class="text-xl font-semibold tracking-tight">{{ t('SETUP_FIN_HEAD') }}</h2>
+      <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{ t('SETUP_FIN_HELP') }}</p>
+    </div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('SYS_NEW_PASSWORD') }}</label>
+        <input type="password" x-model="newPassword" minlength="8"
+               class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('SYS_CONFIRM') }}</label>
+        <input type="password" x-model="newPasswordConfirm" minlength="8"
+               class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm" />
+      </div>
+    </div>
+    <p x-show="newPassword && newPassword !== newPasswordConfirm" class="text-sm text-rose-600 dark:text-rose-400">{{ t('SETUP_FIN_MISMATCH') }}</p>
+
+    <div class="rounded-lg bg-emerald-50 dark:bg-emerald-900 border border-emerald-200 dark:border-emerald-800 p-4 text-sm text-emerald-800 dark:text-emerald-200">
+      <p class="font-medium">{{ t('SETUP_FIN_READY_HEAD') }}</p>
+      <p class="mt-1">{{ t('SETUP_FIN_READY_BODY') }}</p>
+    </div>
+
+    <div class="flex justify-between pt-2">
+      <button @click="prev()" class="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200">{{ t('BACK') }}</button>
+      <button @click="finish()"
+              :disabled="finishing || (newPassword && newPassword !== newPasswordConfirm) || (newPassword && newPassword.length < 8)"
+              class="rounded-md bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 text-sm font-medium disabled:opacity-50"
+              x-text="finishing ? {{ t('SETUP_FIN_STARTING') | tojson }} : {{ t('SETUP_FIN_BUTTON') | tojson }}"></button>
+    </div>
+  </div>
+</div>
+
+<script>
+  function wizard() {
+    return {
+      step: 0,
+      steps: [
+        {{ t('STEP_WELCOME') | tojson }},
+        {{ t('STEP_CAMERAS') | tojson }},
+        {{ t('STEP_STORAGE') | tojson }},
+        {{ t('STEP_DETECTION') | tojson }},
+        {{ t('STEP_FINISH') | tojson }},
+      ],
+      cidr: '192.168.1.0/24',
+      candidates: [],
+      scanning: false,
+      testing: false,
+      adding: false,
+      testResult: null,
+      finishing: false,
+      addedCameras: [],
+      newPassword: '',
+      newPasswordConfirm: '',
+      storage_path: {{ config.storage_path | tojson }},
+      pet_min_score: {{ config.pet_min_score | tojson }},
+      pet_threshold: {{ config.pet_threshold | tojson }},
+      form: emptyCameraForm(),
+      labels: {
+        cam_login_fail: {{ t('SETUP_CAM_LOGIN_FAIL') | tojson }},
+        cam_main_fail:  {{ t('SETUP_CAM_MAIN_FAIL') | tojson }},
+        cam_sub_fail:   {{ t('SETUP_CAM_SUB_FAIL') | tojson }},
+        cam_test_fail:  {{ t('CAM_TEST_FAIL') | tojson }},
+        scan_no_hits:   {{ t('SCAN_NO_HITS') | tojson }},
+      },
+      async init() {
+        // Pick up where the user left off if some sections are already configured.
+        try {
+          const data = await api('/api/cameras');
+          this.addedCameras = data.cameras || [];
+        } catch (e) {}
+        if (this.addedCameras.length > 0 && this.storage_path) this.step = 3;
+        else if (this.addedCameras.length > 0) this.step = 2;
+      },
+      next() { if (this.step < this.steps.length - 1) this.step++; },
+      prev() { if (this.step > 0) this.step--; },
+      canAdd() {
+        return this.form.name && this.form.ip && this.form.password
+          && /^[a-z][a-z0-9_]{0,30}$/.test(this.form.name);
+      },
+      formatStream(probe) {
+        if (!probe) return '';
+        return `${probe.codec || '?'} ${probe.width || '?'}×${probe.height || '?'}`;
+      },
+      formatError() {
+        const r = this.testResult;
+        if (!r) return '';
+        if (r.reolink_login && !r.reolink_login.ok) return this.labels.cam_login_fail + ': ' + r.reolink_login.error;
+        if (r.rtsp_main && !r.rtsp_main.ok) return this.labels.cam_main_fail + ': ' + r.rtsp_main.error;
+        if (r.rtsp_sub && !r.rtsp_sub.ok) return this.labels.cam_sub_fail + ': ' + r.rtsp_sub.error;
+        return this.labels.cam_test_fail;
+      },
+      async scan() {
+        this.scanning = true;
+        try {
+          const data = await api('/api/scan', { method: 'POST', body: { cidr: this.cidr } });
+          this.candidates = data.candidates || [];
+          if (this.candidates.length === 0) toast(this.labels.scan_no_hits, 'info');
+        } catch (e) { toast(e.message, 'error'); }
+        finally { this.scanning = false; }
+      },
+      async testCurrent() {
+        this.testing = true; this.testResult = null;
+        try {
+          this.testResult = await api('/api/cameras/test', { method: 'POST', body: this.form });
+          if (this.testResult?.connection_type) {
+            this.form.connection_type = this.testResult.connection_type;
+          }
+          toast(this.testResult.ok ? 'Camera connected' : 'Connection failed', this.testResult.ok ? 'success' : 'error');
+        } catch (e) { toast(e.message, 'error'); }
+        finally { this.testing = false; }
+      },
+      async addCurrent() {
+        if (!this.canAdd()) return;
+        this.adding = true;
+        try {
+          await api('/api/cameras', { method: 'POST', body: this.form });
+          this.addedCameras.push({ ...this.form });
+          this.form = emptyCameraForm();
+          this.testResult = null;
+          toast('Camera added', 'success');
+        } catch (e) { toast(e.message, 'error'); }
+        finally { this.adding = false; }
+      },
+      async removeAdded(name) {
+        try {
+          await api(`/api/cameras/${encodeURIComponent(name)}`, { method: 'DELETE' });
+          this.addedCameras = this.addedCameras.filter(c => c.name !== name);
+        } catch (e) { toast(e.message, 'error'); }
+      },
+      async saveAndNext(section, data) {
+        try {
+          await api('/api/config/save', { method: 'POST', body: { section, data } });
+          this.next();
+        } catch (e) { toast(e.message, 'error'); }
+      },
+      async finish() {
+        this.finishing = true;
+        try {
+          await api('/api/config/save', { method: 'POST', body: { section: 'detection', data: { pet_min_score: this.pet_min_score, pet_threshold: this.pet_threshold } } });
+          if (this.newPassword && this.newPassword === this.newPasswordConfirm && this.newPassword.length >= 8) {
+            await api('/api/admin/password', { method: 'POST', body: { new_password: this.newPassword } });
+          }
+          try { await api('/api/frigate/restart', { method: 'POST', body: {} }); } catch (_) {}
+          toast({{ t('SETUP_FIN_DONE') | tojson }}, 'success');
+          // Send first-time finishers through /welcome so they see the
+          // next-step guidance. Returning users land on the dashboard.
+          setTimeout(() => window.location = '/welcome', 800);
+        } catch (e) { toast(e.message, 'error'); }
+        finally { this.finishing = false; }
+      },
+    };
+  }
+  function emptyCameraForm() {
+    return {
+      name: '', ip: '', user: 'admin', password: '',
+      rtsp_port: 554, onvif_port: 8000,
+      detect_width: 640, detect_height: 480, enabled: true,
+      connection_type: 'unknown',
+    };
+  }
+</script>
+{% endblock %}

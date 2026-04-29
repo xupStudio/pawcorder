@@ -1,0 +1,76 @@
+#cloud-config
+# Ubuntu autoinstall for pawcorder. The Ubuntu Server installer reads
+# this file and performs an unattended install with these answers.
+# https://canonical-subiquity.readthedocs-hosted.com/en/latest/reference/autoinstall-reference.html
+
+autoinstall:
+  version: 1
+  early-commands:
+    - sudo systemctl stop ssh
+
+  locale: en_US.UTF-8
+  keyboard:
+    layout: us
+
+  identity:
+    hostname: pawcorder
+    username: pawcorder
+    # SHA-512 hash of "pawcorder". Users must change this on first login;
+    # the late-commands print a notice. Generate a new hash with:
+    #   mkpasswd -m sha-512
+    password: "$6$rounds=4096$SaltSaltSal$xCSmmfCgEZbY1sGxfnPF8M7eExQHePrxeBPmCsTWOlYxIsRzMeWgkH1PXKqHH3i3OO8vfA5bWJwEs3BxUR.Sf1"
+
+  ssh:
+    install-server: true
+    allow-pw: true
+
+  storage:
+    layout:
+      name: lvm
+      sizing-policy: all
+
+  packages:
+    - avahi-daemon
+    - openssh-server
+    - curl
+    - ca-certificates
+    - git
+    - sudo
+
+  user-data:
+    disable_root: true
+    timezone: Asia/Taipei
+
+  late-commands:
+    # Hostname and mDNS so the host is reachable as pawcorder.local
+    - curtin in-target -- bash -c 'hostnamectl set-hostname pawcorder'
+    - curtin in-target -- bash -c 'systemctl enable avahi-daemon'
+    # Clone pawcorder under /opt and run the installer on first boot
+    - curtin in-target -- bash -c 'git clone https://github.com/pawcorder/pawcorder.git /opt/pawcorder'
+    - curtin in-target -- bash -c 'cat > /etc/systemd/system/pawcorder-firstboot.service' <<'UNIT'
+      [Unit]
+      Description=pawcorder first-boot setup
+      After=network-online.target docker.service
+      Wants=network-online.target
+      ConditionPathExists=!/var/lib/pawcorder/.installed
+
+      [Service]
+      Type=oneshot
+      ExecStart=/opt/pawcorder/install.sh
+      ExecStartPost=/usr/bin/touch /var/lib/pawcorder/.installed
+      StandardOutput=tty
+      StandardError=tty
+      TTYPath=/dev/tty1
+
+      [Install]
+      WantedBy=multi-user.target
+      UNIT
+    - curtin in-target -- bash -c 'mkdir -p /var/lib/pawcorder && systemctl enable pawcorder-firstboot.service'
+    # Friendly message on the console so anyone with a monitor sees what to do
+    - curtin in-target -- bash -c 'cat > /etc/issue' <<'ISSUE'
+      Welcome to pawcorder.
+      Open http://pawcorder.local:8080 from any device on this Wi-Fi.
+      Admin password is printed below once first-boot setup finishes.
+      Default SSH login: pawcorder / pawcorder (change with passwd).
+
+      ISSUE
