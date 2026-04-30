@@ -1014,6 +1014,15 @@ T: dict[str, dict[str, str]] = {
     "VERSION_UPDATE_AVAILABLE":{"en": "Update available:", "zh-TW": "有新版本："},
     "VERSION_RELEASE_NOTES": {"en": "Open release notes", "zh-TW": "查看更新說明"},
 
+    "UPDATE_AVAILABLE_TITLE":{"en": "New pawcorder release", "zh-TW": "pawcorder 有新版"},
+    "UPDATE_RELEASE_NOTES":  {"en": "Release notes", "zh-TW": "更新說明"},
+    "UPDATE_APPLY":          {"en": "Apply update", "zh-TW": "立即更新"},
+    "UPDATE_APPLYING":       {"en": "Applying…", "zh-TW": "更新中…"},
+    "UPDATE_APPLYING_TOAST": {"en": "Update started — page will reload in ~30 seconds.",
+                              "zh-TW": "更新中——頁面約 30 秒後會自動重新載入。"},
+    "UPDATE_SKIP":           {"en": "Skip this version",
+                              "zh-TW": "略過這個版本"},
+
     "OSS_HEADING":           {"en": "Open-source acknowledgements",
                               "zh-TW": "開源軟體授權聲明"},
     "OSS_HELP":              {"en": "pawcorder is built on open-source software. This page lists every dependency and its license. Required reading if you redistribute pawcorder commercially.",

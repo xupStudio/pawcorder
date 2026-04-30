@@ -72,6 +72,21 @@ try:
 except ImportError:
     fight_detector = None  # type: ignore[assignment]
 
+try:
+    from .pro import posture_detector  # type: ignore[attr-defined]
+except ImportError:
+    posture_detector = None  # type: ignore[assignment]
+
+try:
+    from .pro import connect_client  # type: ignore[attr-defined]
+except ImportError:
+    connect_client = None  # type: ignore[assignment]
+
+try:
+    from .pro import b2b_dashboard  # type: ignore[attr-defined]
+except ImportError:
+    b2b_dashboard = None  # type: ignore[assignment]
+
 from . import (
     uninstall as uninstall_mod,
     updater,
@@ -112,7 +127,12 @@ async def lifespan(_: FastAPI):
         litter_monitor.monitor.start()
     if fight_detector is not None:
         fight_detector.detector.start()
+    if posture_detector is not None:
+        posture_detector.monitor.start()
+    if connect_client is not None:
+        connect_client.registrar.start()
     pet_diary.scheduler.start()
+    updater.checker.start()
     backup_schedule.scheduler.start()
     timelapse.scheduler.start()
     try:
@@ -129,7 +149,12 @@ async def lifespan(_: FastAPI):
             await litter_monitor.monitor.stop()
         if fight_detector is not None:
             await fight_detector.detector.stop()
+        if posture_detector is not None:
+            await posture_detector.monitor.stop()
+        if connect_client is not None:
+            await connect_client.registrar.stop()
         await pet_diary.scheduler.stop()
+        await updater.checker.stop()
         await backup_schedule.scheduler.stop()
         await timelapse.scheduler.stop()
 
@@ -1083,17 +1108,32 @@ async def api_system_ai_tokens_update(request: Request, payload: dict):
 
 @app.get("/api/system/health-detectors")
 async def api_system_health_detectors(request: Request):
-    """Pro health-detector knobs. Lists configured cameras so the UI
-    can render a dropdown rather than asking the user to type the
-    camera name verbatim."""
+    """Pro health-detector knobs. Lists enabled cameras with a per-camera
+    health summary so the UI can render BOTH the dropdown for the
+    litter-camera setting AND the per-camera status rows in the system
+    health panel from one fetch.
+
+    Each camera entry has the shape ``{name, ok, message}`` — `ok` is
+    true when the camera is enabled and (best-effort) reachable; the
+    message is a short user-facing line."""
     _require_auth(request)
     cfg = config_store.load_config()
-    cams = camera_store.load()
+    cams = [
+        {
+            "name": c.name,
+            "ok": bool(c.enabled),
+            "message": (
+                f"{c.connection_type or 'wired'} · {c.ip}"
+                if c.enabled else "disabled"
+            ),
+        }
+        for c in camera_store.load() if c.enabled
+    ]
     return {
         "available": litter_monitor is not None,
         "litter_box_camera": cfg.litter_box_camera,
         "litter_visits_alert_per_24h": cfg.litter_visits_alert_per_24h,
-        "cameras": [c.name for c in cams if c.enabled],
+        "cameras": cams,
     }
 
 
@@ -1290,10 +1330,19 @@ async def api_pets_health(request: Request):
                       if fight_detector is not None else 600)
     rows_recent = [r for r in rows_24h
                    if float(r.get("start_time") or 0) >= now - fight_lookback]
+    rows_1h = [r for r in rows_24h
+                if float(r.get("start_time") or 0) >= now - 3600]
+    posture: list[dict] = []
+    if posture_detector is not None:
+        posture = [s.to_dict()
+                   for s in posture_detector.vomit_snapshots(now=now, rows=rows_1h)]
+        posture += [s.to_dict()
+                    for s in posture_detector.gait_snapshots(now=now, rows=rows_1h)]
     return {
         "snapshots": [s.to_dict() for s in pet_health.snapshots_all(now=now, rows=rows_widest)] if pet_health else [],
         "litter": [s.to_dict() for s in litter_monitor.snapshots_all(now=now, rows=rows_24h)] if litter_monitor else [],
         "fight_clusters": [c.to_dict() for c in fight_detector._scan_clusters(rows_recent)] if fight_detector else [],
+        "posture": posture,
     }
 
 
@@ -2100,7 +2149,116 @@ async def api_system_notices(request: Request):
 async def api_update_check(request: Request, force: bool = False):
     _require_auth(request)
     result = await updater.check_for_updates(force=force)
-    return result.to_dict()
+    payload = result.to_dict()
+    # The dashboard uses skipped_version to suppress the banner for one
+    # specific release the user explicitly dismissed.
+    payload["skipped_version"] = updater.load_skipped_version()
+    payload["banner_visible"] = bool(
+        result.update_available
+        and result.latest_version
+        and result.latest_version != payload["skipped_version"]
+    )
+    return payload
+
+
+@app.post("/api/system/update-skip")
+async def api_update_skip(request: Request, payload: dict):
+    """Hide the dashboard banner for a specific release tag. Empty
+    `version` clears the skip (re-show the banner)."""
+    _require_auth(request)
+    tag = (payload.get("version") or "").strip()
+    updater.save_skipped_version(tag)
+    return {"ok": True, "skipped_version": tag}
+
+
+@app.get("/api/connect/status")
+async def api_connect_status(request: Request):
+    """Return current Connect-client state. tunnel_token is masked —
+    only `has_tunnel_token: bool` leaks. Returns
+    `{"available": false}` on OSS builds."""
+    _require_auth(request)
+    if connect_client is None:
+        return {"available": False}
+    return {"available": True, **connect_client.public_status()}
+
+
+@app.post("/api/connect/register")
+async def api_connect_register(request: Request, payload: dict | None = None):
+    """Manually trigger a Connect registration. The background
+    registrar runs every 12h; this is for immediate use after pasting
+    a license. Body: `{"desired_subdomain": "..."}` (optional)."""
+    _require_role(request, min_role="admin")
+    if connect_client is None:
+        raise HTTPException(status_code=503, detail="connect_unavailable")
+    desired = (payload or {}).get("desired_subdomain")
+    try:
+        status = await connect_client.register(desired_subdomain=desired)
+    except connect_client.ConnectNotConfigured:
+        raise HTTPException(status_code=400, detail="no_pro_license")
+    return {
+        "subdomain": status.subdomain,
+        "enabled": status.enabled,
+        "last_error": status.last_error,
+    }
+
+
+@app.get("/api/b2b/sites")
+async def api_b2b_sites(request: Request):
+    """List configured B2B sites (NOT their api_keys). Pre-aggregation —
+    use /api/b2b/dashboard for the actual snapshot pull."""
+    _require_role(request, min_role="admin")
+    if b2b_dashboard is None:
+        return {"available": False, "sites": []}
+    sites = b2b_dashboard.load_sites()
+    return {
+        "available": True,
+        "sites": [{"name": s.name, "base_url": s.base_url} for s in sites],
+    }
+
+
+@app.get("/api/b2b/dashboard")
+async def api_b2b_dashboard(request: Request):
+    """Aggregate snapshots across every configured site. One slow site
+    can't block the others — every fetch runs concurrently with a
+    bounded timeout."""
+    _require_role(request, min_role="admin")
+    if b2b_dashboard is None:
+        raise HTTPException(status_code=503, detail="b2b_unavailable")
+    snapshots = await b2b_dashboard.aggregate()
+    return {"sites": [s.to_dict() for s in snapshots]}
+
+
+# Process-local lock for the OTA apply path. The deploy guide
+# prescribes a single uvicorn worker, so this is sufficient. If someone
+# scales out with `--workers N`, this guard becomes per-worker — the
+# right replacement is a file-based lock (e.g. fcntl.flock on a path
+# under DATA_DIR/config/) so all workers see the same in-flight state.
+_update_apply_lock = asyncio.Lock()
+
+
+@app.post("/api/system/update-apply")
+async def api_update_apply(request: Request):
+    """Run docker compose pull && up. Returns immediately with an
+    "applying" status — the host-level orchestration will recreate
+    the admin container partway through, so the client should poll
+    /api/status until reachable again. Locked so two concurrent
+    clicks don't double the pull bandwidth (compose's `up -d` is
+    idempotent but `pull` isn't free)."""
+    _require_role(request, min_role="admin")
+    if _update_apply_lock.locked():
+        return JSONResponse(
+            status_code=409,
+            content={"ok": False, "message": "already_applying",
+                      "detail": "another update is in progress"},
+        )
+    async with _update_apply_lock:
+        outcome = await updater.apply_update_compose()
+    code = 200 if outcome.ok else 502
+    return JSONResponse(
+        status_code=code,
+        content={"ok": outcome.ok, "message": outcome.message,
+                  "detail": outcome.detail},
+    )
 
 
 # ---- health -------------------------------------------------------------

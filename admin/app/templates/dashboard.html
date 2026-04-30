@@ -15,6 +15,41 @@
     </div>
   </div>
 
+  {# OTA update banner — shows whenever a newer pawcorder release is
+     out AND the user hasn't dismissed this specific tag. Background
+     updater.checker refreshes the cache once a day so the banner
+     appears without the user opening /system. #}
+  <div x-show="updateInfo && updateInfo.banner_visible"
+       x-cloak
+       class="rounded-2xl bg-emerald-50 dark:bg-emerald-900 border border-emerald-200 dark:border-emerald-800 p-4 mb-6">
+    <div class="flex items-start justify-between gap-3 flex-wrap">
+      <div class="flex-1 min-w-0">
+        <p class="text-xs font-medium uppercase tracking-wider text-emerald-800 dark:text-emerald-200">
+          {{ t('UPDATE_AVAILABLE_TITLE') }}
+        </p>
+        <p class="font-semibold text-emerald-900 dark:text-emerald-100 mt-1">
+          <span x-text="updateInfo?.current_version || '—'"></span> →
+          <span x-text="updateInfo?.latest_version || '—'"></span>
+        </p>
+        <p class="text-xs text-emerald-800 dark:text-emerald-200 mt-1"
+           x-show="updateInfo?.release_url">
+          <a :href="updateInfo.release_url" target="_blank" rel="noopener"
+             class="underline">{{ t('UPDATE_RELEASE_NOTES') }} →</a>
+        </p>
+      </div>
+      <div class="flex items-center gap-2 shrink-0">
+        <button type="button" @click="applyUpdate()"
+                :disabled="updateApplying"
+                class="inline-flex items-center rounded-md bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 text-sm font-medium disabled:opacity-50"
+                x-text="updateApplying ? labels.update_applying : labels.update_apply"></button>
+        <button type="button" @click="skipUpdate(updateInfo?.latest_version)"
+                class="text-xs text-emerald-800 dark:text-emerald-200 hover:underline">
+          {{ t('UPDATE_SKIP') }}
+        </button>
+      </div>
+    </div>
+  </div>
+
   {# Onboarding tracker — once the user has finished `/setup`, nudge
      them through the post-setup features (notifications, cloud backup,
      pet identity, etc.). State is derived from real config, so when
@@ -149,12 +184,20 @@
       status: { frigate: { running: false, status: 'unknown' }, camera_count: 0, cameras: [] },
       petsToday: { total: 0, byPet: [] },
       onboarding: null,
+      updateInfo: null,
+      updateApplying: false,
       labels: {
         progress: {{ t('ONBOARDING_PROGRESS') | tojson }},  // "{done}/{total} done"
+        update_apply:    {{ t('UPDATE_APPLY') | tojson }},
+        update_applying: {{ t('UPDATE_APPLYING') | tojson }},
       },
       async init() {
         await this.refresh();
         setInterval(() => this.refresh(), 5000);
+        // Update info polled less aggressively — once the first response
+        // lands and updates the cache, we trust it for the next ~hour.
+        this.refreshUpdate();
+        setInterval(() => this.refreshUpdate(), 3600 * 1000);
       },
       async refresh() {
         try { this.status = await api('/api/status'); } catch (e) {}
@@ -176,6 +219,30 @@
         if (!this.onboarding || !this.onboarding.all_done) {
           try { this.onboarding = await api('/api/onboarding'); } catch (e) {}
         }
+      },
+      async refreshUpdate() {
+        try { this.updateInfo = await api('/api/system/update-check'); }
+        catch (e) { /* network glitch — keep last value */ }
+      },
+      async skipUpdate(version) {
+        if (!version) return;
+        try { await api('/api/system/update-skip',
+                         { method: 'POST', body: { version } }); }
+        finally { await this.refreshUpdate(); }
+      },
+      async applyUpdate() {
+        if (this.updateApplying) return;
+        this.updateApplying = true;
+        try {
+          await api('/api/system/update-apply', { method: 'POST', body: {} });
+          toast({{ t('UPDATE_APPLYING_TOAST') | tojson }}, 'success');
+        } catch (e) {
+          // Connection-reset is expected once the new container takes
+          // over — treat it as success and let the user reload.
+          toast({{ t('UPDATE_APPLYING_TOAST') | tojson }}, 'success');
+        }
+        // Wait ~30s, then start polling /api/status until reachable.
+        setTimeout(() => location.reload(), 30000);
       },
       async restart() {
         try {

@@ -125,8 +125,8 @@
         <select x-model="healthDetectors.litter_box_camera"
                 class="w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm">
           <option value="">{{ t('SYS_LITTER_CAMERA_OFF') }}</option>
-          <template x-for="c in (healthDetectors.cameras || [])" :key="c">
-            <option :value="c" x-text="c"></option>
+          <template x-for="c in (healthDetectors.cameras || [])" :key="c.name">
+            <option :value="c.name" x-text="c.name"></option>
           </template>
         </select>
         <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('SYS_LITTER_CAMERA_HELP') }}</p>
@@ -680,7 +680,7 @@
           const reg = await navigator.serviceWorker.ready;
           const { public_key } = await api('/api/webpush/public-key');
           if (!public_key) {
-            this.pushStatus = 'Web Push 未啟用（未生成 VAPID）';
+            this.pushStatus = '瀏覽器通知尚未設定';
             this.pushStatusClass = 'text-rose-600 dark:text-rose-400';
             return;
           }

@@ -81,3 +81,45 @@ def recent_frigate_logs(tail: int = 200) -> str:
         return c.logs(tail=tail, stream=False, follow=False).decode("utf-8", errors="replace")
     except APIError as exc:
         return f"<error reading logs: {exc}>"
+
+
+async def compose_pull_and_up() -> dict:
+    """Trigger ``docker compose pull && docker compose up -d`` against
+    the host. Used by the OTA "Apply update" button.
+
+    We don't try to be clever with the Docker SDK here — compose isn't
+    a first-class API in `docker-py`. The path of least surprise is to
+    shell out to the same `docker compose` the user runs by hand.
+
+    Returns ``{"ok": bool, "stdout": str, "stderr": str}``. The caller
+    should expect to LOSE the connection mid-call once `up -d` recreates
+    the admin container — the HTTP response is best-effort.
+    """
+    import asyncio
+
+    project_root = os.environ.get("PAWCORDER_PROJECT_ROOT", "/opt/pawcorder")
+    compose_file = os.environ.get(
+        "PAWCORDER_COMPOSE_FILE",
+        os.path.join(project_root, "docker-compose.yml"),
+    )
+    cmd = ["docker", "compose", "-f", compose_file, "pull"]
+    pull = await asyncio.create_subprocess_exec(
+        *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+    )
+    pull_out, pull_err = await pull.communicate()
+    if pull.returncode != 0:
+        return {"ok": False,
+                "stdout": pull_out.decode("utf-8", errors="replace"),
+                "stderr": pull_err.decode("utf-8", errors="replace"),
+                "step": "pull"}
+    up = await asyncio.create_subprocess_exec(
+        "docker", "compose", "-f", compose_file, "up", "-d",
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+    )
+    up_out, up_err = await up.communicate()
+    return {
+        "ok": up.returncode == 0,
+        "stdout": (pull_out + up_out).decode("utf-8", errors="replace"),
+        "stderr": (pull_err + up_err).decode("utf-8", errors="replace"),
+        "step": "up" if up.returncode != 0 else "done",
+    }
