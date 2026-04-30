@@ -30,17 +30,24 @@
     <p class="text-sm text-slate-500 dark:text-slate-400">{{ t('PETS_EMPTY') }} <span class="font-medium text-slate-700 dark:text-slate-300">{{ t('PETS_ADD') }}</span> {{ t('PETS_EMPTY_AFTER') }}</p>
   </div>
 
-  <!-- Backfill recognition over past events -->
+  <!-- Backfill recognition over past events. When the Pro module is
+       installed the UI swaps to the 30-day variant, surfaces anomaly
+       highlights from the run, and badges the panel as "Pro extended". -->
   <div class="rounded-2xl bg-slate-50 dark:bg-slate-800 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-700 p-4 mb-6 text-sm"
        x-show="pets.length > 0 && recognitionReady">
     <div class="flex items-start justify-between gap-3">
-      <div>
-        <p class="font-medium">{{ t('PETS_BACKFILL_HEADING') }}</p>
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center gap-2">
+          <p class="font-medium">{{ t('PETS_BACKFILL_HEADING') }}</p>
+          <span x-show="proBackfill.available"
+                class="text-[10px] uppercase tracking-wider rounded bg-brand-100 dark:bg-brand-900 text-brand-800 dark:text-brand-100 px-1.5 py-0.5"
+                x-text="labels.backfill_pro_badge"></span>
+        </div>
         <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('PETS_BACKFILL_HELP') }}</p>
       </div>
       <button @click="runBackfill()" :disabled="backfill.running"
               class="rounded-md bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 px-3 py-1.5 text-xs font-medium disabled:opacity-50 shrink-0"
-              x-text="backfill.running ? labels.backfill_running : labels.backfill_start"></button>
+              x-text="backfill.running ? labels.backfill_running : (proBackfill.available ? labels.backfill_start_pro : labels.backfill_start)"></button>
     </div>
     <div x-show="backfill.running || backfill.processed > 0" class="mt-3">
       <div class="h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
@@ -49,6 +56,187 @@
       </div>
       <p class="text-xs text-slate-500 dark:text-slate-400 mt-1"
          x-text="backfill.processed + ' / ' + backfill.total_events + ' — ' + backfill.matched + ' ' + labels.backfill_matched"></p>
+    </div>
+    <div x-show="proBackfill.available && proBackfill.highlights && proBackfill.highlights.length > 0"
+         x-cloak class="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700">
+      <p class="text-xs font-medium text-slate-700 dark:text-slate-300"
+         x-text="labels.backfill_anomalies"></p>
+      <ul class="mt-2 space-y-1 text-xs">
+        <template x-for="h in proBackfill.highlights" :key="h.date + h.pet_id + h.kind">
+          <li class="flex items-center gap-2">
+            <span class="rounded px-1.5 py-0.5 text-[10px] font-medium"
+                  :class="h.kind === 'low_activity_day' ? 'bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-100'
+                         : (h.kind === 'high_activity_day' ? 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-100'
+                         : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200')"
+                  x-text="anomalyKindLabel(h.kind)"></span>
+            <span x-text="h.date"></span>
+            <span class="text-slate-500 dark:text-slate-400"
+                  x-text="h.pet_name + ' — ' + h.detail"></span>
+          </li>
+        </template>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Health widget: per-pet presence + Pro detector signals -->
+  <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5 mb-6"
+       x-show="pets.length > 0 && (health.snapshots.length > 0 || health.litter.length > 0 || health.fight_clusters.length > 0)"
+       x-cloak>
+    <h2 class="text-base font-semibold tracking-tight">{{ t('PETS_HEALTH_HEADING') }}</h2>
+    <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('PETS_HEALTH_HELP') }}</p>
+
+    <!-- Presence / activity strip -->
+    <div x-show="health.snapshots.length > 0" class="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      <template x-for="s in health.snapshots" :key="s.pet_id">
+        <div class="rounded-lg border border-slate-200 dark:border-slate-700 p-3"
+             :class="(s.absence_anomaly || s.activity_anomaly)
+                        ? 'bg-amber-50 dark:bg-amber-900/30 border-amber-300 dark:border-amber-700'
+                        : 'bg-slate-50 dark:bg-slate-800/40'">
+          <div class="flex items-center justify-between gap-2">
+            <p class="font-medium" x-text="s.pet_name"></p>
+            <span x-show="s.absence_anomaly"
+                  class="text-[10px] rounded px-1.5 py-0.5 bg-rose-100 dark:bg-rose-900 text-rose-800 dark:text-rose-100"
+                  x-text="labels.absence_badge"></span>
+            <span x-show="!s.absence_anomaly && s.activity_anomaly"
+                  class="text-[10px] rounded px-1.5 py-0.5 bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-100"
+                  x-text="labels.activity_badge"></span>
+          </div>
+          <p class="mt-1 text-xs text-slate-600 dark:text-slate-400"
+             x-text="lastSeenLabel(s)"></p>
+          <p class="text-xs text-slate-500 dark:text-slate-400"
+             x-text="`${labels.health_today} ${s.today_sightings} · ${labels.health_baseline} ${s.baseline_mean}`"></p>
+        </div>
+      </template>
+    </div>
+
+    <!-- Litter box card (Pro) -->
+    <div x-show="health.litter.length > 0" x-cloak class="mt-5">
+      <div class="flex items-center gap-2 mb-2">
+        <h3 class="text-sm font-semibold">{{ t('PETS_HEALTH_LITTER_HEADING') }}</h3>
+        <span class="text-[10px] uppercase tracking-wider rounded bg-brand-100 dark:bg-brand-900 text-brand-800 dark:text-brand-100 px-1.5 py-0.5"
+              x-text="labels.pro_badge"></span>
+      </div>
+      <ul class="space-y-1 text-sm">
+        <template x-for="l in health.litter" :key="l.pet_id">
+          <li class="flex items-center justify-between gap-3 rounded-lg px-3 py-2"
+              :class="(l.frequent || l.phantom_run)
+                          ? 'bg-rose-50 dark:bg-rose-900/30'
+                          : 'bg-slate-50 dark:bg-slate-800/40'">
+            <span class="font-medium" x-text="l.pet_name"></span>
+            <span class="text-xs text-slate-500 dark:text-slate-400"
+                  x-text="`${l.visits_24h} ${labels.health_visits} (${labels.health_threshold} ${l.threshold})`"></span>
+            <span x-show="l.frequent"
+                  class="text-[10px] rounded px-1.5 py-0.5 bg-rose-200 dark:bg-rose-800 text-rose-900 dark:text-rose-100">
+              {{ t('PETS_HEALTH_LITTER_FREQUENT') }}
+            </span>
+            <span x-show="l.phantom_run"
+                  class="text-[10px] rounded px-1.5 py-0.5 bg-rose-200 dark:bg-rose-800 text-rose-900 dark:text-rose-100">
+              {{ t('PETS_HEALTH_LITTER_PHANTOM') }}
+            </span>
+          </li>
+        </template>
+      </ul>
+    </div>
+
+    <!-- Possible scuffles (Pro) -->
+    <div x-show="health.fight_clusters.length > 0" x-cloak class="mt-5">
+      <div class="flex items-center gap-2 mb-2">
+        <h3 class="text-sm font-semibold">{{ t('PETS_HEALTH_FIGHT_HEADING') }}</h3>
+        <span class="text-[10px] uppercase tracking-wider rounded bg-brand-100 dark:bg-brand-900 text-brand-800 dark:text-brand-100 px-1.5 py-0.5"
+              x-text="labels.pro_badge"></span>
+      </div>
+      <p class="text-xs text-slate-500 dark:text-slate-400 mb-2">{{ t('PETS_HEALTH_FIGHT_HELP') }}</p>
+      <ul class="space-y-1 text-sm">
+        <template x-for="c in health.fight_clusters" :key="c.camera + c.pet_a_id + c.pet_b_id + c.started_at">
+          <li class="rounded-lg bg-amber-50 dark:bg-amber-900/30 px-3 py-2 text-xs"
+              x-text="fightLine(c)"></li>
+        </template>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Pet diary -->
+  <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5 mb-6"
+       x-show="pets.length > 0" x-cloak>
+    <div class="flex items-center justify-between gap-2">
+      <div>
+        <h2 class="text-base font-semibold tracking-tight">{{ t('PETS_DIARY_HEADING') }}</h2>
+        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('PETS_DIARY_HELP') }}</p>
+      </div>
+      <span x-show="diary.configured && diary.backend === 'openai'"
+            class="text-[10px] rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 px-2 py-0.5">
+        {{ t('PETS_DIARY_BACKEND_OPENAI') }}
+      </span>
+      <span x-show="diary.configured && diary.backend === 'pro_relay'"
+            class="text-[10px] rounded bg-brand-100 dark:bg-brand-900 text-brand-800 dark:text-brand-100 px-2 py-0.5">
+        {{ t('PETS_DIARY_BACKEND_PRO') }}
+      </span>
+    </div>
+    <p x-show="!diary.configured" x-cloak
+       class="mt-3 rounded-lg bg-amber-50 dark:bg-amber-900/30 text-amber-800 dark:text-amber-100 text-sm p-3">
+      {{ t('PETS_DIARY_NOT_CONFIGURED') }}
+    </p>
+    <p x-show="diary.configured && diary.diaries.length === 0" x-cloak
+       class="mt-3 text-sm text-slate-500 dark:text-slate-400">
+      {{ t('PETS_DIARY_NO_ENTRIES') }}
+    </p>
+    <ul class="mt-3 space-y-3" x-show="diary.diaries.length > 0">
+      <template x-for="d in diary.diaries.slice(0, 6)" :key="d.pet_id + d.date">
+        <li class="rounded-lg bg-slate-50 dark:bg-slate-800/40 p-3">
+          <div class="flex items-center justify-between gap-2">
+            <p class="text-sm font-semibold" x-text="d.pet_name"></p>
+            <span class="text-xs text-slate-500 dark:text-slate-400" x-text="d.date"></span>
+          </div>
+          <p class="mt-1 text-sm text-slate-700 dark:text-slate-200 whitespace-pre-line" x-text="d.text"></p>
+        </li>
+      </template>
+    </ul>
+    <div x-show="pets.length > 0" class="mt-3 flex flex-wrap gap-2">
+      <template x-for="p in pets" :key="'gen-' + p.pet_id">
+        <button @click="generateDiary(p.pet_id)"
+                :disabled="!diary.configured || diaryGenerating[p.pet_id]"
+                class="text-xs rounded-md border border-slate-300 dark:border-slate-600 px-2.5 py-1 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50">
+          <span x-show="!diaryGenerating[p.pet_id]"
+                x-text="`${labels.diary_refresh}: ${p.name}`"></span>
+          <span x-show="diaryGenerating[p.pet_id]"
+                x-text="labels.saving"></span>
+        </button>
+      </template>
+    </div>
+  </div>
+
+  <!-- Upgrade prompt — shows whenever a license isn't configured, so
+       both OSS users (no Pro modules) and Pro users who haven't pasted
+       their license yet see it. Hidden once 0 pets exist (pre-onboarding
+       the prompt is just noise) and once the user has paid. -->
+  <div x-show="pets.length > 0 && !proBackfill.licensed"
+       x-cloak
+       class="rounded-2xl bg-gradient-to-br from-brand-50 via-amber-50 to-rose-50 dark:from-brand-900/40 dark:via-amber-900/30 dark:to-rose-900/30 border border-brand-200 dark:border-brand-700 p-5 mb-6">
+    <div class="flex items-start gap-3 flex-wrap">
+      <div class="text-3xl shrink-0">✨</div>
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center gap-2">
+          <h2 class="text-base font-semibold tracking-tight">{{ t('PETS_UPGRADE_HEADING') }}</h2>
+          <span class="text-[10px] uppercase tracking-wider rounded bg-brand-500 text-white px-1.5 py-0.5">Pro</span>
+        </div>
+        <p class="text-sm text-slate-700 dark:text-slate-200 mt-1">{{ t('PETS_UPGRADE_BODY') }}</p>
+        <ul class="mt-2 text-sm text-slate-700 dark:text-slate-200 space-y-1 list-disc pl-5">
+          <li>{{ t('PETS_UPGRADE_BULLET_DIARY') }}</li>
+          <li>{{ t('PETS_UPGRADE_BULLET_HEALTH') }}</li>
+          <li>{{ t('PETS_UPGRADE_BULLET_BACKFILL') }}</li>
+          <li>{{ t('PETS_UPGRADE_BULLET_REID') }}</li>
+        </ul>
+      </div>
+      <div class="flex flex-col gap-2 shrink-0">
+        <a href="https://pawcorder.app/#pro" target="_blank" rel="noopener"
+           class="inline-flex items-center rounded-md bg-brand-500 hover:bg-brand-600 text-white px-3 py-2 text-sm font-medium">
+          {{ t('PETS_UPGRADE_LEARN_MORE') }} →
+        </a>
+        <a href="/system#ai-tokens"
+           class="text-xs text-slate-600 dark:text-slate-300 hover:underline text-center">
+          {{ t('PETS_UPGRADE_HAS_LICENSE') }}
+        </a>
+      </div>
     </div>
   </div>
 
@@ -247,6 +435,10 @@
       moments: [],
       backfill: { running: false, total_events: 0, processed: 0, matched: 0, fraction: 0 },
       _backfillPoll: null,
+      health: { snapshots: [], litter: [], fight_clusters: [] },
+      diary: { configured: false, backend: null, diaries: [] },
+      diaryGenerating: {},
+      proBackfill: { available: false, licensed: false, anomalies_marked: 0, highlights: [] },
       setupBusy: false,
       modal: { open: false, mode: 'new', original: null },
       photoModal: { open: false, pet: null },
@@ -257,9 +449,27 @@
       uploadProgress: '',
       uploadError: '',
       labels: {
-        backfill_start:   {{ t('PETS_BACKFILL_START') | tojson }},
-        backfill_running: {{ t('PETS_BACKFILL_RUNNING') | tojson }},
-        backfill_matched: {{ t('PETS_BACKFILL_MATCHED') | tojson }},
+        backfill_start:     {{ t('PETS_BACKFILL_START') | tojson }},
+        backfill_start_pro: {{ t('PETS_BACKFILL_START_PRO') | tojson }},
+        backfill_pro_badge: {{ t('PETS_BACKFILL_PRO_BADGE') | tojson }},
+        backfill_running:   {{ t('PETS_BACKFILL_RUNNING') | tojson }},
+        backfill_matched:   {{ t('PETS_BACKFILL_MATCHED') | tojson }},
+        backfill_anomalies: {{ t('PETS_BACKFILL_ANOMALIES') | tojson }},
+        anomaly_low_day:    {{ t('PETS_BACKFILL_LOW_DAY') | tojson }},
+        anomaly_high_day:   {{ t('PETS_BACKFILL_HIGH_DAY') | tojson }},
+        anomaly_unusual:    {{ t('PETS_BACKFILL_UNUSUAL_HOUR') | tojson }},
+        absence_badge:      {{ t('PETS_HEALTH_ABSENCE_BADGE') | tojson }},
+        activity_badge:     {{ t('PETS_HEALTH_ACTIVITY_BADGE') | tojson }},
+        never_seen:         {{ t('PETS_HEALTH_NEVER_SEEN') | tojson }},
+        hours_ago:          {{ t('PETS_HEALTH_HOURS_AGO') | tojson }},
+        health_today:       {{ t('PETS_HEALTH_TODAY') | tojson }},
+        health_baseline:    {{ t('PETS_HEALTH_BASELINE') | tojson }},
+        health_visits:      {{ t('PETS_HEALTH_VISITS_24H') | tojson }},
+        health_threshold:   {{ t('PETS_HEALTH_THRESHOLD') | tojson }},
+        fight_line:         {{ t('PETS_HEALTH_FIGHT_LINE') | tojson }},
+        pro_badge:          {{ t('PETS_HEALTH_PRO_BADGE') | tojson }},
+        pro_hint:           {{ t('PETS_HEALTH_PRO_HINT') | tojson }},
+        diary_refresh:      {{ t('PETS_DIARY_REFRESH') | tojson }},
         title_new:     {{ t('PETS_TITLE_NEW') | tojson }},
         title_edit:    {{ t('PETS_TITLE_EDIT') | tojson }},
         save:          {{ t('SAVE') | tojson }},
@@ -282,6 +492,56 @@
           const data = await api('/api/pets/today?limit=10');
           this.moments = data.moments || [];
         } catch (e) { /* recognition not set up — silent */ }
+        // Health, diary, and Pro-availability checks fail silently when
+        // the route isn't installed (OSS build, Pro module absent, etc.)
+        // — the page just hides the corresponding section.
+        try {
+          const h = await api('/api/pets/health');
+          this.health = {
+            snapshots: h.snapshots || [],
+            litter: h.litter || [],
+            fight_clusters: h.fight_clusters || [],
+          };
+        } catch (e) { /* feature gated off — silent */ }
+        try {
+          this.diary = await api('/api/pets/diary?limit=12');
+        } catch (e) { /* unauth or feature off — silent */ }
+        try {
+          this.proBackfill = await api('/api/pets/backfill/pro/progress');
+        } catch (e) { /* OSS build — silent */ }
+      },
+      lastSeenLabel(s) {
+        if (s.last_seen == null) return this.labels.never_seen;
+        const h = Math.max(0, Math.round(s.hours_since_seen || 0));
+        return this.labels.hours_ago.replace('{hours}', h);
+      },
+      fightLine(c) {
+        return this.labels.fight_line
+          .replace('{a}', c.pet_a_name)
+          .replace('{b}', c.pet_b_name)
+          .replace('{camera}', c.camera)
+          .replace('{n}', c.event_count);
+      },
+      anomalyKindLabel(kind) {
+        if (kind === 'low_activity_day')  return this.labels.anomaly_low_day;
+        if (kind === 'high_activity_day') return this.labels.anomaly_high_day;
+        return this.labels.anomaly_unusual;
+      },
+      async generateDiary(petId) {
+        if (!this.diary.configured) return;
+        this.diaryGenerating = { ...this.diaryGenerating, [petId]: true };
+        try {
+          const fd = new FormData(); fd.append('pet_id', petId);
+          const r = await fetch('/api/pets/diary/generate',
+                                { method: 'POST', body: fd,
+                                  headers: { 'X-Requested-With': 'pawcorder' } });
+          if (!r.ok) throw new Error(await r.text());
+          // Refresh just the diary so the new entry appears immediately.
+          this.diary = await api('/api/pets/diary?limit=12');
+        } catch (e) { toast(e.message, 'error'); }
+        finally {
+          this.diaryGenerating = { ...this.diaryGenerating, [petId]: false };
+        }
       },
       formatHHMM(ts) {
         if (!ts) return '';
@@ -289,8 +549,14 @@
         return d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0');
       },
       async runBackfill() {
+        // Pro: 30-day window, hits the Pro-only route which also runs
+        // the anomaly highlighter on completion. OSS: stays on 7 days.
         try {
-          await api('/api/pets/backfill', { method: 'POST', body: { hours: 168 } });
+          if (this.proBackfill.available) {
+            await api('/api/pets/backfill/pro', { method: 'POST', body: { hours: 720 } });
+          } else {
+            await api('/api/pets/backfill', { method: 'POST', body: { hours: 168 } });
+          }
           this._pollBackfill();
         } catch (e) { toast(e.message, 'error'); }
       },
@@ -298,9 +564,16 @@
         if (this._backfillPoll) clearInterval(this._backfillPoll);
         this._backfillPoll = setInterval(async () => {
           try {
+            // Always poll the OSS progress endpoint — it tracks the
+            // shared lock both runs share. The Pro highlights load on
+            // completion via /api/pets/backfill/pro/progress.
             this.backfill = await api('/api/pets/backfill/progress');
             if (!this.backfill.running) {
               clearInterval(this._backfillPoll); this._backfillPoll = null;
+              if (this.proBackfill.available) {
+                try { this.proBackfill = await api('/api/pets/backfill/pro/progress'); }
+                catch (e) { /* keep old highlights */ }
+              }
               await this.refresh();  // pull fresh top-moments + counts
             }
           } catch (e) {

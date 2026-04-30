@@ -209,6 +209,105 @@ cloud_module._run_rclone = _mock_run_rclone  # type: ignore[assignment]
 cloud_module.save_remote("pawcorder", {"type": "drive", "scope": "drive", "token": "demo-token"})
 
 
+# ---- demo seed: pets, sightings, diaries, anomaly highlights ---------
+#
+# Without seeded data the /pets page and the new health/litter/fight
+# widgets all show empty states (their own sections hide). For a UI
+# preview we want the user to immediately see what the production
+# system surfaces — so we drop in two pets, ~80 sightings spread across
+# the last 36h with intentional anomaly patterns, and a recent diary
+# entry per pet. None of this touches recognition / Frigate paths; it
+# just writes the storage formats those modules read.
+
+def _seed_demo_data() -> None:
+    import time
+    from app import pets_store, recognition, pet_diary
+
+    store = pets_store.PetStore()
+    if not store.load():
+        # Two cats — the multi-pet heuristic prior + fight detector
+        # both need ≥2 pets to do anything visible.
+        store.create(name="Mochi", species="cat",
+                      notes="Black short-hair, age 6.")
+        store.create(name="Maru",  species="cat",
+                      notes="Tabby, age 3.")
+
+    # Sentinel marks "we've seeded" without depending on file size —
+    # avoids re-seeding on top of a half-written demo log from a crash.
+    sentinel = recognition.SIGHTINGS_LOG.parent / ".demo-seeded"
+    if sentinel.exists():
+        return
+
+    now = time.time()
+    eid = 0
+
+    def push(*, pet_id: str, pet_name: str, camera: str, ts: float,
+             confidence: str = "high", score: float = 0.91):
+        nonlocal eid
+        eid += 1
+        # Route through append_sighting so the on-disk format tracks
+        # whatever schema recognition currently writes — demo can't
+        # silently drift if we add fields later.
+        recognition.append_sighting(recognition.Sighting(
+            event_id=f"demo-{eid}", camera=camera, label="cat",
+            pet_id=pet_id, pet_name=pet_name,
+            score=score, confidence=confidence,
+            start_time=ts, end_time=ts + 6,
+            bbox=(120.0 + (eid % 80), 200.0, 180.0, 160.0),
+        ))
+
+    for d_off in (2, 1, 0):
+        for h in (2, 3, 4, 5, 6):
+            ts = now - d_off * 86400 - (24 - h) * 3600
+            push(pet_id="mochi", pet_name="Mochi",
+                 camera="bedroom" if h % 2 else "kitchen", ts=ts)
+
+    for d_off in (2, 1, 0):
+        for h in (8, 11, 14, 17, 20):
+            ts = now - d_off * 86400 - (24 - h) * 3600
+            push(pet_id="maru", pet_name="Maru",
+                 camera="kitchen" if h % 2 else "living_room", ts=ts)
+
+    # Triggers the litter card.
+    for i in range(15):
+        push(pet_id="mochi", pet_name="Mochi", camera="litter",
+             ts=now - i * 600)
+    # Phantom-run cluster: 5 visits, all <90s apart, in the last hour.
+    base = now - 1800
+    for i in range(5):
+        push(pet_id="mochi", pet_name="Mochi", camera="litter",
+             ts=base + i * 50)
+
+    # Triggers the fight detector (≥4 events, two pets, <60s window).
+    base = now - 90
+    for i in range(6):
+        push(pet_id="mochi" if i % 2 == 0 else "maru",
+             pet_name="Mochi" if i % 2 == 0 else "Maru",
+             camera="living_room", ts=base + i * 8)
+
+    # Seed one diary entry per pet so the Pet diary section is non-empty
+    # in demo even without a real OpenAI key.
+    today = time.strftime("%Y-%m-%d", time.localtime(now))
+    pet_diary.append_diary(pet_diary.Diary(
+        pet_id="mochi", pet_name="Mochi", date=today, lang="zh-TW",
+        text="今天早上四點還是巡了一圈廚房，午後就窩在臥室睡到飽。砂盆好像跑得有點勤……",
+        backend="pro_relay", generated_at=now,
+    ))
+    pet_diary.append_diary(pet_diary.Diary(
+        pet_id="maru", pet_name="Maru", date=today, lang="zh-TW",
+        text="客廳的午後陽光最好，跟 Mochi 又玩了一陣抓撓比賽，晚餐少吃了半碗。",
+        backend="pro_relay", generated_at=now,
+    ))
+
+    # Sentinel last — a crash mid-seed leaves the file absent so the
+    # next demo run re-seeds rather than seeing a half-populated state.
+    sentinel.parent.mkdir(parents=True, exist_ok=True)
+    sentinel.write_text("seeded\n", encoding="utf-8")
+
+
+_seed_demo_data()
+
+
 def serve() -> None:
     import uvicorn
 

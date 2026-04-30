@@ -214,3 +214,173 @@ def test_identify_event_writes_log_and_returns_match(data_dir, monkeypatch):
     assert out.pet_id == "mochi"
     rows = recognition.read_sightings()
     assert any(r["event_id"] == "evt-42" for r in rows)
+
+
+# ---- multi-pet heuristic priors ---------------------------------------
+
+def _seed_history(rows: list[dict]) -> None:
+    """Write a list of confident-sighting rows into the log so the
+    prior-builder has something to learn from."""
+    from app import recognition
+    recognition.SIGHTINGS_LOG.parent.mkdir(parents=True, exist_ok=True)
+    with recognition.SIGHTINGS_LOG.open("w", encoding="utf-8") as f:
+        for r in rows:
+            f.write(json.dumps(r) + "\n")
+    # Reset module cache so the next call rebuilds fresh.
+    recognition._prior_cache.by_pet = None  # type: ignore[attr-defined]
+    recognition._prior_cache.built_at = 0.0  # type: ignore[attr-defined]
+
+
+def _row(pet_id: str, *, hour: int, camera: str, ts: float = 1_700_000_000):
+    """A confident-sighting row at the given hour-of-day."""
+    import time
+    base = time.mktime(time.strptime("2024-11-14 00:00", "%Y-%m-%d %H:%M"))
+    return {
+        "event_id": f"evt-{pet_id}-{hour}-{camera}",
+        "camera": camera, "label": "cat",
+        "pet_id": pet_id, "pet_name": pet_id.title(),
+        "score": 0.92, "confidence": "high",
+        "start_time": base + hour * 3600, "end_time": base + hour * 3600 + 5,
+    }
+
+
+def test_priors_zero_when_no_history(data_dir):
+    """Empty sightings log → priors return 0 for every pet → boosted = cosine."""
+    from app import recognition
+    _seed_history([])
+    cosines = [("mochi", "Mochi", 0.80), ("maru", "Maru", 0.78)]
+    out = recognition._apply_priors(cosines, camera="front", hour=8, now=1_700_000_000)
+    assert out[0][0] == "mochi"  # mochi still wins on cosine
+    # Boosts all zero.
+    for _, _, cos, boosted in out:
+        assert cos == boosted
+
+
+def test_time_prior_boosts_pet_seen_at_hour(data_dir):
+    """Mochi has 3am history, Maru doesn't → at 3am, Mochi gets a boost."""
+    from app import recognition
+    rows = [_row("mochi", hour=3, camera="front") for _ in range(20)]
+    rows += [_row("maru", hour=14, camera="front") for _ in range(20)]
+    _seed_history(rows)
+
+    priors = recognition._build_priors(now=1_700_000_000)
+    p_mochi_3am = recognition._time_prior("mochi", 3, priors)
+    p_maru_3am = recognition._time_prior("maru", 3, priors)
+    assert p_mochi_3am > 0
+    assert p_maru_3am < 0
+
+
+def test_priors_can_flip_borderline_match(data_dir):
+    """A borderline cosine tie (0.79 vs 0.80) must let priors flip the
+    winner. Mochi is the bedroom cat; Maru is the kitchen cat. Event on
+    bedroom camera should pick Mochi even when Maru's cosine is slightly
+    higher."""
+    from app import recognition
+    rows = [_row("mochi", hour=2, camera="bedroom") for _ in range(20)]
+    rows += [_row("maru", hour=14, camera="kitchen") for _ in range(20)]
+    _seed_history(rows)
+
+    cosines = [("maru", "Maru", 0.80), ("mochi", "Mochi", 0.79)]
+    out = recognition._apply_priors(cosines, camera="bedroom",
+                                     hour=2, now=1_700_000_000)
+    assert out[0][0] == "mochi"
+
+
+def test_priors_cannot_override_strong_cosine_lead(data_dir):
+    """Even with Mochi's strong priors, Maru with cosine 0.95 vs Mochi's
+    0.50 must still win. PRIOR_TOTAL_CAP is the safety belt."""
+    from app import recognition
+    rows = [_row("mochi", hour=2, camera="bedroom") for _ in range(50)]
+    _seed_history(rows)
+
+    cosines = [("maru", "Maru", 0.95), ("mochi", "Mochi", 0.50)]
+    out = recognition._apply_priors(cosines, camera="bedroom",
+                                     hour=2, now=1_700_000_000)
+    assert out[0][0] == "maru"
+    # Boost on Maru must be ≤ cap.
+    boost_maru = next(b - c for pid, _, c, b in out if pid == "maru")
+    assert abs(boost_maru) <= recognition.PRIOR_TOTAL_CAP + 1e-6
+
+
+def test_inertia_prior_boosts_recent_same_camera(data_dir):
+    """A pet seen on the same camera 30 seconds ago gets a +inertia boost
+    on the next match. Across cameras → no boost."""
+    from app import recognition
+    recent = [{
+        "event_id": "recent", "camera": "front", "label": "cat",
+        "pet_id": "mochi", "pet_name": "Mochi", "score": 0.91,
+        "confidence": "high", "start_time": 1000.0, "end_time": 1005.0,
+    }]
+    boost_same = recognition._inertia_prior("mochi", "front", recent_rows=recent)
+    boost_other_cam = recognition._inertia_prior("mochi", "back", recent_rows=recent)
+    boost_other_pet = recognition._inertia_prior("maru", "front", recent_rows=recent)
+    assert boost_same == recognition.PRIOR_WEIGHT_INERTIA
+    assert boost_other_cam == 0.0
+    assert boost_other_pet == 0.0
+
+
+def test_match_with_priors_falls_back_for_single_pet(data_dir, monkeypatch):
+    """If only one pet exists, match_with_priors must short-circuit to
+    the vanilla matcher (no priors to apply, would only add noise)."""
+    from app import embeddings, recognition
+
+    ref = [1.0] + [0.0] * (embeddings.EMBEDDING_DIM - 1)
+    monkeypatch.setattr(embeddings, "get_extractor", lambda: _fake_extractor(ref))
+    pets = [_ref_pet("Mochi", ref)]
+    out = recognition.match_with_priors(b"x", pets, camera="front")
+    assert out.pet_id == "mochi"
+    # Single-pet path doesn't populate the diagnostic fields.
+    assert out.cosine_only is None
+
+
+def test_extract_bbox_handles_frigate_0_13_shape(data_dir):
+    from app import recognition
+    event = {"id": "x", "data": {"box": [10, 20, 30, 40]}}
+    assert recognition.extract_bbox_from_event(event) == (10.0, 20.0, 30.0, 40.0)
+
+
+def test_extract_bbox_falls_back_to_top_level_box(data_dir):
+    from app import recognition
+    event = {"id": "x", "box": [1, 2, 3, 4]}
+    assert recognition.extract_bbox_from_event(event) == (1.0, 2.0, 3.0, 4.0)
+
+
+def test_extract_bbox_returns_none_for_malformed_or_missing(data_dir):
+    from app import recognition
+    assert recognition.extract_bbox_from_event({}) is None
+    assert recognition.extract_bbox_from_event({"data": {"box": [1, 2]}}) is None
+    assert recognition.extract_bbox_from_event({"box": "not a list"}) is None
+    assert recognition.extract_bbox_from_event({"box": [1, 2, "x", 4]}) is None
+
+
+def test_extract_bbox_falls_back_to_region_when_box_absent(data_dir):
+    """In-progress events sometimes lack `data.box` but have `data.region`
+    (the broader bounding box used for inference). Use it as a last-resort
+    so we still get *some* bbox-aware prior signal."""
+    from app import recognition
+    event = {"id": "x", "data": {"region": [50, 60, 120, 140]}}
+    assert recognition.extract_bbox_from_event(event) == (50.0, 60.0, 120.0, 140.0)
+    # And `box` still wins when both are present.
+    event2 = {"id": "y", "data": {"box": [1, 2, 3, 4],
+                                    "region": [50, 60, 120, 140]}}
+    assert recognition.extract_bbox_from_event(event2) == (1.0, 2.0, 3.0, 4.0)
+
+
+def test_match_with_priors_records_diagnostics(data_dir, monkeypatch):
+    """Multi-pet path populates cosine_only and prior_boost so the UI
+    can show "matched on cosine + priors" for transparency."""
+    from app import embeddings, recognition
+
+    a_ref = [1.0, 0.0] + [0.0] * (embeddings.EMBEDDING_DIM - 2)
+    b_ref = [0.0, 1.0] + [0.0] * (embeddings.EMBEDDING_DIM - 2)
+    query = [0.0, 0.95, 0.31] + [0.0] * (embeddings.EMBEDDING_DIM - 3)
+    monkeypatch.setattr(embeddings, "get_extractor", lambda: _fake_extractor(query))
+    pets = [_ref_pet("Mochi", a_ref), _ref_pet("Maru", b_ref)]
+    _seed_history([])  # no history → priors are 0
+
+    out = recognition.match_with_priors(b"x", pets, camera="front")
+    assert out.pet_id == "maru"
+    assert out.cosine_only is not None
+    assert out.prior_boost is not None
+    # No history → boost should be ≈ 0.
+    assert abs(out.prior_boost) < 1e-6

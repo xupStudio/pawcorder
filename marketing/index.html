@@ -458,23 +458,56 @@
 
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
       <div class="rounded-xl bg-white border border-slate-200 p-5">
-        <p class="text-2xl">📔</p>
+        <div class="flex items-center justify-between">
+          <p class="text-2xl">📔</p>
+          <span class="text-[10px] uppercase tracking-wider rounded bg-emerald-100 text-emerald-800 px-1.5 py-0.5">已上線</span>
+        </div>
         <h3 class="mt-2 font-semibold">LLM 寵物日記</h3>
-        <p class="text-sm text-slate-600 mt-1">「Mochi 今天比平常黏人 30%」— LLM 寫得像真人筆記。<strong>Pro 包 OpenAI 帳單</strong>，自架版自帶 API key。</p>
+        <p class="text-sm text-slate-600 mt-1">每天 22:00 自動由寵物視角寫一則小日記。<strong>Pro 包 OpenAI 帳單</strong>，免費版自帶 OpenAI API key 也能用。</p>
       </div>
       <div class="rounded-xl bg-white border border-slate-200 p-5">
-        <p class="text-2xl">🌐</p>
+        <div class="flex items-center justify-between">
+          <p class="text-2xl">🚨</p>
+          <span class="text-[10px] uppercase tracking-wider rounded bg-emerald-100 text-emerald-800 px-1.5 py-0.5">已上線</span>
+        </div>
+        <h3 class="mt-2 font-semibold">健康偵測組合</h3>
+        <p class="text-sm text-slate-600 mt-1">頻繁進貓砂（UTI 早期警訊）、貓咪打架／激烈互動、活動量驟減全自動 Telegram 通知，免費版只有「太久沒看到」一種。</p>
+      </div>
+      <div class="rounded-xl bg-white border border-slate-200 p-5">
+        <div class="flex items-center justify-between">
+          <p class="text-2xl">📅</p>
+          <span class="text-[10px] uppercase tracking-wider rounded bg-emerald-100 text-emerald-800 px-1.5 py-0.5">已上線</span>
+        </div>
+        <h3 class="mt-2 font-semibold">30 天回溯 + 異常事件主動標</h3>
+        <p class="text-sm text-slate-600 mt-1">免費版重新辨識過去 7 天，Pro 拉到 30 天，跑完後系統自己幫你圈出「活動異常日」「不尋常時段」，免你手動找。</p>
+      </div>
+      <div class="rounded-xl bg-white border border-slate-200 p-5">
+        <div class="flex items-center justify-between">
+          <p class="text-2xl">🐾</p>
+          <span class="text-[10px] uppercase tracking-wider rounded bg-emerald-100 text-emerald-800 px-1.5 py-0.5">已上線</span>
+        </div>
+        <h3 class="mt-2 font-semibold">多寵物啟發式辨識</h3>
+        <p class="text-sm text-slate-600 mt-1">兩隻黑貓也分得清楚：用「平常活動時段／鏡頭／體型／identity 慣性」幫 cosine 相似度加權，借鏡 reID 在實務上常用的 priors。</p>
+      </div>
+      <div class="rounded-xl bg-white border border-slate-200 p-5">
+        <div class="flex items-center justify-between">
+          <p class="text-2xl">🌐</p>
+          <span class="text-[10px] uppercase tracking-wider rounded bg-amber-100 text-amber-800 px-1.5 py-0.5">規劃中</span>
+        </div>
         <h3 class="mt-2 font-semibold">pawcorder Connect 遠端看貓</h3>
-        <p class="text-sm text-slate-600 mt-1">註冊送你 <code>mochi.pawcorder.io</code> 子網域 + TLS 中繼。手機不用設 Tailscale、不用 DDNS，掃 QR 直接看。</p>
+        <p class="text-sm text-slate-600 mt-1">送你 <code>mochi.pawcorder.io</code> 子網域 + TLS 中繼，免設 Tailscale、免 DDNS。目前免費版仍可走 Tailscale 自架。</p>
       </div>
       <div class="rounded-xl bg-white border border-slate-200 p-5">
-        <p class="text-2xl">🩺</p>
-        <h3 class="mt-2 font-semibold">健康警示 + 多寵物精準辨識</h3>
-        <p class="text-sm text-slate-600 mt-1">連續沒進食、活動量驟減自動推播；雲端 GPU 為你家貓 fine-tune 專屬模型，兩隻黑貓也分得清。</p>
+        <div class="flex items-center justify-between">
+          <p class="text-2xl">🎯</p>
+          <span class="text-[10px] uppercase tracking-wider rounded bg-amber-100 text-amber-800 px-1.5 py-0.5">規劃中</span>
+        </div>
+        <h3 class="mt-2 font-semibold">雲端 fine-tune 專屬模型</h3>
+        <p class="text-sm text-slate-600 mt-1">上傳你家貓的影片，雲端 GPU 訓練專屬模型，識別準確率再往上推一階。目前是熱門需求調研中。</p>
       </div>
     </div>
 
-    <p class="text-xs text-center text-slate-500 mb-6">含智慧通知摘要／月度健檢／24h bug 修復承諾。雲備份 tier 後續推出。技術細節在 <a href="https://github.com/xupStudio/pawcorder" class="underline">GitHub</a>。</p>
+    <p class="text-xs text-center text-slate-500 mb-6">所有「已上線」功能都已寫好程式碼，等候補名單滿後正式收費上線。免費版永遠夠用，Pro 只是把伺服器費 + LLM 費 + bug 修復都丟給我們。技術細節在 <a href="https://github.com/xupStudio/pawcorder" class="underline">GitHub</a>。</p>
 
     <!-- Waitlist form -->
     <div id="proWaitlist" class="rounded-2xl bg-white border border-slate-200 p-6 max-w-xl mx-auto">

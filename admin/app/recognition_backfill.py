@@ -162,22 +162,37 @@ async def run_backfill(*, since_hours: float = 168.0,
                 if not snapshot:
                     _progress.processed += 1
                     continue
-                match = recognition.match_against_pets(snapshot, pets)
+                camera = str(event.get("camera") or "unknown")
+                bbox = recognition.extract_bbox_from_event(event)
+                # Multi-pet households get the heuristic-prior matcher
+                # so backfilled rows match the live poller's behavior.
+                if len(pets) >= 2:
+                    match = recognition.match_with_priors(
+                        snapshot, pets, camera=camera,
+                        now=float(event.get("start_time") or 0) or None,
+                        bbox_area=(bbox[2] * bbox[3]) if bbox else None,
+                    )
+                else:
+                    match = recognition.match_against_pets(snapshot, pets)
 
                 if event_id in existing_ids:
                     # Update in-place when our match adds info.
                     if match.pet_id:
-                        rewrites[event_id] = {
+                        patch = {
                             "pet_id": match.pet_id,
                             "pet_name": match.pet_name,
                             "score": round(match.score, 4),
                             "confidence": match.confidence,
                         }
+                        if bbox is not None:
+                            patch["bbox"] = list(bbox)
+                        rewrites[event_id] = patch
                 else:
-                    # Append fresh sighting.
+                    # Append fresh sighting — use the same path as the
+                    # live poller so log shape stays uniform.
                     recognition.append_sighting(recognition.Sighting(
                         event_id=event_id,
-                        camera=str(event.get("camera") or "unknown"),
+                        camera=camera,
                         label=str(event.get("label") or "?"),
                         pet_id=match.pet_id,
                         pet_name=match.pet_name,
@@ -185,6 +200,7 @@ async def run_backfill(*, since_hours: float = 168.0,
                         confidence=match.confidence,
                         start_time=float(event.get("start_time") or 0),
                         end_time=float(event.get("end_time") or 0),
+                        bbox=bbox,
                     ))
 
                 if match.pet_id:

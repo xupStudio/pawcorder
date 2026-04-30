@@ -1,0 +1,97 @@
+{% extends "_layout.html" %}
+{% block title %}{{ t('TUTORIAL_HEADING') }} · pawcorder{% endblock %}
+{% block main %}
+<div class="max-w-3xl mx-auto" x-data="tutorial()" x-init="init()">
+  <div class="flex items-center justify-between mb-4">
+    <div>
+      <h1 class="text-2xl font-semibold tracking-tight">{{ t('TUTORIAL_HEADING') }}</h1>
+      <p class="text-sm text-slate-500 dark:text-slate-400">{{ t('TUTORIAL_SUBTITLE') }}</p>
+    </div>
+    <button type="button" @click="resetAll()"
+            class="text-sm rounded-md border border-slate-300 dark:border-slate-600 px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-800">
+      {{ t('TUTORIAL_RESET') }}
+    </button>
+  </div>
+
+  <div x-show="state" class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5 mb-6">
+    <div class="flex items-center justify-between mb-3">
+      <span class="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400"
+            x-text="progressLabel()"></span>
+      <span x-show="state && state.all_done"
+            class="text-xs rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-100 px-2 py-0.5">
+        {{ t('TUTORIAL_ALL_DONE') }}
+      </span>
+    </div>
+    <div class="h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+      <div class="h-full bg-brand-500 transition-all"
+           :style="`width:${progressPercent()}%`"></div>
+    </div>
+  </div>
+
+  <ol class="space-y-3" x-show="state">
+    <template x-for="(step, idx) in (state?.steps || [])" :key="step.key">
+      <li class="rounded-2xl border p-4 flex items-start gap-3"
+          :class="step.completed
+                    ? 'bg-emerald-50 dark:bg-emerald-900/40 border-emerald-200 dark:border-emerald-800'
+                    : (step.skipped
+                        ? 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 opacity-70'
+                        : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700')">
+        <div class="shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold"
+             :class="step.completed
+                       ? 'bg-emerald-500 text-white'
+                       : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200'">
+          <span x-text="step.completed ? '✓' : (idx + 1)"></span>
+        </div>
+        <div class="flex-1 min-w-0">
+          <p class="font-semibold text-slate-900 dark:text-slate-100" x-text="step.title"></p>
+          <p class="text-sm text-slate-600 dark:text-slate-400" x-text="step.why"></p>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+          <a :href="step.href"
+             class="inline-flex items-center rounded-md bg-slate-900 dark:bg-slate-100 dark:text-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:opacity-90">
+            <span x-show="step.completed">{{ t('TUTORIAL_REVISIT') }}</span>
+            <span x-show="!step.completed">{{ t('TUTORIAL_OPEN') }}</span>
+          </a>
+          <button type="button" x-show="!step.completed && !step.skipped"
+                  @click="skip(step.key)"
+                  class="text-xs text-slate-500 dark:text-slate-400 hover:underline">
+            {{ t('ONBOARDING_SKIP') }}
+          </button>
+          <span x-show="step.skipped"
+                class="text-xs text-slate-400 dark:text-slate-500">{{ t('TUTORIAL_SKIPPED_BADGE') }}</span>
+        </div>
+      </li>
+    </template>
+  </ol>
+</div>
+
+<script>
+function tutorial() {
+  return {
+    state: null,
+    async init() { await this.refresh(); },
+    async refresh() {
+      try { this.state = await api('/api/onboarding'); } catch (_) {}
+    },
+    progressLabel() {
+      if (!this.state) return '';
+      return {{ t('ONBOARDING_PROGRESS') | tojson }}
+        .replace('{done}', this.state.completed_count)
+        .replace('{total}', this.state.total);
+    },
+    progressPercent() {
+      if (!this.state || !this.state.total) return 0;
+      return Math.round((this.state.completed_count / this.state.total) * 100);
+    },
+    async skip(key) {
+      try { await api('/api/onboarding/skip', { method: 'POST', body: { step: key } }); }
+      finally { await this.refresh(); }
+    },
+    async resetAll() {
+      try { await api('/api/onboarding/reset', { method: 'POST', body: {} }); }
+      finally { await this.refresh(); }
+    },
+  };
+}
+</script>
+{% endblock %}

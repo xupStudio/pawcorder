@@ -166,6 +166,7 @@ class FrigateEventPoller:
                     label=label,
                     start_time=float(event.get("start_time") or 0),
                     end_time=float(event.get("end_time") or 0),
+                    bbox=recognition.extract_bbox_from_event(event),
                 )
                 if match.pet_name:
                     marker = "" if match.confidence == "high" else " (?)"

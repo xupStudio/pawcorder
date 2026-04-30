@@ -1,7 +1,7 @@
 {% extends "_layout.html" %}
 {% block title %}{{ t('SYSTEM_TITLE') }} · pawcorder{% endblock %}
 {% block main %}
-<div x-data="systemPage()" x-init="loadHealth(); checkUpdate(); loadPerf(); loadSchedule(); loadKeys(); loadEnergy(); loadAiTokens()" class="max-w-4xl">
+<div x-data="systemPage()" x-init="loadHealth(); checkUpdate(); loadPerf(); loadSchedule(); loadKeys(); loadEnergy(); loadAiTokens(); loadHealthDetectors()" class="max-w-4xl">
   <h1 class="text-2xl font-semibold tracking-tight">{{ t('SYSTEM_TITLE') }}</h1>
   <p class="text-sm text-slate-500 dark:text-slate-400 mb-6">{{ t('SYSTEM_SUBTITLE') }}</p>
 
@@ -32,7 +32,7 @@
           <div class="text-xs text-slate-500 dark:text-slate-400" x-text="health.frigate?.message || '—'"></div>
         </div>
       </li>
-      <template x-for="c in (health.cameras || [])" :key="c.name">
+      <template x-for="c in (healthDetectors.cameras || [])" :key="c.name">
         <li class="flex items-start gap-2">
           <span class="inline-flex h-2 w-2 rounded-full mt-1.5 shrink-0"
                 x-bind:class="c.ok ? 'bg-emerald-500' : 'bg-amber-500'"></span>
@@ -101,6 +101,44 @@
         <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('SYS_OPENAI_KEY_HELP') }}</p>
       </div>
       <button @click="saveAiTokens()"
+              class="rounded-md bg-brand-500 hover:bg-brand-600 text-white px-3 py-2 text-sm font-medium">
+        {{ t('SAVE') }}
+      </button>
+    </div>
+  </div>
+
+  {# Pro health detectors. Dropdown comes from the camera list (so users
+     can't typo a name); empty selection disables the feature. The
+     warning threshold is exposed because vets recommend tightening to
+     ~8/24h for older cats. UI section hides itself entirely on OSS
+     builds where no Pro module is loaded — flagged via `available`. #}
+  <div x-show="healthDetectors.available" x-cloak
+       class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5 mb-6">
+    <div class="flex items-center gap-2">
+      <h2 class="text-base font-semibold tracking-tight">{{ t('SYS_HEALTH_HEADING') }}</h2>
+      <span class="text-[10px] uppercase tracking-wider rounded bg-brand-100 dark:bg-brand-900 text-brand-800 dark:text-brand-100 px-1.5 py-0.5">Pro</span>
+    </div>
+    <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('SYS_HEALTH_HELP') }}</p>
+    <div class="mt-3 space-y-3">
+      <div>
+        <label class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">{{ t('SYS_LITTER_CAMERA_LABEL') }}</label>
+        <select x-model="healthDetectors.litter_box_camera"
+                class="w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm">
+          <option value="">{{ t('SYS_LITTER_CAMERA_OFF') }}</option>
+          <template x-for="c in (healthDetectors.cameras || [])" :key="c">
+            <option :value="c" x-text="c"></option>
+          </template>
+        </select>
+        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('SYS_LITTER_CAMERA_HELP') }}</p>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">{{ t('SYS_LITTER_THRESHOLD_LABEL') }}</label>
+        <input type="number" min="1" max="200" step="1"
+               x-model="healthDetectors.litter_visits_alert_per_24h"
+               class="w-32 rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm" />
+        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('SYS_LITTER_THRESHOLD_HELP') }}</p>
+      </div>
+      <button @click="saveHealthDetectors()"
               class="rounded-md bg-brand-500 hover:bg-brand-600 text-white px-3 py-2 text-sm font-medium">
         {{ t('SAVE') }}
       </button>
@@ -444,6 +482,7 @@
       newPasswordConfirm: '',
       proLicenseKey: '',
       openaiApiKey: '',
+      healthDetectors: { available: false, litter_box_camera: '', litter_visits_alert_per_24h: '12', cameras: [] },
       updated: '',
       health: { overall_ok: true, storage: null, frigate: null, cameras: [] },
       loadingHealth: false,
@@ -513,6 +552,20 @@
           await api('/api/system/ai-tokens', { method: 'POST', body });
           toast({{ t('SAVED') | tojson }}, 'success');
           this.loadAiTokens();
+        } catch (e) { toast(e.message, 'error'); }
+      },
+      async loadHealthDetectors() {
+        try { this.healthDetectors = await api('/api/system/health-detectors'); }
+        catch (e) {}
+      },
+      async saveHealthDetectors() {
+        try {
+          await api('/api/system/health-detectors', { method: 'POST', body: {
+            litter_box_camera: this.healthDetectors.litter_box_camera || '',
+            litter_visits_alert_per_24h: this.healthDetectors.litter_visits_alert_per_24h,
+          }});
+          toast({{ t('SAVED') | tojson }}, 'success');
+          this.loadHealthDetectors();
         } catch (e) { toast(e.message, 'error'); }
       },
       async loadHealth(force = false) {

@@ -39,6 +39,7 @@ from . import (
     nas_mount,
     network_scan,
     perf,
+    pet_diary,
     pets_store,
     platform_detect,
     privacy,
@@ -49,20 +50,34 @@ from . import (
     timelapse,
 )
 
+# Pro modules — present only when a license-paying install drops them in.
+# OSS builds resolve the import to None and gate the feature off.
+try:
+    from .pro import pet_health  # type: ignore[attr-defined]
+except ImportError:  # OSS build — health features unavailable
+    pet_health = None  # type: ignore[assignment]
+
+try:
+    from .pro import recognition_backfill_pro  # type: ignore[attr-defined]
+except ImportError:  # OSS build — 30-day backfill / anomaly highlights unavailable
+    recognition_backfill_pro = None  # type: ignore[assignment]
+
+try:
+    from .pro import litter_monitor  # type: ignore[attr-defined]
+except ImportError:
+    litter_monitor = None  # type: ignore[assignment]
+
+try:
+    from .pro import fight_detector  # type: ignore[attr-defined]
+except ImportError:
+    fight_detector = None  # type: ignore[assignment]
+
 from . import (
     uninstall as uninstall_mod,
     updater,
     users,
     webpush,
 )
-
-# Pet-health monitoring is an optional add-on — drop a `pet_health`
-# module under admin/app/ exposing `monitor.start()`, `monitor.stop()`,
-# and `snapshots_all()` to enable it.
-try:
-    from . import pet_health  # type: ignore[attr-defined]
-except ImportError:
-    pet_health = None  # type: ignore[assignment]
 from .cameras_store import (
     Camera,
     CameraStore,
@@ -93,6 +108,11 @@ async def lifespan(_: FastAPI):
     highlights.scheduler.start()
     if pet_health is not None:
         pet_health.monitor.start()
+    if litter_monitor is not None:
+        litter_monitor.monitor.start()
+    if fight_detector is not None:
+        fight_detector.detector.start()
+    pet_diary.scheduler.start()
     backup_schedule.scheduler.start()
     timelapse.scheduler.start()
     try:
@@ -105,6 +125,11 @@ async def lifespan(_: FastAPI):
         await highlights.scheduler.stop()
         if pet_health is not None:
             await pet_health.monitor.stop()
+        if litter_monitor is not None:
+            await litter_monitor.monitor.stop()
+        if fight_detector is not None:
+            await fight_detector.detector.stop()
+        await pet_diary.scheduler.stop()
         await backup_schedule.scheduler.stop()
         await timelapse.scheduler.stop()
 
@@ -651,7 +676,7 @@ async def api_onboarding(request: Request):
     """
     _require_auth(request)
     cfg = config_store.load_config()
-    pets = pets_store.load()
+    pets = pets_store.PetStore().load()
     privacy_state = privacy.load_state()
     t = i18n.make_translator(i18n.get_lang_from_request(request))
     return onboarding.get_state(cfg, pets, privacy_state, translator=t)
@@ -672,6 +697,26 @@ async def api_onboarding_skip(request: Request, payload: dict):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"ok": True}
+
+
+@app.post("/api/onboarding/reset")
+async def api_onboarding_reset(request: Request):
+    """Wipe the skip set — the dashboard widget reappears with every
+    step pending again. Backs the "Reset tutorial" button on /tutorial."""
+    _require_auth(request)
+    onboarding.reset()
+    return {"ok": True}
+
+
+@app.get("/tutorial", response_class=HTMLResponse)
+async def tutorial_page(request: Request):
+    """Always-accessible tutorial — same checklist as the dashboard
+    widget, but visible even after `all_done` and with a reset button.
+    Useful when a user wants to re-walk the steps after a config wipe,
+    a new family member, or just to remember which features are off."""
+    if not auth.is_authenticated(request):
+        return _redirect_login()
+    return _render("tutorial.html", request)
 
 
 @app.post("/api/scan")
@@ -1036,6 +1081,48 @@ async def api_system_ai_tokens_update(request: Request, payload: dict):
     return {"ok": True}
 
 
+@app.get("/api/system/health-detectors")
+async def api_system_health_detectors(request: Request):
+    """Pro health-detector knobs. Lists configured cameras so the UI
+    can render a dropdown rather than asking the user to type the
+    camera name verbatim."""
+    _require_auth(request)
+    cfg = config_store.load_config()
+    cams = camera_store.load()
+    return {
+        "available": litter_monitor is not None,
+        "litter_box_camera": cfg.litter_box_camera,
+        "litter_visits_alert_per_24h": cfg.litter_visits_alert_per_24h,
+        "cameras": [c.name for c in cams if c.enabled],
+    }
+
+
+@app.post("/api/system/health-detectors")
+async def api_system_health_detectors_update(request: Request, payload: dict):
+    """Persist health-detector config. Empty `litter_box_camera` turns
+    the feature off; an unknown camera name is a 400 (the UI should
+    only POST values from the dropdown)."""
+    _require_auth(request)
+    cfg = config_store.load_config()
+    cams = {c.name for c in camera_store.load()}
+    if "litter_box_camera" in payload:
+        raw = (payload.get("litter_box_camera") or "").strip()
+        if raw and raw not in cams:
+            raise HTTPException(status_code=400, detail=f"unknown camera {raw!r}")
+        cfg.litter_box_camera = raw
+    if "litter_visits_alert_per_24h" in payload:
+        try:
+            n = int(payload.get("litter_visits_alert_per_24h"))
+            if not 1 <= n <= 200:
+                raise ValueError
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400,
+                                detail="litter_visits_alert_per_24h must be an integer 1..200")
+        cfg.litter_visits_alert_per_24h = str(n)
+    config_store.save_config(cfg)
+    return {"ok": True}
+
+
 @app.post("/api/frigate/restart")
 async def api_frigate_restart(request: Request):
     _require_auth(request)
@@ -1180,14 +1267,78 @@ async def welcome_page(request: Request):
 
 @app.get("/api/pets/health")
 async def api_pets_health(request: Request):
-    """Per-pet health snapshots — last seen, today vs baseline, anomaly
-    flags. Returns an empty list if the pet-health module isn't
-    installed (the route stays callable so the /pets page renders, the
-    UI just shows nothing health-related)."""
+    """Per-pet health snapshots: presence (last seen / activity), litter
+    box visits, recent suspicious co-sighting clusters. Each section is
+    individually optional — OSS builds with no Pro modules drop in
+    return all-empty arrays so the /pets page renders without a
+    cascade of feature flags in the template."""
     _require_auth(request)
-    if pet_health is None:
-        return {"snapshots": []}
-    return {"snapshots": [s.to_dict() for s in pet_health.snapshots_all()]}
+    # Read the sightings log once and feed every detector. The widest
+    # window any detector needs is pet_health's BASELINE_DAYS+1 (8d);
+    # narrower detectors filter from that slice in-memory.
+    now = time.time()
+    if pet_health is not None:
+        widest_seconds = (pet_health.BASELINE_DAYS + 1) * 86400
+    else:
+        widest_seconds = 86400
+    rows_widest = recognition.read_sightings(
+        limit=20_000, since=now - widest_seconds,
+    )
+    rows_24h = [r for r in rows_widest
+                if float(r.get("start_time") or 0) >= now - 86400]
+    fight_lookback = (fight_detector.LOOKBACK_SECONDS
+                      if fight_detector is not None else 600)
+    rows_recent = [r for r in rows_24h
+                   if float(r.get("start_time") or 0) >= now - fight_lookback]
+    return {
+        "snapshots": [s.to_dict() for s in pet_health.snapshots_all(now=now, rows=rows_widest)] if pet_health else [],
+        "litter": [s.to_dict() for s in litter_monitor.snapshots_all(now=now, rows=rows_24h)] if litter_monitor else [],
+        "fight_clusters": [c.to_dict() for c in fight_detector._scan_clusters(rows_recent)] if fight_detector else [],
+    }
+
+
+@app.get("/api/pets/diary")
+async def api_pets_diary_list(request: Request, pet_id: str | None = None,
+                               limit: int = 30):
+    """List recent diary entries, optionally filtered to one pet. Returns
+    `{"configured": false}` if neither OpenAI nor Pro license is set —
+    the UI uses this to surface a setup nudge."""
+    _require_auth(request)
+    cfg = config_store.load_config()
+    configured = bool(cfg.openai_api_key or cfg.pawcorder_pro_license_key)
+    return {
+        "configured": configured,
+        "backend": "openai" if cfg.openai_api_key else (
+            "pro_relay" if cfg.pawcorder_pro_license_key else None
+        ),
+        "diaries": pet_diary.read_diaries(pet_id=pet_id, limit=max(1, min(limit, 200))),
+    }
+
+
+@app.post("/api/pets/diary/generate")
+async def api_pets_diary_generate(request: Request, pet_id: str = Form(...)):
+    """Generate a diary on-demand (the daily scheduler runs at 22:00,
+    but the user can hit "refresh" any time). Body: pet_id."""
+    _require_auth(request)
+    pet = pets_store.PetStore().get(pet_id)
+    if pet is None:
+        raise HTTPException(status_code=404, detail="pet_not_found")
+    lang = i18n.get_lang_from_request(request)
+    try:
+        d = await pet_diary.generate_diary(pet, lang=lang)
+    except pet_diary.DiaryNotConfigured:
+        raise HTTPException(status_code=400, detail="diary_not_configured")
+    except RuntimeError as exc:
+        # Don't echo the upstream provider's response body back to the
+        # client — it can include API-key fragments and stack info.
+        # Log it server-side; user just gets a generic backend error.
+        import logging
+        logging.getLogger("pawcorder.main").warning(
+            "pet diary backend failed for %s: %s", pet.pet_id, exc,
+        )
+        raise HTTPException(status_code=502, detail="diary_backend_error")
+    pet_diary.append_diary(d)
+    return d.to_dict()
 
 
 @app.get("/timelapse", response_class=HTMLResponse)
@@ -1787,6 +1938,44 @@ async def api_pets_backfill(request: Request, payload: dict | None = None):
 async def api_pets_backfill_progress(request: Request):
     _require_auth(request)
     return recognition_backfill.current_progress().to_dict()
+
+
+@app.post("/api/pets/backfill/pro")
+async def api_pets_backfill_pro(request: Request, payload: dict | None = None):
+    """Pro-tier backfill: up to 30 days + anomaly highlighting. Returns
+    409 if the OSS backfill is already in flight (they share state).
+    Returns 503 on OSS builds where the Pro module isn't installed."""
+    _require_auth(request)
+    if recognition_backfill_pro is None:
+        raise HTTPException(status_code=503, detail="pro_backfill_unavailable")
+    payload = payload or {}
+    hours = float(payload.get("hours") or recognition_backfill_pro.MAX_HOURS_PRO)
+    if recognition_backfill.current_progress().running:
+        raise HTTPException(status_code=409, detail="a backfill is already running")
+    asyncio.create_task(recognition_backfill_pro.run_backfill_pro(since_hours=hours))
+    return {"ok": True, "hours": hours}
+
+
+@app.get("/api/pets/backfill/pro/progress")
+async def api_pets_backfill_pro_progress(request: Request):
+    """Two booleans that the UI cares about:
+
+    * `available` — Pro module is installed (drives "show 30-day vs 7-day")
+    * `licensed`  — license key is configured (drives the upgrade-prompt
+      gate). A Pro install with no license is otherwise indistinguishable
+      from a paid one and would silently hide both the prompt AND the
+      working features.
+    """
+    _require_auth(request)
+    cfg = config_store.load_config()
+    licensed = bool(cfg.pawcorder_pro_license_key)
+    if recognition_backfill_pro is None:
+        return {"available": False, "licensed": licensed}
+    return {
+        "available": True,
+        "licensed": licensed,
+        **recognition_backfill_pro.current_progress().to_dict(),
+    }
 
 
 @app.post("/api/pets/setup-model")

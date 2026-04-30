@@ -70,6 +70,9 @@ DEFAULTS: dict[str, str] = {
     # path (we proxy LLM + own the bill).
     "OPENAI_API_KEY": "",
     "PAWCORDER_PRO_LICENSE_KEY": "",
+    # Pro health detectors. Empty / 0-equivalent values disable.
+    "LITTER_BOX_CAMERA": "",
+    "LITTER_VISITS_ALERT_PER_24H": "12",
 }
 
 REQUIRED_FOR_FRIGATE = ("STORAGE_PATH", "FRIGATE_RTSP_PASSWORD")
@@ -114,6 +117,11 @@ class Config:
     # without ever holding the user's OpenAI credentials.
     openai_api_key: str = ""
     pawcorder_pro_license_key: str = ""
+    # Pro health detectors. Empty values disable the detector — the
+    # OSS build never reads them, but it's tidier to keep one canonical
+    # config schema rather than scatter Pro-only fields elsewhere.
+    litter_box_camera: str = ""           # camera that frames the box; "" disables
+    litter_visits_alert_per_24h: str = "12"   # > N visits in 24h fires UTI alert
 
     @classmethod
     def from_env(cls, env: dict[str, str]) -> "Config":
@@ -149,6 +157,8 @@ class Config:
             cloud_adaptive_fraction=env.get("CLOUD_ADAPTIVE_FRACTION", "0.80"),
             openai_api_key=env.get("OPENAI_API_KEY", ""),
             pawcorder_pro_license_key=env.get("PAWCORDER_PRO_LICENSE_KEY", ""),
+            litter_box_camera=env.get("LITTER_BOX_CAMERA", ""),
+            litter_visits_alert_per_24h=env.get("LITTER_VISITS_ALERT_PER_24H", "12"),
         )
 
     def to_env(self) -> dict[str, str]:
@@ -184,6 +194,8 @@ class Config:
             "CLOUD_ADAPTIVE_FRACTION": self.cloud_adaptive_fraction,
             "OPENAI_API_KEY": self.openai_api_key,
             "PAWCORDER_PRO_LICENSE_KEY": self.pawcorder_pro_license_key,
+            "LITTER_BOX_CAMERA": self.litter_box_camera,
+            "LITTER_VISITS_ALERT_PER_24H": self.litter_visits_alert_per_24h,
         }
 
 

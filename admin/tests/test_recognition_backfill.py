@@ -119,6 +119,91 @@ def test_rewrite_sightings_skips_garbage_lines(data_dir):
     assert "not json" in recognition.SIGHTINGS_LOG.read_text()
 
 
+def test_run_backfill_persists_bbox_on_new_events(data_dir, monkeypatch):
+    """Bbox in the Frigate event must land on the appended Sighting so
+    future prior-builds can compute per-pet size distributions."""
+    from app import recognition, recognition_backfill, embeddings
+
+    _seed_pet()
+
+    async def _events(*_, **__):
+        return [{
+            "id": "ev_with_bbox", "camera": "cam1", "label": "cat",
+            "start_time": 1000.0, "end_time": 1010.0,
+            "data": {"box": [10, 20, 100, 200]},
+        }]
+
+    async def _snapshot(*_, **__):
+        return b"\xff\xd8fake-jpeg"
+
+    @dataclass
+    class _Result:
+        success: bool
+        vector: object
+        error: str = ""
+
+    class _StubExtractor:
+        def extract(self, _):
+            import numpy as np
+            v = np.ones(embeddings.EMBEDDING_DIM, dtype="float32")
+            v /= (v @ v) ** 0.5
+            return _Result(success=True, vector=v)
+
+    monkeypatch.setattr(recognition_backfill, "_fetch_events", _events)
+    monkeypatch.setattr(recognition_backfill, "_fetch_snapshot", _snapshot)
+    monkeypatch.setattr(embeddings, "get_extractor", lambda: _StubExtractor())
+
+    asyncio.run(recognition_backfill.run_backfill(since_hours=1.0))
+    row = next(r for r in recognition.read_sightings(limit=10)
+               if r.get("event_id") == "ev_with_bbox")
+    assert row["bbox"] == [10, 20, 100, 200]
+
+
+def test_run_backfill_does_not_rewrite_unmatched_existing_events(data_dir, monkeypatch):
+    """An existing high-confidence row must NOT get its pet_id wiped if
+    the rerun fails to match — that would silently downgrade history."""
+    from app import recognition, recognition_backfill, embeddings
+
+    # Seed an existing row with a confident pet match.
+    recognition.append_sighting(recognition.Sighting(
+        event_id="ev_existing", camera="cam1", label="cat",
+        pet_id="mochi", pet_name="Mochi", score=0.91,
+        confidence="high", start_time=999.0, end_time=1005.0,
+    ))
+    _seed_pet()  # add a pet so backfill has something to compare against
+
+    async def _events(*_, **__):
+        return [{"id": "ev_existing", "camera": "cam1", "label": "cat",
+                 "start_time": 999.0, "end_time": 1005.0}]
+
+    async def _snapshot(*_, **__):
+        return b"\xff\xd8fake"
+
+    @dataclass
+    class _Result:
+        success: bool
+        vector: object
+        error: str = ""
+
+    class _NoMatchExtractor:
+        def extract(self, _):
+            import numpy as np
+            v = np.zeros(embeddings.EMBEDDING_DIM, dtype="float32")
+            v[0] = -1.0   # opposite of seed pet's [1, ...] → cosine ~= -inv_dim
+            return _Result(success=True, vector=v)
+
+    monkeypatch.setattr(recognition_backfill, "_fetch_events", _events)
+    monkeypatch.setattr(recognition_backfill, "_fetch_snapshot", _snapshot)
+    monkeypatch.setattr(embeddings, "get_extractor", lambda: _NoMatchExtractor())
+
+    asyncio.run(recognition_backfill.run_backfill(since_hours=1.0))
+    row = next(r for r in recognition.read_sightings(limit=10)
+               if r.get("event_id") == "ev_existing")
+    # Original confident match preserved — backfill didn't downgrade it.
+    assert row["pet_id"] == "mochi"
+    assert row["confidence"] == "high"
+
+
 def test_run_backfill_appends_new_events(data_dir, monkeypatch):
     """Events not yet in sightings.ndjson should be appended."""
     from app import recognition, recognition_backfill, pets_store, embeddings
