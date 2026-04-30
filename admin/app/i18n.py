@@ -94,8 +94,8 @@ T: dict[str, dict[str, str]] = {
                               "zh-TW": "目前是單一密碼模式"},
     "USERS_LEGACY_HELP":     {"en": "Anyone with the admin password has full access. Add at least one user below to switch to multi-user mode with roles.",
                               "zh-TW": "任何知道管理密碼的人都有完整權限。新增第一個成員後，會切換到多人模式（每人各自登入、各自角色）。"},
-    "USERS_LEGACY_NEXT":     {"en": "Once you add a user, the legacy ADMIN_PASSWORD stops working — write down the new credentials.",
-                              "zh-TW": "新增成員後，舊的 ADMIN_PASSWORD 將停止運作，請先記下新帳號密碼。"},
+    "USERS_LEGACY_NEXT":     {"en": "Once you add a user, the old admin password stops working — write down the new credentials.",
+                              "zh-TW": "新增成員後，舊的管理密碼將停止運作，請先記下新帳號密碼。"},
     "SIGN_OUT":              {"en": "Sign out", "zh-TW": "登出"},
     "LANG_LABEL":            {"en": "Language", "zh-TW": "語言"},
     "OPEN_FRIGATE_UI":       {"en": "Watch live", "zh-TW": "看即時影像"},
@@ -326,12 +326,12 @@ T: dict[str, dict[str, str]] = {
     # Wyze
     "BRAND_SETUP_WYZE_TITLE":  {"en": "Wyze: stock firmware doesn't support RTSP",
                                 "zh-TW": "Wyze：原廠韌體不支援 RTSP"},
-    "BRAND_SETUP_WYZE_STEP_1": {"en": "Wyze Cam v2/v3: ask Wyze support to send you the unofficial RTSP firmware (.bin file) and follow their flashing guide.",
-                                "zh-TW": "Wyze Cam v2/v3：寫信給 Wyze 客服索取非官方 RTSP 韌體（.bin 檔），依他們提供的步驟刷機。"},
-    "BRAND_SETUP_WYZE_STEP_2": {"en": "Once flashed, the camera exposes rtsp://USER:PASS@IP/live — use that here.",
-                                "zh-TW": "刷好之後攝影機會在 rtsp://USER:PASS@IP/live 提供串流，把帳密填到下方。"},
-    "BRAND_SETUP_WYZE_STEP_3": {"en": "Alternative: run docker-wyze-bridge on your network and point pawcorder at the bridge's RTSP URL instead.",
-                                "zh-TW": "或者：在網路上跑 docker-wyze-bridge，把 pawcorder 指向 bridge 的 RTSP URL。"},
+    "BRAND_SETUP_WYZE_STEP_1": {"en": "Wyze Cam v2/v3: ask Wyze support for the unofficial RTSP firmware file (.bin), then follow their step-by-step guide to install it on the camera.",
+                                "zh-TW": "Wyze Cam v2/v3：寫信給 Wyze 客服索取非官方 RTSP 韌體檔（.bin），依他們提供的步驟把這個檔案灌進攝影機（俗稱「刷機」）。"},
+    "BRAND_SETUP_WYZE_STEP_2": {"en": "Once installed, the camera will provide a stream at rtsp://USER:PASS@IP/live — fill in your camera's username, password, and IP below.",
+                                "zh-TW": "灌好之後，攝影機會在 rtsp://USER:PASS@IP/live 提供串流，把你的攝影機帳號、密碼、IP 填到下方。"},
+    "BRAND_SETUP_WYZE_STEP_3": {"en": "Alternative: run docker-wyze-bridge (a community-maintained helper service) on your network, and point pawcorder at the RTSP URL it provides.",
+                                "zh-TW": "或者：在網路上跑 docker-wyze-bridge（社群維護的轉接服務），把 pawcorder 指向它提供的 RTSP 串流網址。"},
 
     # Ubiquiti UniFi Protect
     # Until the controller-URL → camera-list → pick-one flow lands, UniFi
@@ -670,8 +670,8 @@ T: dict[str, dict[str, str]] = {
     "DOCS_API_SUBTITLE":     {"en": "Use a Bearer token to talk to pawcorder from Home Assistant, iOS Shortcuts, or scripts.",
                               "zh-TW": "用 Bearer token 從 Home Assistant、iOS 捷徑、腳本呼叫 pawcorder。"},
     "DOCS_API_API_KEYS_LINK":{"en": "Manage API keys",  "zh-TW": "管理 API key"},
-    "DOCS_API_LOAD_ERROR":   {"en": "Could not load INTEGRATIONS.md",
-                              "zh-TW": "無法載入 INTEGRATIONS.md"},
+    "DOCS_API_LOAD_ERROR":   {"en": "Could not load the integration guide",
+                              "zh-TW": "無法載入整合說明文件"},
 
     # Energy mode
     "ENERGY_HEADING":        {"en": "Energy / quiet hours",
@@ -786,8 +786,8 @@ T: dict[str, dict[str, str]] = {
     "HA_TG_LINK":            {"en": "Telegram setup", "zh-TW": "Telegram 設定"},
     "HA_STEP1_HEAD":         {"en": "1. Add Home Assistant to your stack",
                               "zh-TW": "1. 把 Home Assistant 加進你的 stack"},
-    "HA_STEP1_INTRO":        {"en": "On your pawcorder host, append this service to docker-compose.yml:",
-                              "zh-TW": "在 pawcorder 主機上把以下服務加進 docker-compose.yml："},
+    "HA_STEP1_INTRO":        {"en": "On your pawcorder host, add this service to your docker-compose.yml setup file:",
+                              "zh-TW": "在 pawcorder 主機上，把以下這段服務加進你的 docker-compose.yml 設定檔："},
     "HA_STEP1_COPY":         {"en": "Copy snippet", "zh-TW": "複製程式碼"},
     "HA_STEP1_THEN":         {"en": "Then bring it up:", "zh-TW": "接著把它啟動："},
     "HA_STEP1_OPEN":         {
@@ -836,8 +836,8 @@ T: dict[str, dict[str, str]] = {
         "zh-TW": "把 <your-phone-name> 換成 HA 自動指派的裝置名稱（可在設定 → 裝置查看）。偵測後約 1 秒內就會收到通知，附帶快照。",
     },
     "HA_STEP4_MQTT":         {
-        "en": "For the MQTT trigger to work, Frigate's mqtt section must be enabled. The Frigate integration usually wires this up automatically using HA's built-in mosquitto add-on if you have it.",
-        "zh-TW": "MQTT 觸發要能運作，Frigate 的 mqtt 區段必須啟用。Frigate 整合通常會自動用 HA 內建的 Mosquitto add-on 串好。",
+        "en": "For the MQTT trigger above to work, Frigate's MQTT messaging must be turned on. The Frigate integration usually does this for you automatically, using HA's built-in Mosquitto messaging add-on if it's installed.",
+        "zh-TW": "上面那段 MQTT 觸發要能運作，Frigate 的 MQTT 訊息功能必須開啟。Frigate 整合通常會自動用 HA 內建的 Mosquitto 訊息中繼 add-on 幫你串好（如果有裝的話）。",
     },
     "HA_FOOTER":             {
         "en": "Once this is done you can keep going: presence detection, separate snapshots per camera, sounds for high-confidence dog detections, etc.",
@@ -1334,8 +1334,8 @@ T: dict[str, dict[str, str]] = {
                                   "zh-TW": "錄影檔"},
     "UNINSTALL_PATH_API_KEYS": {"en": "API keys (credentials!)",
                                 "zh-TW": "API keys（憑證！）"},
-    "UNINSTALL_PATH_WEBPUSH_VAPID":{"en": "Web Push signing keys",
-                                     "zh-TW": "Web Push 簽章金鑰"},
+    "UNINSTALL_PATH_WEBPUSH_VAPID":{"en": "Browser-notification keys",
+                                     "zh-TW": "瀏覽器通知金鑰"},
     "UNINSTALL_PATH_WEBPUSH_SUBS":{"en": "Web Push subscriptions",
                                     "zh-TW": "Web Push 訂閱者"},
     "UNINSTALL_PATH_BACKUP_SCHEDULE":{"en": "Backup schedule + encryption password",
