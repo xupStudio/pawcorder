@@ -49,15 +49,34 @@ async def _api_call(token: str, method: str, *, data: dict | None = None,
 
 
 async def send_message(token: str, chat_id: str, text: str) -> None:
-    await _api_call(token, "sendMessage", data={"chat_id": chat_id, "text": text, "parse_mode": "HTML"})
+    # Reliability ledger lives next door — record both success and
+    # failure so /reliability can show "push delivery rate". Local
+    # import to dodge a circular dep on first-load.
+    from . import reliability
+    try:
+        await _api_call(token, "sendMessage",
+                         data={"chat_id": chat_id, "text": text,
+                               "parse_mode": "HTML"})
+    except Exception as exc:
+        reliability.record("push", "telegram", "fail",
+                            message=str(exc)[:200])
+        raise
+    reliability.record("push", "telegram", "ok")
 
 
 async def send_photo(token: str, chat_id: str, photo_bytes: bytes, caption: str) -> None:
-    await _api_call(
-        token, "sendPhoto",
-        data={"chat_id": chat_id, "caption": caption, "parse_mode": "HTML"},
-        files={"photo": ("snapshot.jpg", photo_bytes, "image/jpeg")},
-    )
+    from . import reliability
+    try:
+        await _api_call(
+            token, "sendPhoto",
+            data={"chat_id": chat_id, "caption": caption, "parse_mode": "HTML"},
+            files={"photo": ("snapshot.jpg", photo_bytes, "image/jpeg")},
+        )
+    except Exception as exc:
+        reliability.record("push", "telegram", "fail",
+                            message=str(exc)[:200])
+        raise
+    reliability.record("push", "telegram", "ok")
 
 
 async def send_test(token: str, chat_id: str) -> TelegramSendResult:
@@ -154,13 +173,27 @@ class FrigateEventPoller:
         # Try to identify which of the user's pets this is. Soft-fails if
         # recognition isn't enabled / model not loaded — the event still
         # gets sent, just without the pet name.
-        snapshot = await self._fetch_snapshot(event_id) if event_id else None
+        #
+        # Frigate exposes two distinct frames per event over HTTP:
+        # ``snapshot.jpg`` (the "best" frame, peak detection score) and
+        # ``thumbnail.jpg`` (the first detection — different timestamp,
+        # different pose). Pulling both gives the recognition layer two
+        # independent looks at the pet to pool by quality, which materially
+        # helps motion-blurred or partially-occluded events. We still send
+        # only the snapshot to Telegram so the message photo stays the
+        # canonical "best" frame the user expects.
+        snapshot, thumbnail = (
+            await self._fetch_event_frames(event_id) if event_id else (None, None)
+        )
         pet_label = ""
         if snapshot and event_id:
             try:
                 from . import recognition
+                frames = [snapshot]
+                if thumbnail and thumbnail != snapshot:
+                    frames.append(thumbnail)
                 match = recognition.identify_event(
-                    snapshot,
+                    frames if len(frames) > 1 else snapshot,
                     event_id=str(event_id),
                     camera=camera,
                     label=label,
@@ -233,6 +266,52 @@ class FrigateEventPoller:
         except httpx.HTTPError:
             pass
         return None
+
+    async def _fetch_event_frames(self, event_id: str
+                                   ) -> tuple[bytes | None, bytes | None]:
+        """Fetch the snapshot and thumbnail in parallel.
+
+        Frigate's ``snapshot.jpg`` is the peak-score frame and
+        ``thumbnail.jpg`` is the first-detection frame — they're at
+        different timestamps with different pose / lighting, which is
+        exactly the input multi-frame quality pooling wants. Either
+        endpoint may 404 (older Frigate, snapshot disabled per camera);
+        we return ``(None, None)`` for the missing side and let the
+        caller fall back to single-frame.
+        """
+        snap_url = f"{FRIGATE_BASE_URL}/api/events/{event_id}/snapshot.jpg"
+        thumb_url = f"{FRIGATE_BASE_URL}/api/events/{event_id}/thumbnail.jpg"
+        try:
+            async with httpx.AsyncClient(timeout=6.0) as client:
+                # gather() so the slower endpoint doesn't block the faster
+                # one — total time is max(snap, thumb), not sum.
+                #
+                # No ``?bbox=1`` here: the bounding-box overlay perturbs
+                # the pixels enough to shift the embedding relative to
+                # the same pet in the (clean) thumbnail, partially
+                # cancelling the multi-frame quality benefit. The
+                # legacy ``_fetch_snapshot`` keeps the overlay for
+                # callers that only ever wanted a single annotated frame.
+                import asyncio
+                snap_task = client.get(snap_url)
+                thumb_task = client.get(thumb_url)
+                snap_resp, thumb_resp = await asyncio.gather(
+                    snap_task, thumb_task, return_exceptions=True,
+                )
+        except httpx.HTTPError:
+            return (None, None)
+
+        def _ok(resp) -> bytes | None:
+            if isinstance(resp, BaseException):
+                return None
+            try:
+                if resp.status_code == 200 and resp.content:
+                    return resp.content
+            except Exception:  # noqa: BLE001
+                return None
+            return None
+
+        return (_ok(snap_resp), _ok(thumb_resp))
 
 
 poller = FrigateEventPoller()

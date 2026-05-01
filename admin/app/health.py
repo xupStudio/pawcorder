@@ -29,7 +29,7 @@ from typing import Optional
 
 import httpx
 
-from . import config_store, docker_ops, telegram as tg
+from . import config_store, docker_ops, reliability, telegram as tg
 
 logger = logging.getLogger("pawcorder.health")
 
@@ -113,7 +113,7 @@ def check_frigate() -> CheckResult:
     try:
         status = docker_ops.get_frigate_status()
     except Exception as exc:  # noqa: BLE001
-        return CheckResult(name="frigate", ok=False, message=f"docker unreachable: {exc}")
+        return CheckResult(name="frigate", ok=False, message=f"can't reach the recording engine: {exc}")
     if not status.exists:
         # No Frigate yet means setup is incomplete — not an alert-worthy
         # condition; the setup banner already covers that case.
@@ -121,14 +121,14 @@ def check_frigate() -> CheckResult:
                            detail={"running": False})
     if not status.running:
         return CheckResult(
-            name="frigate", ok=False, message="Frigate container is not running",
+            name="frigate", ok=False, message="Recording engine is not running",
             detail={"status": status.status, "health": status.health},
         )
     # Running but unhealthy is worth shouting about.
     if status.health and status.health not in ("healthy", "starting", None):
         return CheckResult(
             name="frigate", ok=False,
-            message=f"Frigate health is {status.health}",
+            message=f"Recording engine health: {status.health}",
             detail={"status": status.status, "health": status.health},
         )
     return CheckResult(
@@ -270,6 +270,7 @@ class HealthMonitor:
         while not self._stop.is_set():
             try:
                 self._snapshot = await snapshot()
+                self._record_to_ledger(self._snapshot)
                 await self._maybe_alert(self._snapshot)
             except Exception as exc:  # noqa: BLE001
                 logger.warning("health tick failed: %s", exc)
@@ -277,6 +278,43 @@ class HealthMonitor:
                 await asyncio.wait_for(self._stop.wait(), timeout=POLL_INTERVAL_SECONDS)
             except asyncio.TimeoutError:
                 pass
+
+    def _record_to_ledger(self, snap: HealthSnapshot) -> None:
+        """Append per-camera + per-subsystem rows to the reliability
+        ledger on every probe.
+
+        We log every tick (not just transitions) so the SLO dashboard
+        can compute a true sample-based uptime fraction. The transition
+        matters for *alerting* (handled by ``_maybe_alert``); for
+        *reporting* we want the denominator.
+
+        Batches all rows under one lock+fd via ``record_batch`` —
+        a 60-second tick on an 8-camera install previously did 10
+        open/close cycles per tick (~14k/day green-path); batched
+        it's one regardless of camera count.
+
+        Soft-fails — a write error in the ledger must not break the
+        liveness probe itself.
+        """
+        try:
+            batch: list[tuple] = [
+                ("frigate", "container",
+                 "ok" if snap.frigate.ok else "fail",
+                 snap.frigate.message[:200]),
+                ("storage", "disk",
+                 "ok" if snap.storage.ok else "fail",
+                 snap.storage.message[:200]),
+            ]
+            for cam in snap.cameras:
+                cam_name = cam.name.split(":", 1)[1] if ":" in cam.name else cam.name
+                batch.append((
+                    "camera", cam_name,
+                    "ok" if cam.ok else "fail",
+                    cam.message[:200],
+                ))
+            reliability.record_batch(batch)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("ledger record skipped: %s", exc)
 
     async def _maybe_alert(self, snap: HealthSnapshot) -> None:
         cfg = config_store.load_config()
@@ -296,7 +334,7 @@ class HealthMonitor:
                 await tg.send_message(
                     cfg.telegram_bot_token,
                     cfg.telegram_chat_id,
-                    f"<b>pawcorder health</b>\n{check.message}",
+                    f"<b>Pawcorder health</b>\n{check.message}",
                 )
                 self._last_alert[check.name] = now
             except Exception as exc:  # noqa: BLE001

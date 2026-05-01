@@ -1,13 +1,13 @@
 {% extends "_layout.html" %}
-{% block title %}{{ t('MOBILE_TITLE') }} · pawcorder{% endblock %}
+{% block title %}{{ t('MOBILE_TITLE') }} · Pawcorder{% endblock %}
 {% block main %}
 <div x-data="mobilePage()" class="max-w-4xl">
-  <h1 class="text-2xl font-semibold tracking-tight">{{ t('MOBILE_TITLE') }}</h1>
-  <p class="text-sm text-slate-500 dark:text-slate-400 mb-6">{{ t('MOBILE_SUBTITLE') }}</p>
+  <h1 class="text-3xl font-display tracking-display">{{ t('MOBILE_TITLE') }}</h1>
+  <p class="text-sm text-slate-500 dark:text-slate-400 mb-6 italic">{{ t('MOBILE_SUBTITLE') }}</p>
 
   <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-6 mb-6">
     <div class="mb-4">
-      <h2 class="text-base font-semibold tracking-tight">{{ t('MOBILE_LAN_HEADING') }}</h2>
+      <h2 class="text-lg font-display tracking-tight">{{ t('MOBILE_LAN_HEADING') }}</h2>
       <p class="text-xs text-slate-500 dark:text-slate-400">{{ t('MOBILE_LAN_HELP') }}</p>
     </div>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
@@ -28,9 +28,42 @@
     </div>
   </div>
 
+  {# Native iOS / Android shell. Until the app is on the App Store / Play
+     Store this is informational + build-from-source for tinkerers.
+     The end-user-visible value is the install URL and what to type
+     on first launch (= one of the LAN / Tailscale URLs above). #}
   <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-6 mb-6">
     <div class="mb-4">
-      <h2 class="text-base font-semibold tracking-tight">{{ t('MOBILE_TS_HEADING') }}</h2>
+      <div class="flex items-center gap-2">
+        <h2 class="text-lg font-display tracking-tight">{{ t('MOBILE_NATIVE_HEADING') }}</h2>
+        <span class="text-[10px] uppercase tracking-wider rounded bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-100 px-1.5 py-0.5">
+          {{ t('MOBILE_NATIVE_BADGE') }}
+        </span>
+      </div>
+      <p class="text-xs text-slate-500 dark:text-slate-400">{{ t('MOBILE_NATIVE_HELP') }}</p>
+    </div>
+    <ul class="text-sm space-y-2 list-disc pl-5">
+      <li>{{ t('MOBILE_NATIVE_BENEFIT_PUSH') }}</li>
+      <li>{{ t('MOBILE_NATIVE_BENEFIT_HOMESCREEN') }}</li>
+      <li>{{ t('MOBILE_NATIVE_BENEFIT_BACKGROUND') }}</li>
+    </ul>
+    <div class="mt-3 rounded-lg bg-slate-50 dark:bg-slate-800/40 p-3 text-xs text-slate-600 dark:text-slate-300">
+      <p class="font-medium mb-1">{{ t('MOBILE_NATIVE_DIY_HEADING') }}</p>
+      <p>{{ t('MOBILE_NATIVE_DIY_HELP') }}</p>
+      <pre class="mt-2 font-mono text-[11px] bg-white dark:bg-slate-900 p-2 rounded overflow-x-auto">cd mobile
+npm install
+npx cap add ios     # or: npx cap add android
+npm run ios         # or: npm run android</pre>
+    </div>
+    <p class="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
+      {{ t('MOBILE_NATIVE_FIRST_LAUNCH') }}
+      <code class="font-mono">{{ lan_admin_url }}</code>
+    </p>
+  </div>
+
+  <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-6 mb-6">
+    <div class="mb-4">
+      <h2 class="text-lg font-display tracking-tight">{{ t('MOBILE_TS_HEADING') }}</h2>
       <p class="text-xs text-slate-500 dark:text-slate-400">{{ t('MOBILE_TS_HELP') }}</p>
     </div>
 
@@ -76,7 +109,7 @@
   </div>
 
   <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-6 mb-6">
-    <h2 class="text-base font-semibold tracking-tight mb-4">{{ t('MOBILE_HOMESCREEN') }}</h2>
+    <h2 class="text-lg font-display tracking-tight mb-4">{{ t('MOBILE_HOMESCREEN') }}</h2>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-6 text-sm">
       <div>
         <p class="font-medium mb-2">{{ t('MOBILE_IPHONE') }}</p>
@@ -85,12 +118,12 @@
             <li>用 Safari 打開上方的即時影像網址。</li>
             <li>點底部 <span class="inline-block bg-slate-100 dark:bg-slate-800 px-1.5 rounded font-mono">分享</span> 按鈕。</li>
             <li>下滑找到 <span class="inline-block bg-slate-100 dark:bg-slate-800 px-1.5 rounded">加入主畫面</span>。</li>
-            <li>命名為 "pawcorder"，按「新增」。</li>
+            <li>命名為 "Pawcorder"，按「新增」。</li>
           {% else %}
             <li>Open the live-view link above in Safari.</li>
             <li>Tap the <span class="inline-block bg-slate-100 dark:bg-slate-800 px-1.5 rounded font-mono">Share</span> button.</li>
             <li>Scroll down and tap <span class="inline-block bg-slate-100 dark:bg-slate-800 px-1.5 rounded">Add to Home Screen</span>.</li>
-            <li>Name it "pawcorder" and tap Add.</li>
+            <li>Name it "Pawcorder" and tap Add.</li>
           {% endif %}
         </ol>
       </div>
@@ -114,7 +147,7 @@
   </div>
 
   <div class="rounded-2xl bg-gradient-to-br from-brand-50 dark:from-brand-900 to-amber-50 dark:to-amber-900 border border-brand-200 dark:border-brand-800 p-6">
-    <h2 class="text-base font-semibold tracking-tight mb-2">{{ t('MOBILE_PUSH_HEADING') }}</h2>
+    <h2 class="text-lg font-display tracking-tight mb-2">{{ t('MOBILE_PUSH_HEADING') }}</h2>
     <p class="text-sm text-slate-600 dark:text-slate-300 mb-4">{{ t('MOBILE_PUSH_PICK') }}</p>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
       <a href="/notifications" class="block rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-brand-400 p-4">

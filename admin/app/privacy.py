@@ -47,7 +47,11 @@ class PrivacyState:
     enabled: bool = False                 # the master toggle
     auto_pause_when_home: bool = False    # use Tailscale presence
     paused_now: bool = False              # the resolved live state
-    reason: str = ""                      # why we're paused (for UI)
+    # Reason for the UI: a translation key + optional argument so the
+    # message renders in the user's language. Keys are resolved against
+    # i18n.T (PRIVACY_REASON_*).
+    reason_key: str = ""
+    reason_arg: str = ""
     home_devices: list[str] = None        # Tailscale device names
 
     def __post_init__(self):
@@ -59,7 +63,8 @@ class PrivacyState:
             "enabled": self.enabled,
             "auto_pause_when_home": self.auto_pause_when_home,
             "paused_now": self.paused_now,
-            "reason": self.reason,
+            "reason_key": self.reason_key,
+            "reason_arg": self.reason_arg,
             "home_devices": list(self.home_devices),
         }
 
@@ -77,7 +82,8 @@ def load_state() -> PrivacyState:
         enabled=bool(data.get("enabled", False)),
         auto_pause_when_home=bool(data.get("auto_pause_when_home", False)),
         paused_now=bool(data.get("paused_now", False)),
-        reason=str(data.get("reason", "")),
+        reason_key=str(data.get("reason_key", "")),
+        reason_arg=str(data.get("reason_arg", "")),
         home_devices=list(data.get("home_devices") or []),
     )
 
@@ -146,22 +152,26 @@ async def evaluate_async(state: Optional[PrivacyState] = None) -> PrivacyState:
     s = state or load_state()
     if not s.enabled:
         s.paused_now = False
-        s.reason = "privacy mode is off"
+        s.reason_key = "PRIVACY_REASON_OFF"
+        s.reason_arg = ""
         return s
 
     # Manual mode: paused_now is whatever the user set. We don't override.
     if not s.auto_pause_when_home:
-        s.reason = "manual: privacy on"
+        s.reason_key = "PRIVACY_REASON_MANUAL"
+        s.reason_arg = ""
         return s
 
     online = await tailscale_devices_online()
     matches = [d for d in online if d in s.home_devices]
     if matches:
         s.paused_now = True
-        s.reason = f"home device online: {', '.join(matches)}"
+        s.reason_key = "PRIVACY_REASON_HOME_ONLINE"
+        s.reason_arg = ", ".join(matches)
     else:
         s.paused_now = False
-        s.reason = "no home device detected"
+        s.reason_key = "PRIVACY_REASON_NOBODY_HOME"
+        s.reason_arg = ""
     return s
 
 

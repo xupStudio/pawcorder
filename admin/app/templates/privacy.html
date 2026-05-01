@@ -1,9 +1,9 @@
 {% extends "_layout.html" %}
-{% block title %}{{ t('PRIVACY_TITLE') }} · pawcorder{% endblock %}
+{% block title %}{{ t('PRIVACY_TITLE') }} · Pawcorder{% endblock %}
 {% block main %}
 <div x-data='privacyPage({{ privacy_state | tojson }})' class="max-w-3xl">
-  <h1 class="text-2xl font-semibold tracking-tight">{{ t('PRIVACY_TITLE') }}</h1>
-  <p class="text-sm text-slate-500 dark:text-slate-400 mb-6">{{ t('PRIVACY_SUBTITLE') }}</p>
+  <h1 class="text-3xl font-display tracking-display">{{ t('PRIVACY_TITLE') }}</h1>
+  <p class="text-sm text-slate-500 dark:text-slate-400 mb-6 italic">{{ t('PRIVACY_SUBTITLE') }}</p>
 
   <!-- Master switch -->
   <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5 mb-6">
@@ -19,7 +19,7 @@
 
   <!-- Auto detection (Tailscale) -->
   <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5 mb-6" x-show="state.enabled">
-    <h2 class="text-base font-semibold tracking-tight">{{ t('PRIVACY_AUTO_HEADING') }}</h2>
+    <h2 class="text-lg font-display tracking-tight">{{ t('PRIVACY_AUTO_HEADING') }}</h2>
     <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('PRIVACY_AUTO_HELP') }}</p>
 
     <label class="mt-4 inline-flex items-center gap-2 text-sm cursor-pointer">
@@ -58,14 +58,14 @@
               x-bind:class="state.paused_now ? 'bg-amber-500' : 'bg-emerald-500'"></span>
         <span class="font-medium" x-text="state.paused_now ? labels.paused : labels.recording"></span>
       </div>
-      <div class="text-slate-500 dark:text-slate-400 mt-1" x-text="state.reason || '—'"></div>
+      <div class="text-slate-500 dark:text-slate-400 mt-1" x-text="reasonText() || '—'"></div>
     </div>
   </div>
 
   <!-- Manual override -->
   <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5"
        x-show="state.enabled && !state.auto_pause_when_home">
-    <h2 class="text-base font-semibold tracking-tight">{{ t('PRIVACY_MANUAL_HEADING') }}</h2>
+    <h2 class="text-lg font-display tracking-tight">{{ t('PRIVACY_MANUAL_HEADING') }}</h2>
     <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('PRIVACY_MANUAL_HELP') }}</p>
     <div class="mt-4">
       <button @click="togglePaused()"
@@ -89,6 +89,20 @@
         recording: {{ t('PRIVACY_RECORDING') | tojson }},
         pause:     {{ t('PRIVACY_PAUSE_NOW') | tojson }},
         resume:    {{ t('PRIVACY_RESUME_NOW') | tojson }},
+        reasonOff:        {{ t('PRIVACY_REASON_OFF') | tojson }},
+        reasonManual:     {{ t('PRIVACY_REASON_MANUAL') | tojson }},
+        reasonHomeOnline: {{ t('PRIVACY_REASON_HOME_ONLINE') | tojson }},
+        reasonNobodyHome: {{ t('PRIVACY_REASON_NOBODY_HOME') | tojson }},
+      },
+      reasonText() {
+        const key = this.state.reason_key;
+        if (key === 'PRIVACY_REASON_OFF') return this.labels.reasonOff;
+        if (key === 'PRIVACY_REASON_MANUAL') return this.labels.reasonManual;
+        if (key === 'PRIVACY_REASON_HOME_ONLINE') {
+          return this.labels.reasonHomeOnline.replace('{devices}', this.state.reason_arg || '');
+        }
+        if (key === 'PRIVACY_REASON_NOBODY_HOME') return this.labels.reasonNobodyHome;
+        return '';
       },
       addDevice() {
         const n = this.newDevice.trim();

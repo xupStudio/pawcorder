@@ -1,11 +1,11 @@
 {% extends "_layout.html" %}
-{% block title %}{{ t('DASHBOARD_TITLE') }} · pawcorder{% endblock %}
+{% block title %}{{ t('DASHBOARD_TITLE') }} · Pawcorder{% endblock %}
 {% block main %}
 <div x-data="dashboard()" x-init="init()">
   <div class="flex items-center justify-between mb-6">
     <div>
-      <h1 class="text-2xl font-semibold tracking-tight">{{ t('DASHBOARD_TITLE') }}</h1>
-      <p class="text-sm text-slate-500 dark:text-slate-400">{{ t('DASHBOARD_SUBTITLE') }}</p>
+      <h1 class="text-3xl font-display tracking-display">{{ t('DASHBOARD_TITLE') }}</h1>
+      <p class="text-sm text-slate-500 dark:text-slate-400 italic">{{ t('DASHBOARD_SUBTITLE') }}</p>
     </div>
     <div class="flex gap-2">
       <a href="http://{{ request.url.hostname }}:5000" target="_blank" rel="noopener"
@@ -15,7 +15,7 @@
     </div>
   </div>
 
-  {# OTA update banner — shows whenever a newer pawcorder release is
+  {# OTA update banner — shows whenever a newer Pawcorder release is
      out AND the user hasn't dismissed this specific tag. Background
      updater.checker refreshes the cache once a day so the banner
      appears without the user opening /system. #}
@@ -92,7 +92,7 @@
     <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5">
       <div class="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">{{ t('TILE_FRIGATE') }}</div>
       <div class="mt-2 flex items-baseline gap-2">
-        <span class="text-2xl font-semibold text-slate-900 dark:text-slate-100" x-text="status.frigate.running ? {{ t('STATE_RUNNING') | tojson }} : {{ t('STATE_STOPPED') | tojson }}"></span>
+        <span class="text-3xl font-display tracking-tight text-slate-900 dark:text-slate-100" x-text='status.frigate.running ? {{ t('STATE_RUNNING') | tojson }} : {{ t('STATE_STOPPED') | tojson }}'></span>
         <span class="inline-flex h-2 w-2 rounded-full"
               x-bind:class="status.frigate.running ? 'bg-emerald-500' : 'bg-rose-500'"></span>
       </div>
@@ -100,14 +100,14 @@
     </div>
     <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5">
       <div class="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">{{ t('TILE_CAMERAS') }}</div>
-      <div class="mt-2 text-2xl font-semibold text-slate-900 dark:text-slate-100" x-text="status.camera_count"></div>
+      <div class="mt-2 text-3xl font-display tracking-tight text-slate-900 dark:text-slate-100" x-text="status.camera_count"></div>
       <div class="mt-1 text-sm text-slate-500 dark:text-slate-400">
         <a href="/cameras" class="hover:text-slate-700 dark:hover:text-slate-200 underline">{{ t('MANAGE_CAMERAS') }}</a>
       </div>
     </div>
     <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5">
       <div class="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">{{ t('TILE_PETS_TODAY') }}</div>
-      <div class="mt-2 text-2xl font-semibold text-slate-900 dark:text-slate-100" x-text="petsToday.total"></div>
+      <div class="mt-2 text-3xl font-display tracking-tight text-slate-900 dark:text-slate-100" x-text="petsToday.total"></div>
       <div class="mt-1 text-sm text-slate-500 dark:text-slate-400" x-show="petsToday.byPet.length > 0">
         <template x-for="p in petsToday.byPet.slice(0, 3)" :key="p.pet_id">
           <span class="mr-2"><span x-text="p.pet_name"></span>: <span x-text="p.count"></span></span>
@@ -119,14 +119,14 @@
     </div>
     <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5">
       <div class="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">{{ t('TILE_STORAGE') }}</div>
-      <div class="mt-2 text-2xl font-semibold truncate text-slate-900 dark:text-slate-100">{{ config.storage_path or t('NOT_SET') }}</div>
+      <div class="mt-2 text-xl font-display tracking-tight truncate text-slate-900 dark:text-slate-100">{{ config.storage_path or t('NOT_SET') }}</div>
       <div class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{ t('STORAGE_CAPTION') }}</div>
     </div>
   </div>
 
   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
     <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5">
-      <h2 class="text-base font-semibold tracking-tight mb-3">{{ t('DASHBOARD_CAMERAS_HEADING') }}</h2>
+      <h2 class="text-lg font-display tracking-tight mb-3">{{ t('DASHBOARD_CAMERAS_HEADING') }}</h2>
       <ul x-show="status.cameras && status.cameras.length > 0" class="space-y-2 text-sm">
         <template x-for="c in status.cameras" :key="c.name">
           <li class="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-2 last:border-0 last:pb-0">
@@ -141,7 +141,7 @@
                       'bg-blue-50 dark:bg-blue-900 text-blue-700 dark:text-blue-300': c.connection_type === 'wifi',
                       'bg-emerald-50 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300': c.connection_type === 'wired',
                     }"
-                    x-text="c.connection_type === 'wifi' ? {{ t('LINK_WIFI') | tojson }} : {{ t('LINK_WIRED') | tojson }}"></span>
+                    x-text='c.connection_type === 'wifi' ? {{ t('LINK_WIFI') | tojson }} : {{ t('LINK_WIRED') | tojson }}'></span>
             </div>
             <span class="inline-flex h-2 w-2 rounded-full"
                   x-bind:class="c.enabled ? 'bg-emerald-500' : 'bg-slate-300'"></span>
@@ -153,7 +153,7 @@
       </p>
     </div>
     <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5">
-      <h2 class="text-base font-semibold tracking-tight mb-3">{{ t('DASHBOARD_QUICK_ACTIONS') }}</h2>
+      <h2 class="text-lg font-display tracking-tight mb-3">{{ t('DASHBOARD_QUICK_ACTIONS') }}</h2>
       <div class="space-y-2">
         <button @click="restart()"
                 class="w-full text-left rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 text-sm flex justify-between items-center">

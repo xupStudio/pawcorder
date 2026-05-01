@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>{% block title %}pawcorder{% endblock %}</title>
+  <title>{% block title %}Pawcorder{% endblock %}</title>
   <script>
     // Apply theme BEFORE Tailwind loads so we don't get a light-mode flash.
     // 'auto' is system-default; user's explicit choice wins.
@@ -36,21 +36,41 @@
             },
           },
           fontFamily: {
-            sans: ['"Inter"', 'system-ui', 'sans-serif'],
+            // Fallback chains ordered by visual proximity to the web
+            // font, then platform availability. A Google Fonts block
+            // (China, captive networks) lands on something close to
+            // Fraunces / Geist rather than the OS default, which can
+            // be drastically different (DejaVu Serif on most Linuxes
+            // is much wider than Fraunces). CJK fallbacks at the tail
+            // catch zh-TW renders when the page mixes English glyphs
+            // with Chinese characters.
+            sans:    ['"Geist"', 'system-ui', '-apple-system',
+                       '"Segoe UI"', 'Roboto', '"Noto Sans CJK TC"',
+                       'sans-serif'],
+            display: ['"Fraunces"', '"Iowan Old Style"', 'Georgia',
+                       '"Times New Roman"', 'serif'],
+            mono:    ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular',
+                       'Menlo', 'Consolas', 'monospace'],
+          },
+          letterSpacing: {
+            display: '-0.02em',
+            eyebrow: '0.18em',
           },
         },
       },
     };
   </script>
-  <link rel="preconnect" href="https://rsms.me/" />
-  <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,400..700,100,1;1,9..144,400..700,100,1&family=Geist:wght@300..700&family=JetBrains+Mono:wght@400;500&display=swap" />
   <link rel="manifest" href="/static/manifest.json" />
   <link rel="icon" type="image/svg+xml" href="/static/icon.svg" />
   <link rel="apple-touch-icon" href="/static/icon.svg" />
   <meta name="theme-color" content="#f37416" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-  <meta name="apple-mobile-web-app-title" content="pawcorder" />
+  <meta name="apple-mobile-web-app-title" content="Pawcorder" />
   <style>
     [x-cloak] { display: none !important; }
     /* Tailwind's class-mode dark variant uses a descendant selector
@@ -61,6 +81,37 @@
        normal viewport. */
     html { background-color: rgb(248 250 252); }     /* slate-50 */
     html.dark { background-color: rgb(2 6 23); }     /* slate-950 */
+
+    /* Display font shaping — Fraunces with rounded SOFT axis. */
+    .font-display { font-variation-settings: 'SOFT' 100, 'WONK' 1; font-optical-sizing: auto; }
+
+    /* Paw print mask icon. Color comes from currentColor; size from font-size. */
+    .paw-svg {
+      display: inline-block; width: 1em; height: 1em; background-color: currentColor;
+      -webkit-mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M5.5 11c1.4 0 2.5-1.6 2.5-3.5S6.9 4 5.5 4 3 5.6 3 7.5 4.1 11 5.5 11zm5-3.5C10.5 5.6 11.6 4 13 4s2.5 1.6 2.5 3.5S14.4 11 13 11s-2.5-1.6-2.5-3.5zM18.5 11c1.4 0 2.5-1.6 2.5-3.5S19.9 4 18.5 4 16 5.6 16 7.5 17.1 11 18.5 11zm-15 4.5c0-1.7 1.3-3 3-3s3 1.3 3 3c0 .8.4 1.5 1 2 .6.5 1.5.5 2.5 0 1-.5 2.6-.5 3.5 0s2 .5 2.5 0c.6-.5 1-1.2 1-2 0-1.7 1.3-3 3-3s3 1.3 3 3c0 1.6-.7 3-1.7 4-1 1-2.3 1.7-3.6 1.9-1.5.3-3 0-4.4-.5-1.4-.5-2.5-.5-4 0-1.4.5-2.9.8-4.4.5-1.3-.2-2.6-.9-3.6-1.9-1-1-1.7-2.4-1.7-4z'/></svg>") no-repeat center / contain;
+              mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M5.5 11c1.4 0 2.5-1.6 2.5-3.5S6.9 4 5.5 4 3 5.6 3 7.5 4.1 11 5.5 11zm5-3.5C10.5 5.6 11.6 4 13 4s2.5 1.6 2.5 3.5S14.4 11 13 11s-2.5-1.6-2.5-3.5zM18.5 11c1.4 0 2.5-1.6 2.5-3.5S19.9 4 18.5 4 16 5.6 16 7.5 17.1 11 18.5 11zm-15 4.5c0-1.7 1.3-3 3-3s3 1.3 3 3c0 .8.4 1.5 1 2 .6.5 1.5.5 2.5 0 1-.5 2.6-.5 3.5 0s2 .5 2.5 0c.6-.5 1-1.2 1-2 0-1.7 1.3-3 3-3s3 1.3 3 3c0 1.6-.7 3-1.7 4-1 1-2.3 1.7-3.6 1.9-1.5.3-3 0-4.4-.5-1.4-.5-2.5-.5-4 0-1.4.5-2.9.8-4.4.5-1.3-.2-2.6-.9-3.6-1.9-1-1-1.7-2.4-1.7-4z'/></svg>") no-repeat center / contain;
+    }
+
+    /* Soft floating animation for decorative paws. */
+    @keyframes pc-float {
+      0%, 100% { transform: translateY(0) rotate(var(--r, 0deg)); }
+      50%      { transform: translateY(-6px) rotate(var(--r, 0deg)); }
+    }
+    .paw-float { animation: pc-float 3.5s ease-in-out infinite; }
+    @media (prefers-reduced-motion: reduce) { .paw-float { animation: none; } }
+
+    /* Card with playful hover wobble — opt in by adding `pc-card` class. */
+    .pc-card { transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease; }
+    .pc-card:hover {
+      transform: translateY(-2px) rotate(-0.3deg);
+      box-shadow: 0 10px 28px -14px rgba(26,20,16,.18);
+    }
+    .pc-card:nth-child(2n):hover { transform: translateY(-2px) rotate(0.3deg); }
+    @media (prefers-reduced-motion: reduce) {
+      .pc-card { transition: none; }
+      .pc-card:hover, .pc-card:nth-child(2n):hover { transform: none; }
+    }
+
     /* Default form-control appearance in dark mode for inputs/textareas/selects
        that don't carry an explicit Tailwind bg-* class. Specificity is low so
        any element with explicit dark:bg-* / dark:border-* utilities wins. */

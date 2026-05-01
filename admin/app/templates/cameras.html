@@ -1,11 +1,11 @@
 {% extends "_layout.html" %}
-{% block title %}{{ t('CAMERAS_TITLE') }} · pawcorder{% endblock %}
+{% block title %}{{ t('CAMERAS_TITLE') }} · Pawcorder{% endblock %}
 {% block main %}
 <div x-data='camerasPage({{ cameras | map(attribute="name") | list | tojson }})' x-init="refresh(); loadBrands()">
   <div class="flex items-center justify-between mb-6">
     <div>
-      <h1 class="text-2xl font-semibold tracking-tight">{{ t('CAMERAS_TITLE') }}</h1>
-      <p class="text-sm text-slate-500 dark:text-slate-400">{{ t('CAMERAS_SUBTITLE') }}</p>
+      <h1 class="text-3xl font-display tracking-display">{{ t('CAMERAS_TITLE') }}</h1>
+      <p class="text-sm text-slate-500 dark:text-slate-400 italic">{{ t('CAMERAS_SUBTITLE') }}</p>
     </div>
     <button @click="openNew()" class="rounded-md bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 text-sm font-medium">
       {{ t('ADD_CAMERA') }}
@@ -108,7 +108,7 @@
        @keydown.escape.window="closeLive()">
     <div class="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
       <div class="px-5 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2 flex-wrap">
-        <h2 class="text-lg font-semibold tracking-tight" x-text="liveModal.camera"></h2>
+        <h2 class="text-xl font-display tracking-tight" x-text="liveModal.camera"></h2>
         <div class="flex items-center gap-2">
           <label class="inline-flex items-center gap-1 text-xs text-slate-600 dark:text-slate-300">
             <input type="checkbox" x-model="liveModal.heatmap"
@@ -175,7 +175,7 @@
        @keydown.escape.window="closeModal()">
     <div class="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
       <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
-        <h2 class="text-lg font-semibold tracking-tight" x-text="modal.mode === 'edit' ? labels.title_edit : labels.title_new"></h2>
+        <h2 class="text-xl font-display tracking-tight" x-text="modal.mode === 'edit' ? labels.title_edit : labels.title_new"></h2>
         <button @click="closeModal()" class="text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200">×</button>
       </div>
       <div class="px-6 py-5 space-y-4">
@@ -213,7 +213,7 @@
           {# Setup guidance panel — shown for both:
              1. manual_setup brands (Tapo/Imou/Wyze) where RTSP can't be enabled
                 programmatically; the user must prep their camera in its own app first.
-             2. the "other" brand catch-all where pawcorder will try ONVIF first but
+             2. the "other" brand catch-all where Pawcorder will try ONVIF first but
                 may need the user to find the stream URL manually as a fallback.
              The "Manual setup required" badge only renders for case (1). #}
           <div x-show="currentBrand()?.manual_setup || currentBrand()?.key === 'other'"

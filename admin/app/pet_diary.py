@@ -8,6 +8,11 @@ to scrub through events.
 
 Two LLM backends, picked by config:
 
+  * **Offline (Ollama)** — ``OLLAMA_BASE_URL`` is set. We POST to a
+    local Ollama / OpenAI-compatible server on the user's network,
+    no cloud egress, no token cost, no per-day quota. This wins over
+    the two cloud backends because picking it is an explicit "I want
+    privacy / I don't want to pay" decision.
   * **OSS direct** — ``OPENAI_API_KEY`` is set. We POST directly to
     api.openai.com, the user pays OpenAI for tokens. Fully self-hosted
     in the spirit of the OSS build.
@@ -16,7 +21,7 @@ Two LLM backends, picked by config:
     do the LLM call on our managed account. Pro license covers the
     quota.
 
-If neither is set the scheduler quietly no-ops — the rest of the
+If none is set the scheduler quietly no-ops — the rest of the
 admin keeps working. We never crash the user's system because the
 optional AI feature isn't configured.
 
@@ -38,7 +43,7 @@ from typing import Callable, Optional
 
 import httpx
 
-from . import config_store, recognition
+from . import config_store, recognition, reliability
 from .pets_store import Pet, PetStore
 from .utils import PollingTask, atomic_write_text
 
@@ -94,7 +99,7 @@ class Diary:
     pet_name: str
     date: str
     text: str
-    backend: str                       # "openai" | "pro_relay"
+    backend: str                       # "ollama" | "openai" | "gemini" | "anthropic" | "pro_relay"
     lang: str = "en"
     generated_at: float = 0.0          # unix seconds
 
@@ -111,7 +116,44 @@ class Diary:
 
 
 class DiaryNotConfigured(RuntimeError):
-    """No OpenAI key and no Pro license — caller should show a setup nudge."""
+    """No backend configured — caller should show a setup nudge."""
+
+
+def active_backend(cfg: Optional["config_store.Config"] = None) -> Optional[str]:
+    """Return which backend the next diary call would pick.
+
+    Possible values: 'ollama', 'openai', 'gemini', 'anthropic',
+    'pro_relay', or None if nothing's configured.
+
+    Honours :attr:`Config.llm_provider_preference` — 'auto' uses the
+    historical priority order; an explicit value (e.g. 'anthropic') is
+    only chosen if a key is configured for it, otherwise we fall through
+    to auto. Mirrors the runtime selection in :func:`generate_diary` so
+    the UI can surface a "diaries via Claude Haiku" badge without
+    redoing the priority rules client-side.
+    """
+    cfg = cfg or config_store.load_config()
+    pref = (getattr(cfg, "llm_provider_preference", "auto") or "auto").lower()
+
+    has = {
+        "ollama": bool(cfg.ollama_base_url),
+        "openai": bool(cfg.openai_api_key),
+        "gemini": bool(getattr(cfg, "gemini_api_key", "")),
+        "anthropic": bool(getattr(cfg, "anthropic_api_key", "")),
+        "pro_relay": bool(cfg.pawcorder_pro_license_key),
+    }
+    if pref != "auto" and has.get(pref):
+        return pref
+    # Auto fallback order: local first (privacy/no-cost), then cloud
+    # BYOK in cost-ascending order (Gemini cheapest, then OpenAI, then
+    # Anthropic), then Pro relay (we eat the bill, last resort because
+    # operators with their own keys usually want to use them).
+    # The i18n help string SYS_LLM_PREFERENCE_HELP advertises this
+    # ordering — keep them in sync if you re-tier.
+    for name in ("ollama", "gemini", "openai", "anthropic", "pro_relay"):
+        if has[name]:
+            return name
+    return None
 
 
 # ---- summary builder ---------------------------------------------------
@@ -220,7 +262,8 @@ async def _call_openai(api_key: str, system: str, user: str, *,
     async with httpx.AsyncClient(timeout=timeout) as client:
         resp = await client.post(OPENAI_URL, json=payload, headers=headers)
     if resp.status_code != 200:
-        raise RuntimeError(f"openai http {resp.status_code}: {resp.text[:200]}")
+        # Don't echo the vendor body — it can carry org/billing IDs.
+        raise RuntimeError(f"openai http {resp.status_code}")
     data = resp.json()
     try:
         return str(data["choices"][0]["message"]["content"]).strip()
@@ -228,16 +271,83 @@ async def _call_openai(api_key: str, system: str, user: str, *,
         raise RuntimeError(f"openai: unexpected response shape ({exc})")
 
 
-async def _call_pro_relay(license_key: str, system: str, user: str, *,
-                           lang: str, timeout: float = 30.0) -> str:
-    """Pro relay does the LLM call server-side. Body shape is small —
-    license key + prompts + lang. Server returns {"diary": "..."}."""
+async def _call_ollama(base_url: str, system: str, user: str, *,
+                        model: str = "qwen2.5:3b",
+                        timeout: float = 60.0) -> str:
+    """POST to a local Ollama / OpenAI-compatible server.
+
+    We target Ollama's native ``/api/chat`` endpoint by default — it
+    accepts the same {role, content} message shape as OpenAI but
+    returns a streaming-or-single response under ``message.content``.
+    A trailing ``/v1`` in ``base_url`` flips us to the OpenAI-compatible
+    path (``/v1/chat/completions``) so users can point this at any
+    OpenAI-shaped local proxy (LM Studio, llama.cpp's openai server,
+    vLLM) without code changes.
+
+    Local LLMs are slower than cloud, hence the higher default timeout.
+    Ollama on a 4B-param model on N100 CPU is typically 8-15 s; we
+    pad to 60 s to cover cold model load on the first call.
+    """
+    base = base_url.rstrip("/")
+    if base.endswith("/v1"):
+        # OpenAI-compatible path — same body shape as cloud OpenAI.
+        url = f"{base}/chat/completions"
+        payload = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            "temperature": 0.7,
+            "max_tokens": 200,
+        }
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.post(url, json=payload)
+        if resp.status_code != 200:
+            raise RuntimeError(f"ollama http {resp.status_code}: {resp.text[:200]}")
+        try:
+            return str(resp.json()["choices"][0]["message"]["content"]).strip()
+        except (KeyError, IndexError, TypeError) as exc:
+            raise RuntimeError(f"ollama: unexpected response shape ({exc})")
+    # Native Ollama API.
+    url = f"{base}/api/chat"
     payload = {
+        "model": model,
+        "stream": False,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        "options": {"temperature": 0.7, "num_predict": 200},
+    }
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        resp = await client.post(url, json=payload)
+    if resp.status_code != 200:
+        raise RuntimeError(f"ollama http {resp.status_code}: {resp.text[:200]}")
+    try:
+        return str(resp.json()["message"]["content"]).strip()
+    except (KeyError, TypeError) as exc:
+        raise RuntimeError(f"ollama: unexpected response shape ({exc})")
+
+
+async def _call_pro_relay(license_key: str, system: str, user: str, *,
+                           lang: str, timeout: float = 30.0,
+                           provider: Optional[str] = None) -> str:
+    """Pro relay does the LLM call server-side. Body shape is small —
+    license key + prompts + lang. Server returns {"diary": "..."}.
+
+    ``provider`` (optional) lets the admin pin a specific upstream LLM
+    on the relay side. None means "use the relay's default" — preserves
+    legacy behaviour for callers who don't care.
+    """
+    payload: dict[str, object] = {
         "license_key": license_key,
         "system": system,
         "user": user,
         "lang": lang,
     }
+    if provider:
+        payload["provider"] = provider
     async with httpx.AsyncClient(timeout=timeout) as client:
         resp = await client.post(PRO_RELAY_BASE + PRO_RELAY_PATH, json=payload)
     if resp.status_code == 401:
@@ -252,17 +362,102 @@ async def _call_pro_relay(license_key: str, system: str, user: str, *,
         raise RuntimeError(f"pro relay: unexpected response ({exc})")
 
 
+async def _call_gemini(api_key: str, system: str, user: str, *,
+                        model: str = "gemini-2.5-flash",
+                        timeout: float = 30.0) -> str:
+    """Direct Gemini call (BYOK). Same v1beta generateContent endpoint
+    the relay uses — dual-pathing here means the OSS user (no relay)
+    can still use Gemini directly.
+
+    Mid-2026 best price/quality for short-output workloads — see
+    relay/llm_provider.py for the rationale.
+    """
+    url = (
+        "https://generativelanguage.googleapis.com/v1beta/models/"
+        f"{model}:generateContent?key={api_key}"
+    )
+    payload = {
+        "system_instruction": {"parts": [{"text": system}]},
+        "contents": [{"role": "user", "parts": [{"text": user}]}],
+        "generationConfig": {"temperature": 0.7, "maxOutputTokens": 200},
+    }
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        resp = await client.post(url, json=payload,
+                                  headers={"Content-Type": "application/json"})
+    if resp.status_code != 200:
+        # Vendor body can include billing-account hints; suppress.
+        raise RuntimeError(f"gemini http {resp.status_code}")
+    try:
+        candidates = resp.json().get("candidates") or []
+        if not candidates:
+            raise RuntimeError("gemini: no candidates (safety filter?)")
+        parts = candidates[0].get("content", {}).get("parts", []) or []
+        text = "".join(p.get("text", "") for p in parts).strip()
+        if not text:
+            raise RuntimeError("gemini: empty response")
+        return text
+    except (KeyError, IndexError, TypeError) as exc:
+        raise RuntimeError(f"gemini: unexpected response ({exc})")
+
+
+async def _call_anthropic(api_key: str, system: str, user: str, *,
+                           model: str = "claude-haiku-4-5",
+                           timeout: float = 30.0) -> str:
+    """Direct Anthropic call (BYOK). Uses prompt caching on the system
+    block (90 % off cached input) — diary system prompts are stable
+    across the day so cache hit rate is high after the first call."""
+    payload = {
+        "model": model,
+        "max_tokens": 200,
+        "temperature": 0.7,
+        "system": [
+            {"type": "text", "text": system,
+             "cache_control": {"type": "ephemeral"}},
+        ],
+        "messages": [{"role": "user", "content": user}],
+    }
+    headers = {
+        "x-api-key": api_key,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+    }
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        resp = await client.post("https://api.anthropic.com/v1/messages",
+                                  json=payload, headers=headers)
+    if resp.status_code != 200:
+        # Vendor body can include billing-account hints; suppress.
+        raise RuntimeError(f"anthropic http {resp.status_code}")
+    try:
+        data = resp.json()
+        content = data.get("content") or []
+        text = "".join(
+            c.get("text", "") for c in content if c.get("type") == "text"
+        ).strip()
+        if not text:
+            raise RuntimeError("anthropic: empty response")
+        return text
+    except (KeyError, ValueError) as exc:
+        raise RuntimeError(f"anthropic: unexpected response ({exc})")
+
+
 async def generate_diary(pet: Pet, *, lang: str = "en",
                           cfg: Optional[config_store.Config] = None,
                           now: Optional[float] = None,
                           sightings: Optional[list[dict]] = None,
                           openai_caller: Optional[Callable] = None,
-                          relay_caller: Optional[Callable] = None) -> Diary:
+                          relay_caller: Optional[Callable] = None,
+                          ollama_caller: Optional[Callable] = None,
+                          gemini_caller: Optional[Callable] = None,
+                          anthropic_caller: Optional[Callable] = None) -> Diary:
     """Build summary → prompt → call backend → return Diary.
 
-    The two `*_caller` knobs are dependency-injection seams the tests
-    use to avoid hitting the network. Production passes None and the
-    real httpx clients run.
+    The ``*_caller`` knobs are dependency-injection seams the tests use to
+    avoid hitting the network. Production passes None and the real httpx
+    clients run.
+
+    Backend selection respects ``cfg.llm_provider_preference`` (see
+    :func:`active_backend`) — operators can pin a specific vendor on the
+    System settings page; "auto" preserves the historical priority order.
     """
     cfg = cfg or config_store.load_config()
     summary = build_summary(pet, now=now, sightings=sightings)
@@ -270,33 +465,74 @@ async def generate_diary(pet: Pet, *, lang: str = "en",
 
     # Coalesce concurrent generations for the same (pet, date). Without
     # this the scheduler tick and a manual /api/pets/diary/generate hit
-    # at the same time can both call OpenAI and double-bill the user.
+    # at the same time can both call the LLM and double-bill the user.
     key = (pet.pet_id, summary.date)
     async with _inflight_lock:
         if key in _inflight_keys:
             raise RuntimeError("diary already being generated for this pet today")
         _inflight_keys.add(key)
     try:
-        # Backend selection: explicit OpenAI key wins (user opted into
-        # paying directly). License-only installs fall back to relay.
-        if cfg.openai_api_key:
-            backend = "openai"
+        backend = active_backend(cfg)
+        if backend is None:
+            raise DiaryNotConfigured(
+                "no LLM backend configured — set OLLAMA_BASE_URL, "
+                "OPENAI_API_KEY, GEMINI_API_KEY, ANTHROPIC_API_KEY, "
+                "or a Pro license to enable the diary"
+            )
+        if backend == "ollama":
+            caller = ollama_caller or _call_ollama
+            text = await caller(cfg.ollama_base_url, system, user,
+                                  model=cfg.ollama_model or "qwen2.5:3b")
+        elif backend == "openai":
             caller = openai_caller or _call_openai
             text = await caller(cfg.openai_api_key, system, user)
-        elif cfg.pawcorder_pro_license_key:
-            backend = "pro_relay"
+        elif backend == "gemini":
+            caller = gemini_caller or _call_gemini
+            text = await caller(cfg.gemini_api_key, system, user)
+        elif backend == "anthropic":
+            caller = anthropic_caller or _call_anthropic
+            text = await caller(cfg.anthropic_api_key, system, user)
+        elif backend == "pro_relay":
             caller = relay_caller or _call_pro_relay
-            text = await caller(cfg.pawcorder_pro_license_key, system, user, lang=lang)
+            # If the operator picked a specific *cloud* upstream on the
+            # relay side (e.g. "anthropic"), forward that hint so the
+            # relay's dispatcher honours it. We only forward providers
+            # the relay actually supports — "ollama" / "pro_relay" are
+            # admin-side preferences with no relay equivalent and would
+            # 400 there. None = let the relay pick its own default.
+            pref = (cfg.llm_provider_preference or "auto").lower()
+            relay_provider = pref if pref in ("openai", "gemini", "anthropic") else None
+            text = await caller(cfg.pawcorder_pro_license_key, system, user,
+                                  lang=lang, provider=relay_provider)
         else:
-            raise DiaryNotConfigured(
-                "no OpenAI key and no Pro license — set one to enable the diary"
-            )
+            raise DiaryNotConfigured(f"unknown backend: {backend}")
 
+        # Record success in the reliability ledger so /reliability can
+        # show "diary success rate over last 7 days". Done AFTER the
+        # backend call returns so partial failures don't get marked OK.
+        reliability.record(
+            "ai_inference", f"diary:{backend}", "ok",
+            message=f"diary generated for {pet.pet_id}",
+        )
         return Diary(
             pet_id=pet.pet_id, pet_name=pet.name, date=summary.date,
             text=text, backend=backend, lang=lang,
             generated_at=now or time.time(),
         )
+    except DiaryNotConfigured:
+        # Not a reliability incident — user just hasn't set up a backend.
+        raise
+    except RuntimeError as exc:
+        # Backend errored (HTTP non-200, timeout, etc). Record and
+        # re-raise — caller logs + 502s as before. Use whichever
+        # backend variable was bound (set inside the if/elif chain
+        # above) so the row pinpoints which path failed.
+        backend_label = locals().get("backend", "unknown")
+        reliability.record(
+            "ai_inference", f"diary:{backend_label}", "fail",
+            message=str(exc)[:200],
+        )
+        raise
     finally:
         _inflight_keys.discard(key)
 
@@ -354,8 +590,8 @@ class DiaryScheduler(PollingTask):
         if time.localtime(now).tm_hour < self.DAILY_HOUR:
             return
         cfg = config_store.load_config()
-        if not (cfg.openai_api_key or cfg.pawcorder_pro_license_key):
-            return  # nothing to do — neither backend configured
+        if active_backend(cfg) is None:
+            return  # nothing to do — no backend configured
         today = time.strftime("%Y-%m-%d", time.localtime(now))
         already = {
             r.get("pet_id") for r in read_diaries(limit=200)

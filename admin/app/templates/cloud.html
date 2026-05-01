@@ -1,9 +1,9 @@
 {% extends "_layout.html" %}
-{% block title %}{{ t('CLOUD_TITLE') }} · pawcorder{% endblock %}
+{% block title %}{{ t('CLOUD_TITLE') }} · Pawcorder{% endblock %}
 {% block main %}
 <div x-data="cloudPage()" x-init="init()" class="max-w-3xl">
-  <h1 class="text-2xl font-semibold tracking-tight">{{ t('CLOUD_TITLE') }}</h1>
-  <p class="text-sm text-slate-500 dark:text-slate-400 mb-6">{{ t('CLOUD_SUBTITLE') }}</p>
+  <h1 class="text-3xl font-display tracking-display">{{ t('CLOUD_TITLE') }}</h1>
+  <p class="text-sm text-slate-500 dark:text-slate-400 mb-6 italic">{{ t('CLOUD_SUBTITLE') }}</p>
 
   <div class="rounded-2xl bg-gradient-to-br from-emerald-50 dark:from-emerald-900 to-brand-50 dark:to-emerald-900 border border-emerald-200 dark:border-emerald-800 p-4 mb-6 text-sm text-emerald-900 dark:text-emerald-200">
     {{ t('CLOUD_PITCH') }}
@@ -12,7 +12,7 @@
   <!-- Connected destinations -->
   <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-6 mb-6">
     <div class="flex items-center justify-between mb-4">
-      <h2 class="text-base font-semibold tracking-tight">{{ t('CLOUD_CONNECTED') }}</h2>
+      <h2 class="text-lg font-display tracking-tight">{{ t('CLOUD_CONNECTED') }}</h2>
       <button @click="openNew()" class="rounded-md bg-brand-500 hover:bg-brand-600 text-white px-3 py-2 text-sm">
         + {{ t('CLOUD_ADD_HEADING') }}
       </button>
@@ -40,7 +40,7 @@
   <!-- Cloud usage card -->
   <div x-show="remotes.length > 0" class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-6 mb-6">
     <div class="flex items-center justify-between mb-4">
-      <h2 class="text-base font-semibold tracking-tight">{{ t('CLOUD_USAGE_HEADING') }}</h2>
+      <h2 class="text-lg font-display tracking-tight">{{ t('CLOUD_USAGE_HEADING') }}</h2>
       <button @click="refreshQuota()" :disabled="quotaLoading"
               class="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
               x-text="quotaLoading ? labels.loading : labels.refresh"></button>
@@ -56,7 +56,7 @@
     </div>
 
     <div x-show="quota && quota.quota_supported" class="space-y-3">
-      <!-- Stacked bar: pawcorder | other-used | free -->
+      <!-- Stacked bar: Pawcorder | other-used | free -->
       <div class="h-3 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden flex">
         <div class="bg-brand-500 h-full" :style="`width: ${pct(quota?.pawcorder_bytes, quota?.total_bytes)}%`" :title="labels.used_pc"></div>
         <div class="bg-slate-300 h-full" :style="`width: ${pct((quota?.used_bytes || 0) - (quota?.pawcorder_bytes || 0), quota?.total_bytes)}%`" :title="labels.used_others"></div>
@@ -71,7 +71,7 @@
 
   <!-- Upload policy + size cap -->
   <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-6 mb-6">
-    <h2 class="text-base font-semibold tracking-tight mb-4">{{ t('CLOUD_POLICY_HEADING') }}</h2>
+    <h2 class="text-lg font-display tracking-tight mb-4">{{ t('CLOUD_POLICY_HEADING') }}</h2>
     <div class="space-y-4">
       <label class="flex items-center gap-2 text-sm">
         <input type="checkbox" x-model="form.cloud_enabled"
@@ -80,7 +80,7 @@
       </label>
       <div>
         <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('CLOUD_REMOTE_PATH') }}</label>
-        <input type="text" x-model="form.cloud_remote_path" placeholder="pawcorder"
+        <input type="text" x-model="form.cloud_remote_path" placeholder="Pawcorder"
                class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm font-mono" />
       </div>
       <label class="flex items-center gap-2 text-sm">
@@ -366,7 +366,7 @@
       modal: {
         open: false, saving: false,
         backend: 'drive',
-        name: 'pawcorder',
+        name: 'Pawcorder',
         os: detectOS(),
         fields: {},
       },
@@ -408,7 +408,7 @@
       openNew() {
         this.modal = {
           open: true, saving: false,
-          backend: 'drive', name: 'pawcorder',
+          backend: 'drive', name: 'Pawcorder',
           os: detectOS(),
           fields: {},
         };

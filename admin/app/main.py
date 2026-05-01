@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import io
+import os
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -28,6 +29,7 @@ from . import (
     config_store,
     docker_ops,
     embeddings,
+    federated,
     health,
     heatmap,
     highlights,
@@ -40,14 +42,18 @@ from . import (
     network_scan,
     perf,
     pet_diary,
+    pet_query,
     pets_store,
+    podcast,
     platform_detect,
     privacy,
     recognition,
     recognition_backfill,
+    reliability,
     telegram as tg,
     timeline,
     timelapse,
+    vet_pack,
 )
 
 # Pro modules — present only when a license-paying install drops them in.
@@ -78,6 +84,11 @@ except ImportError:
     posture_detector = None  # type: ignore[assignment]
 
 try:
+    from .pro import bowl_monitor  # type: ignore[attr-defined]
+except ImportError:
+    bowl_monitor = None  # type: ignore[assignment]
+
+try:
     from .pro import connect_client  # type: ignore[attr-defined]
 except ImportError:
     connect_client = None  # type: ignore[assignment]
@@ -92,7 +103,9 @@ from . import (
     updater,
     users,
     webpush,
+    weekly_health_digest,
 )
+from . import cameras_store
 from .cameras_store import (
     Camera,
     CameraStore,
@@ -129,12 +142,17 @@ async def lifespan(_: FastAPI):
         fight_detector.detector.start()
     if posture_detector is not None:
         posture_detector.monitor.start()
+    if bowl_monitor is not None:
+        bowl_monitor.monitor.start()
     if connect_client is not None:
         connect_client.registrar.start()
     pet_diary.scheduler.start()
+    federated.scheduler.start()
+    podcast.scheduler.start()
     updater.checker.start()
     backup_schedule.scheduler.start()
     timelapse.scheduler.start()
+    weekly_health_digest.scheduler.start()
     try:
         yield
     finally:
@@ -151,12 +169,17 @@ async def lifespan(_: FastAPI):
             await fight_detector.detector.stop()
         if posture_detector is not None:
             await posture_detector.monitor.stop()
+        if bowl_monitor is not None:
+            await bowl_monitor.monitor.stop()
         if connect_client is not None:
             await connect_client.registrar.stop()
         await pet_diary.scheduler.stop()
+        await federated.scheduler.stop()
+        await podcast.scheduler.stop()
         await updater.checker.stop()
         await backup_schedule.scheduler.stop()
         await timelapse.scheduler.stop()
+        await weekly_health_digest.scheduler.stop()
 
 
 app = FastAPI(title="pawcorder admin", docs_url=None, redoc_url=None, lifespan=lifespan)
@@ -521,7 +544,12 @@ async def system_page(request: Request):
         return _redirect_login()
     status = docker_ops.get_frigate_status()
     logs = docker_ops.recent_frigate_logs(tail=200)
-    return _render("system.html", request, frigate_status=status, frigate_logs=logs)
+    from . import pet_health_overview
+    return _render(
+        "system.html", request,
+        frigate_status=status, frigate_logs=logs,
+        uptime_svg=pet_health_overview.system_uptime_ribbon(days=7),
+    )
 
 
 @app.get("/mobile", response_class=HTMLResponse)
@@ -1040,16 +1068,82 @@ async def api_admin_password(request: Request, payload: dict):
 
 @app.get("/api/system/ai-tokens")
 async def api_system_ai_tokens(request: Request):
-    """Return whether the OpenAI key / Pro license are set, NOT the values.
+    """Return whether the OpenAI key / Pro license / Ollama URL are
+    set, NOT the values.
 
     The UI uses the booleans to render placeholder dots — exposing the
-    raw secret over the API would let a leaked session lift it.
+    raw secret over the API would let a leaked session lift it. The
+    Ollama URL itself isn't a secret (it's almost always a localhost-y
+    address) so we echo it back so the user can see what they configured.
+
+    Pro license payload (subject id, expiry, days_left) is decoded
+    locally — `verify_license` doesn't talk to the relay, so failed
+    networks don't break this view. Revocation status only shows up
+    on next live diary call returning 401.
     """
     _require_auth(request)
     cfg = config_store.load_config()
+    license_info: dict = {}
+    if cfg.pawcorder_pro_license_key:
+        try:
+            # Local stdlib import to avoid pulling relay deps into OSS
+            # builds. The verify path uses HMAC + the LICENSE_SECRET,
+            # which the admin doesn't have — but the payload is
+            # base64-decodable without the secret, and we only need
+            # the exp claim for the UI.
+            import base64 as _b64, json as _j
+            token = cfg.pawcorder_pro_license_key.strip()
+            if token.startswith("pro_") and "." in token:
+                body_b64 = token[4:].split(".", 1)[0]
+                pad = (-len(body_b64)) % 4
+                body = _b64.urlsafe_b64decode(body_b64 + ("=" * pad))
+                claims = _j.loads(body)
+                exp = int(claims.get("exp") or 0)
+                import time as _t
+                now = int(_t.time())
+                license_info = {
+                    "sub": str(claims.get("sub") or ""),
+                    "exp": exp,
+                    "tier": str(claims.get("tier") or "pro"),
+                    "days_left": max(0, (exp - now) // 86400),
+                    "expired": exp <= now,
+                }
+        except (ValueError, KeyError, TypeError):
+            license_info = {"malformed": True}
+    from . import embeddings, reenroll
+    # Map the registry key to the same plain-language label the
+    # System-page dropdown uses, so the "Currently running:" hint
+    # doesn't leak engineer jargon ("mobilenetv3_small_100") back to
+    # owners after the dropdown was already translated.
+    active_name = embeddings.active_backbone_name()
+    lang = i18n.get_lang_from_request(request)
+    backbone_display_keys = {
+        "mobilenetv3_small_100": "SYS_RECOG_BACKBONE_MOBILENET",
+        "dinov2_small": "SYS_RECOG_BACKBONE_DINOV2",
+    }
+    active_display = (
+        i18n.t(backbone_display_keys[active_name], lang=lang)
+        if active_name in backbone_display_keys else active_name
+    )
     return {
-        "has_openai_key":  bool(cfg.openai_api_key),
-        "has_pro_license": bool(cfg.pawcorder_pro_license_key),
+        "has_openai_key":     bool(cfg.openai_api_key),
+        "has_pro_license":    bool(cfg.pawcorder_pro_license_key),
+        "has_gemini_key":     bool(getattr(cfg, "gemini_api_key", "")),
+        "has_anthropic_key":  bool(getattr(cfg, "anthropic_api_key", "")),
+        "ollama_base_url":    cfg.ollama_base_url,
+        "ollama_model":       cfg.ollama_model,
+        "llm_provider_preference": getattr(cfg, "llm_provider_preference", "auto"),
+        "tts_provider_preference": getattr(cfg, "tts_provider_preference", "auto"),
+        "tts_voice":          getattr(cfg, "tts_voice", ""),
+        "embedding_backbone": getattr(cfg, "embedding_backbone", ""),
+        "active_backbone":    active_display,
+        "recognition_backbones": embeddings.supported_backbones(),
+        # Stale = photos whose stored backbone doesn't match the active
+        # one. /pets page also surfaces this so the alert chases the
+        # operator wherever they look.
+        "recognition_stale_count": reenroll.stale_count(),
+        "active_backend":     pet_diary.active_backend(cfg),
+        "license":            license_info,
     }
 
 
@@ -1102,8 +1196,136 @@ async def api_system_ai_tokens_update(request: Request, payload: dict):
             cfg.pawcorder_pro_license_key = ""
         else:
             cfg.pawcorder_pro_license_key = _validated_secret(raw.strip())
+    if "ollama_base_url" in payload:
+        raw = payload["ollama_base_url"]
+        if raw is None or raw == "":
+            cfg.ollama_base_url = ""
+        else:
+            url = raw.strip()
+            if not (url.startswith("http://") or url.startswith("https://")):
+                raise HTTPException(
+                    status_code=400,
+                    detail="ollama_base_url must be an http:// or https:// URL",
+                )
+            cfg.ollama_base_url = _validated_secret(url)
+    if "ollama_model" in payload:
+        raw = (payload.get("ollama_model") or "").strip() or "qwen2.5:3b"
+        cfg.ollama_model = _validated_secret(raw)
+    if "gemini_api_key" in payload:
+        raw = payload["gemini_api_key"]
+        if raw is None or raw == "":
+            cfg.gemini_api_key = ""
+        else:
+            cfg.gemini_api_key = _validated_secret(raw.strip())
+    if "anthropic_api_key" in payload:
+        raw = payload["anthropic_api_key"]
+        if raw is None or raw == "":
+            cfg.anthropic_api_key = ""
+        else:
+            cfg.anthropic_api_key = _validated_secret(raw.strip())
+    if "llm_provider_preference" in payload:
+        raw = (payload.get("llm_provider_preference") or "auto").strip().lower()
+        # Whitelist — anything outside this set goes to disk and could
+        # silently never match an active backend.
+        if raw not in ("auto", "ollama", "openai", "gemini",
+                        "anthropic", "pro_relay"):
+            raise HTTPException(status_code=400,
+                                 detail="invalid_llm_provider_preference")
+        cfg.llm_provider_preference = raw
+    if "tts_provider_preference" in payload:
+        raw = (payload.get("tts_provider_preference") or "auto").strip().lower()
+        if raw not in ("auto", "openai", "cartesia", "elevenlabs", "xtts"):
+            raise HTTPException(status_code=400,
+                                 detail="invalid_tts_provider_preference")
+        cfg.tts_provider_preference = raw
+    if "tts_voice" in payload:
+        raw = (payload.get("tts_voice") or "").strip()
+        # tts_voice isn't a secret (it's a vendor voice ID alias) but
+        # we still validate length / forbidden chars to keep the .env
+        # round-trip safe.
+        cfg.tts_voice = _validated_secret(raw) if raw else ""
+    if "embedding_backbone" in payload:
+        raw = (payload.get("embedding_backbone") or "").strip()
+        from . import embeddings as _emb
+        valid = {b["name"] for b in _emb.supported_backbones()}
+        if raw and raw not in valid:
+            raise HTTPException(status_code=400,
+                                 detail="invalid_embedding_backbone")
+        cfg.embedding_backbone = raw
     config_store.save_config(cfg)
+    if "embedding_backbone" in payload:
+        # Save just rewrote .env; the running process still has the old
+        # PAWCORDER_EMBEDDING_BACKBONE in os.environ. Push the new value
+        # in and refresh derived module state so the in-process
+        # active_backbone_name(), EMBEDDING_DIM, and the extractor
+        # singleton all see the new pick — without this the operator
+        # would have to restart the admin before re-enroll could do
+        # anything useful.
+        os.environ["PAWCORDER_EMBEDDING_BACKBONE"] = cfg.embedding_backbone
+        from . import embeddings as _emb
+        _emb.refresh_active()
+        # Pre-warm the model download in a background thread. The first
+        # call to ``extractor.load()`` after a backbone swap pays an
+        # ~80 MB urllib pull (DINOv2-small is the heavy one); doing it
+        # here while the operator reads the help text means the
+        # re-enroll click later doesn't hit a reverse-proxy timeout.
+        # Soft-fails — a missing network just defers the cost; never
+        # fails the save.
+        import threading as _t
+        def _warm():
+            try:
+                _emb.download_model()
+            except Exception:  # noqa: BLE001
+                pass
+        _t.Thread(target=_warm, name="warm-embedding-model",
+                   daemon=True).start()
     return {"ok": True}
+
+
+@app.post("/api/pets/reenroll")
+async def api_pets_reenroll(request: Request):
+    """Re-embed every reference photo against the currently active
+    backbone. Synchronous — the route blocks until done. See
+    ``app.reenroll`` for the loop and the per-photo failure handling.
+    """
+    _require_auth(request)
+    from . import reenroll
+    result = reenroll.reenroll_all()
+    return result.to_dict()
+
+
+@app.get("/api/system/federated")
+async def api_system_federated(request: Request):
+    """Status of the federated baseline feature: opt-in flag + last
+    cohort fetched + whether a Pro license is configured.
+
+    The page UI uses this to render the toggle, the consent text, and
+    the "we last submitted N days ago" hint."""
+    _require_auth(request)
+    cfg = config_store.load_config()
+    cohorts = federated.read_cached_cohorts()
+    return {
+        "opt_in": cfg.federated_opt_in,
+        "license_present": bool(cfg.pawcorder_pro_license_key),
+        "cohorts": cohorts,
+    }
+
+
+@app.post("/api/system/federated")
+async def api_system_federated_update(request: Request, payload: dict):
+    """Persist the opt-in flag. The relay does the actual submission
+    on its own schedule — flipping this is just consent."""
+    _require_auth(request)
+    cfg = config_store.load_config()
+    raw = payload.get("opt_in")
+    if isinstance(raw, bool):
+        cfg.federated_opt_in = raw
+    elif isinstance(raw, str):
+        cfg.federated_opt_in = raw in ("1", "true", "True", "on")
+    else:
+        raise HTTPException(status_code=400, detail="opt_in must be boolean")
+    config_store.save_config(cfg)
+    return {"ok": True, "opt_in": cfg.federated_opt_in}
 
 
 @app.get("/api/system/health-detectors")
@@ -1305,6 +1527,39 @@ async def welcome_page(request: Request):
     return _render("welcome.html", request)
 
 
+@app.get("/pets/health", response_class=HTMLResponse)
+async def pets_health_page(request: Request):
+    """Per-pet health overview with charts. Aggregates every health
+    signal (presence, activity, litter, bowls, posture, fights) into
+    one page so an owner doesn't have to chase notifications."""
+    if not auth.is_authenticated(request):
+        return _redirect_login()
+    from . import pet_health_overview, recognition, reenroll
+    overviews = pet_health_overview.overview_for_all_pets(
+        lang=i18n.get_lang_from_request(request),
+    )
+    recognition_stale_count = reenroll.stale_count()
+    # Cloud-trained V2 models are tied to a specific backbone. After a
+    # backbone swap the old models silently stop helping — surface the
+    # count so the operator knows which pets need re-training.
+    stale_cloud_pets = recognition.stale_cloud_models()
+    # Hint banner is shown only when nothing related to bowls / litter
+    # rendered for any pet — once the owner draws a zone, the matching
+    # sparkline appears and the banner self-hides.
+    any_bowl_or_litter = any(
+        ov.sparkline_litter_svg or ov.sparkline_water_svg or ov.sparkline_food_svg
+        for ov in overviews
+    )
+    return _render(
+        "pets_health.html", request,
+        overviews=overviews,
+        any_bowl_or_litter=any_bowl_or_litter,
+        recognition_stale_count=recognition_stale_count,
+        stale_cloud_pets=stale_cloud_pets,
+        uptime_svg=pet_health_overview.system_uptime_ribbon(days=7),
+    )
+
+
 @app.get("/api/pets/health")
 async def api_pets_health(request: Request):
     """Per-pet health snapshots: presence (last seen / activity), litter
@@ -1338,11 +1593,17 @@ async def api_pets_health(request: Request):
                    for s in posture_detector.vomit_snapshots(now=now, rows=rows_1h)]
         posture += [s.to_dict()
                     for s in posture_detector.gait_snapshots(now=now, rows=rows_1h)]
+    bowls: list[dict] = []
+    if bowl_monitor is not None:
+        # Bowl baselines reach back BASELINE_DAYS+1 just like pet_health,
+        # so the widest slice already covers it.
+        bowls = [s.to_dict() for s in bowl_monitor.snapshots_all(now=now, rows=rows_widest)]
     return {
         "snapshots": [s.to_dict() for s in pet_health.snapshots_all(now=now, rows=rows_widest)] if pet_health else [],
         "litter": [s.to_dict() for s in litter_monitor.snapshots_all(now=now, rows=rows_24h)] if litter_monitor else [],
         "fight_clusters": [c.to_dict() for c in fight_detector._scan_clusters(rows_recent)] if fight_detector else [],
         "posture": posture,
+        "bowls": bowls,
     }
 
 
@@ -1354,12 +1615,10 @@ async def api_pets_diary_list(request: Request, pet_id: str | None = None,
     the UI uses this to surface a setup nudge."""
     _require_auth(request)
     cfg = config_store.load_config()
-    configured = bool(cfg.openai_api_key or cfg.pawcorder_pro_license_key)
+    configured = bool(cfg.ollama_base_url or cfg.openai_api_key or cfg.pawcorder_pro_license_key)
     return {
         "configured": configured,
-        "backend": "openai" if cfg.openai_api_key else (
-            "pro_relay" if cfg.pawcorder_pro_license_key else None
-        ),
+        "backend": pet_diary.active_backend(cfg),
         "diaries": pet_diary.read_diaries(pet_id=pet_id, limit=max(1, min(limit, 200))),
     }
 
@@ -1388,6 +1647,328 @@ async def api_pets_diary_generate(request: Request, pet_id: str = Form(...)):
         raise HTTPException(status_code=502, detail="diary_backend_error")
     pet_diary.append_diary(d)
     return d.to_dict()
+
+
+@app.get("/reliability", response_class=HTMLResponse)
+async def page_reliability(request: Request):
+    """Operator-facing SLO dashboard. Shows per-camera uptime, AI
+    inference success rate, and push-delivery rate for the last 7 days.
+
+    Renders inside the admin shell so the user can navigate back. The
+    actual data is computed in :mod:`reliability` and shipped as JSON
+    to the page so the table can be sorted client-side without a refetch.
+    """
+    if not auth.is_authenticated(request):
+        return _redirect_login()
+    summary = reliability.summarize()
+    return _render("reliability.html", request, summary=summary)
+
+
+@app.get("/api/reliability")
+async def api_reliability(request: Request, days: int = 7):
+    """JSON of the SLO summary. Used by the page for live refresh, and
+    available to external monitoring (Home Assistant gauge, etc.) via
+    the same Bearer auth as everything else."""
+    _require_auth(request)
+    days = max(1, min(int(days or 7), 90))
+    return reliability.summarize(days=days)
+
+
+@app.post("/api/pets/calibrate")
+async def api_pets_calibrate(request: Request):
+    """Run local recognition calibration: sweeps each pet's photos
+    against itself + every other pet to pick a per-pet cosine
+    threshold that minimises confusion. Stores chosen_threshold
+    + diagnostics on each Pet record. Available to OSS + Pro;
+    pure local math, no relay round-trip."""
+    _require_auth(request)
+    try:
+        from .pro import finetune
+    except ImportError:
+        raise HTTPException(status_code=503, detail="finetune_unavailable")
+    store = pets_store.PetStore()
+    pets = store.load()
+    if not pets:
+        raise HTTPException(status_code=400, detail="no_pets")
+    results = finetune.calibrate_all(pets=pets)
+    by_id = {r.pet_id: r for r in results}
+    for p in pets:
+        r = by_id.get(p.pet_id)
+        if r is None:
+            continue
+        # Only adopt the calibration when there's enough data to be
+        # meaningful — sample_pairs_intra=0 means a one-photo pet,
+        # for whom we deliberately keep the global threshold.
+        if r.sample_pairs_intra > 0:
+            p.match_threshold = r.chosen_threshold
+        p.calibration = r.to_dict()
+    store.save_all(pets)
+    return {"results": [r.to_dict() for r in results]}
+
+
+@app.get("/api/pets/podcasts")
+async def api_pets_podcasts(request: Request):
+    """List recent weekly podcast episodes (newest first)."""
+    _require_auth(request)
+    return {"podcasts": podcast.list_podcasts()}
+
+
+@app.post("/api/pets/podcasts/generate")
+async def api_pets_podcasts_generate(request: Request):
+    """Manually trigger a podcast for today. Useful for both end users
+    ("I want one now") and ops smoke-testing the relay TTS pipeline."""
+    _require_auth(request)
+    cfg = config_store.load_config()
+    if not cfg.pawcorder_pro_license_key:
+        raise HTTPException(status_code=400, detail="pro_license_required")
+    pets = pets_store.PetStore().load()
+    if not pets:
+        raise HTTPException(status_code=400, detail="no_pets_configured")
+    diaries = pet_diary.read_diaries(limit=100)
+    import time as _t
+    cutoff = _t.strftime("%Y-%m-%d", _t.localtime(_t.time() - 7 * 86400))
+    diaries = [d for d in diaries if (d.get("date") or "") >= cutoff]
+    lang = i18n.get_lang_from_request(request)
+    script, covered = podcast.build_script(pets=pets, diaries=diaries, lang=lang)
+    try:
+        audio = await podcast.synthesize(script, cfg.pawcorder_pro_license_key)
+    except RuntimeError as exc:
+        import logging
+        logging.getLogger("pawcorder.main").warning("podcast TTS failed: %s", exc)
+        raise HTTPException(status_code=502, detail="tts_failed")
+    today = _t.strftime("%Y-%m-%d", _t.localtime())
+    p = podcast.Podcast(
+        date=today, script=script, audio_path="",
+        pets_covered=covered, generated_at=_t.time(),
+    )
+    podcast.save_podcast(p, audio)
+    return p.to_dict()
+
+
+@app.get("/api/pets/podcasts/{date}/audio")
+async def api_pets_podcasts_audio(request: Request, date: str):
+    """Stream the mp3 for one episode. Date must match `^\\d{4}-\\d{2}-\\d{2}$`
+    so we can't be tricked into reading a parent dir."""
+    _require_auth(request)
+    import re as _re
+    if not _re.match(r"^\d{4}-\d{2}-\d{2}$", date):
+        raise HTTPException(status_code=400, detail="bad_date")
+    p = podcast.PODCAST_DIR / f"{date}.mp3"
+    if not p.exists():
+        raise HTTPException(status_code=404, detail="not_found")
+    return Response(content=p.read_bytes(), media_type="audio/mpeg",
+                     headers={"Content-Disposition": f'inline; filename="pawcorder-{date}.mp3"'})
+
+
+@app.post("/api/pets/query")
+async def api_pets_query(request: Request, payload: dict):
+    """Natural-language Q&A over the sightings timeline.
+
+    Body: {"question": "Did Mochi jump on the table today?"}
+    Response: {"answer": "...", "event_ids": [...], "backend": "...",
+               "samples_considered": N, "window_hours": ...}
+    """
+    _require_auth(request)
+    question = (payload.get("question") or "").strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="question_required")
+    lang = i18n.get_lang_from_request(request)
+    try:
+        answer = await pet_query.answer_question(question, lang=lang)
+    except pet_diary.DiaryNotConfigured:
+        raise HTTPException(status_code=400, detail="diary_not_configured")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except RuntimeError as exc:
+        import logging
+        logging.getLogger("pawcorder.main").warning(
+            "query backend failed: %s", exc,
+        )
+        raise HTTPException(status_code=502, detail="query_backend_error")
+    return answer.to_dict()
+
+
+@app.get("/pets/{pet_id}/train-cloud", response_class=HTMLResponse)
+async def page_pet_train_cloud(request: Request, pet_id: str):
+    """Pro: per-pet cloud training page. Owner uploads reference photos
+    + ticks consent; we ship them to the relay, get a tiny classifier
+    back. The page also shows status of any in-flight training job."""
+    if not auth.is_authenticated(request):
+        return _redirect_login()
+    pet = pets_store.PetStore().get(pet_id)
+    if pet is None:
+        raise HTTPException(status_code=404, detail="pet_not_found")
+    from . import cloud_train, recognition
+    cfg = config_store.load_config()
+    has_pro = bool(cfg.pawcorder_pro_license_key)
+    lang = i18n.get_lang_from_request(request)
+    consent_text = i18n.t("CLOUD_TRAIN_CONSENT_BODY", lang=lang)
+    # Surface whether the pet has a real V2 classifier vs a V1 placeholder
+    # vs nothing yet — the template renders different copy per case so
+    # the owner sees an accurate "Custom model: trained" badge.
+    model_status = recognition.cloud_model_status(pet_id)
+    return _render(
+        "pets_train.html", request,
+        pet=pet.to_dict(),
+        consent_text=consent_text,
+        initial_state=cloud_train.latest_state(pet_id).to_dict(),
+        has_pro=has_pro,
+        model_status=model_status,
+    )
+
+
+@app.post("/api/pets/{pet_id}/train-cloud/upload")
+async def api_pet_train_upload(request: Request, pet_id: str):
+    """Forward owner-uploaded photos to the relay. Validates types +
+    sizes server-side so a forged client can't push junk through."""
+    _require_auth(request)
+    pet = pets_store.PetStore().get(pet_id)
+    if pet is None:
+        raise HTTPException(status_code=404, detail="pet_not_found")
+    from . import cloud_train
+    form = await request.form()
+    consent_hash = (form.get("consent_hash") or "").strip()
+    # Recompute the consent hash for every supported language and
+    # require the client's hash to match one of them. We iterate
+    # ``i18n.SUPPORTED`` (not a hard-coded en/zh-TW pair) so that
+    # adding a Japanese or Korean translation later doesn't silently
+    # reject those owners' clicks. ``i18n.t`` falls back to en for any
+    # lang that doesn't have its own translation; the resulting set
+    # dedupes naturally.
+    expected_hashes = {
+        cloud_train.consent_hash(i18n.t("CLOUD_TRAIN_CONSENT_BODY", lang=lang))
+        for lang in i18n.SUPPORTED
+    }
+    if consent_hash not in expected_hashes:
+        raise HTTPException(status_code=400, detail="consent_required")
+    files = form.getlist("photos") if hasattr(form, "getlist") else []
+    if not files:
+        raise HTTPException(status_code=400, detail="cloud_train_no_photos")
+    # Cap the count BEFORE reading any bodies — otherwise a thousand
+    # 1-byte uploads could DoS memory before the per-file check fires.
+    if len(files) > cloud_train.MAX_TOTAL_PHOTOS:
+        raise HTTPException(status_code=400,
+                              detail="cloud_train_too_many_photos")
+    photos: list[tuple[str, bytes, str]] = []
+    for f in files:
+        if not hasattr(f, "read"):
+            continue
+        # Read the body and check its size INSIDE the loop. Each file
+        # is bounded by MAX_PHOTO_BYTES; total memory use is bounded
+        # by MAX_PHOTO_BYTES × MAX_TOTAL_PHOTOS = 640 MB worst case.
+        body = await f.read()
+        if len(body) > cloud_train.MAX_PHOTO_BYTES:
+            raise HTTPException(status_code=400,
+                                  detail="cloud_train_file_too_big")
+        mime = getattr(f, "content_type", "") or "application/octet-stream"
+        filename = getattr(f, "filename", "") or "photo"
+        err = cloud_train.validate_file(filename, body, mime)
+        if err:
+            raise HTTPException(status_code=400, detail=err)
+        photos.append((filename, body, mime))
+    try:
+        state = await cloud_train.upload_photos(
+            pet_id, photos, consent_text_hash=consent_hash,
+        )
+    except cloud_train.CloudTrainError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return state.to_dict()
+
+
+@app.get("/api/pets/{pet_id}/train-cloud/status")
+async def api_pet_train_status(request: Request, pet_id: str):
+    """Poll for the latest job status. Falls back to the local ledger
+    if the relay is unreachable so the page still renders."""
+    _require_auth(request)
+    pet = pets_store.PetStore().get(pet_id)
+    if pet is None:
+        raise HTTPException(status_code=404, detail="pet_not_found")
+    from . import cloud_train
+    cfg = config_store.load_config()
+    if not cfg.pawcorder_pro_license_key:
+        return cloud_train.latest_state(pet_id).to_dict()
+    try:
+        state = await cloud_train.poll_status(pet_id)
+    except cloud_train.CloudTrainError:
+        state = cloud_train.latest_state(pet_id)
+    return state.to_dict()
+
+
+@app.post("/api/pets/{pet_id}/train-cloud/forget")
+async def api_pet_train_forget(request: Request, pet_id: str):
+    """Owner-triggered purge: relay deletes photos, we delete the local
+    model. State resets to idle."""
+    _require_auth(request)
+    # Pet existence check matches the other train-cloud routes; without
+    # it, a malformed pet_id could land in cloud_train's local-path
+    # construction. (See cloud_train._local_model_path.)
+    pet = pets_store.PetStore().get(pet_id)
+    if pet is None:
+        raise HTTPException(status_code=404, detail="pet_not_found")
+    from . import cloud_train
+    try:
+        state = await cloud_train.request_delete(pet_id)
+    except cloud_train.CloudTrainError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return state.to_dict()
+
+
+@app.get("/pets/{pet_id}/vet-pack", response_class=HTMLResponse)
+async def page_vet_pack(request: Request, pet_id: str):
+    """Standalone printable 30-day health summary for the vet visit.
+
+    Renders OUTSIDE the admin shell (no nav, no chrome) because the
+    user is going to print it / save as PDF — admin links and dark-mode
+    bars don't belong on the printout. The HTML is its own document
+    with inline CSS, no external assets.
+    """
+    _require_auth(request)
+    pet = pets_store.PetStore().get(pet_id)
+    if pet is None:
+        raise HTTPException(status_code=404, detail="pet_not_found")
+    lang = i18n.get_lang_from_request(request)
+    pack = vet_pack.build_vet_pack(pet)
+    return HTMLResponse(content=vet_pack.render_html(pack, lang=lang))
+
+
+@app.post("/api/pets/{pet_id}/vet-pack/share")
+async def api_vet_pack_share(request: Request, pet_id: str):
+    """Mint a 24h signed link for the vet pack. Body: empty.
+
+    Returns ``{"url": "/share/vet-pack/<pet>?t=<token>", "expires_at": ts}``.
+    The owner copies this and texts it to the vet — vet opens it on
+    their own device, no Pawcorder login needed."""
+    _require_auth(request)
+    pet = pets_store.PetStore().get(pet_id)
+    if pet is None:
+        raise HTTPException(status_code=404, detail="pet_not_found")
+    try:
+        token = vet_pack.mint_share_token(pet_id)
+    except RuntimeError as exc:
+        # Caller's setup is incomplete (no admin session secret yet).
+        raise HTTPException(status_code=503, detail=str(exc))
+    expires_at = int(token.split(".", 1)[0])
+    base = str(request.base_url).rstrip("/")
+    return {
+        "url": f"{base}/share/vet-pack/{pet_id}?t={token}",
+        "expires_at": expires_at,
+    }
+
+
+@app.get("/share/vet-pack/{pet_id}", response_class=HTMLResponse)
+async def page_vet_pack_shared(request: Request, pet_id: str, t: str = ""):
+    """Public-but-token-gated rendering of the vet pack. Same HTML as
+    the auth'd route, but bypasses session auth on a valid signature.
+    Wrong / expired token returns 410 Gone (link expired) so a vet
+    knows to ask the owner for a fresh share."""
+    if not vet_pack.verify_share_token(pet_id, t):
+        raise HTTPException(status_code=410, detail="share_link_expired")
+    pet = pets_store.PetStore().get(pet_id)
+    if pet is None:
+        raise HTTPException(status_code=404, detail="pet_not_found")
+    lang = i18n.get_lang_from_request(request)
+    pack = vet_pack.build_vet_pack(pet)
+    return HTMLResponse(content=vet_pack.render_html(pack, lang=lang))
 
 
 @app.get("/timelapse", response_class=HTMLResponse)
@@ -1645,7 +2226,19 @@ async def api_camera_zones_save(request: Request, name: str, payload: dict):
     if zones is not None:
         if not isinstance(zones, list):
             raise HTTPException(status_code=400, detail="zones must be a list")
-        cam.zones = list(zones)
+        # Normalize ``kind`` server-side so a malformed client (or a
+        # legacy zone passed back through edit) can't poison the YAML
+        # with an unknown purpose. Unknown / missing falls to "detect".
+        clean_zones: list[dict] = []
+        for z in zones:
+            if not isinstance(z, dict):
+                continue
+            kind = z.get("kind") or cameras_store.ZONE_KIND_DETECT
+            if kind not in cameras_store.ZONE_KINDS:
+                kind = cameras_store.ZONE_KIND_DETECT
+            z["kind"] = kind
+            clean_zones.append(z)
+        cam.zones = clean_zones
     if masks is not None:
         if not isinstance(masks, list):
             raise HTTPException(status_code=400, detail="privacy_masks must be a list")
@@ -2418,6 +3011,32 @@ async def api_webpush_test(request: Request):
         body="Test push — your subscription is working.",
         url="/",
     )
+
+
+@app.post("/api/webpush/native")
+async def api_webpush_native(request: Request, payload: dict):
+    """Register a native APNs / FCM token from the Capacitor mobile shell.
+
+    The native app posts ``{token, platform}`` after asking for push
+    permission on first launch. We dedupe by token value so a phone
+    re-registering on every launch (iOS does this) is idempotent.
+
+    The ``webpush`` module already stores native tokens alongside its
+    Web Push subscriptions; this just forwards the call. The actual
+    push dispatch path lives in ``webpush.send_to_all`` which routes
+    APNs / FCM / VAPID by token shape.
+    """
+    _require_auth(request)
+    token = (payload.get("token") or "").strip()
+    platform = (payload.get("platform") or "").strip().lower()
+    if not token:
+        raise HTTPException(status_code=400, detail="token_required")
+    if platform not in ("ios", "android"):
+        raise HTTPException(status_code=400, detail="bad_platform")
+    try:
+        return webpush.add_native_token(token=token, platform=platform)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 @app.get("/users", response_class=HTMLResponse)

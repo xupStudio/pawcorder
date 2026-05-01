@@ -1,0 +1,154 @@
+{% extends "_layout.html" %}
+{% block title %}{{ t('RELIABILITY_TITLE') }} · Pawcorder{% endblock %}
+{% block main %}
+<div x-data="reliabilityPage({{ summary | tojson }})" x-init="autoRefresh()">
+  <div class="flex items-center justify-between mb-6 gap-2">
+    <div>
+      <h1 class="text-3xl font-display tracking-display">{{ t('RELIABILITY_TITLE') }}</h1>
+      <p class="text-sm text-slate-500 dark:text-slate-400 italic">{{ t('RELIABILITY_SUBTITLE') }}</p>
+    </div>
+    <div class="flex items-center gap-2">
+      <select x-model="windowDays" @change="reload()"
+              class="rounded-md border-slate-300 dark:border-slate-600 px-2 py-1 text-sm">
+        <option value="1">1d</option>
+        <option value="7">7d</option>
+        <option value="30">30d</option>
+      </select>
+      <button @click="reload()"
+              class="rounded-md bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 px-3 py-1.5 text-xs font-medium">
+        {{ t('SYS_REFRESH_LOGS') }}
+      </button>
+    </div>
+  </div>
+
+  {# Headline tile — overall success rate over the window. Color-codes
+     by SLO tier so the user's eye lands on the right severity:
+       ≥99% green (everything fine)
+       ≥95% amber (notable issues)
+       <95% rose  (something is broken) #}
+  <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5 mb-4">
+    <div class="flex items-center justify-between gap-3">
+      <div>
+        <p class="text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">
+          {{ t('RELIABILITY_OVERALL') }}
+        </p>
+        <p class="text-3xl font-semibold mt-1"
+           :class="overallClass(data.overall_success_rate)"
+           x-text="(data.overall_success_rate * 100).toFixed(2) + '%'"></p>
+      </div>
+      <div class="text-right text-xs text-slate-500 dark:text-slate-400">
+        <p x-text="`${data.total_samples.toLocaleString()} ${labels.samples}`"></p>
+        <p x-text="`${data.total_failures.toLocaleString()} ${labels.failures}`"></p>
+        <p x-text="`${labels.window} ${data.window_days}d`"></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Per-subsystem rollup tiles -->
+  <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
+    <template x-for="(s, key) in data.by_subsystem" :key="key">
+      <div class="rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3">
+        <p class="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400"
+           x-text="subsystemLabel(key)"></p>
+        <p class="text-xl font-semibold mt-1"
+           :class="overallClass(s.success_rate)"
+           x-text="(s.success_rate * 100).toFixed(1) + '%'"></p>
+        <p class="text-[11px] text-slate-500 dark:text-slate-400"
+           x-text="`${s.failures} / ${s.samples} ${labels.failed}`"></p>
+      </div>
+    </template>
+  </div>
+
+  <!-- Detail table — worst rows first so the operator's first glance lands on broken stuff. -->
+  <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 overflow-hidden">
+    <table class="min-w-full text-sm">
+      <thead class="bg-slate-50 dark:bg-slate-800/40 text-xs uppercase tracking-wider text-slate-600 dark:text-slate-300">
+        <tr>
+          <th class="text-left px-4 py-2">{{ t('RELIABILITY_COL_SUBSYSTEM') }}</th>
+          <th class="text-left px-4 py-2">{{ t('RELIABILITY_COL_NAME') }}</th>
+          <th class="text-right px-4 py-2">{{ t('RELIABILITY_COL_RATE') }}</th>
+          <th class="text-right px-4 py-2">{{ t('RELIABILITY_COL_SAMPLES') }}</th>
+          <th class="text-right px-4 py-2">{{ t('RELIABILITY_COL_FAILS') }}</th>
+          <th class="text-left px-4 py-2">{{ t('RELIABILITY_COL_LAST_FAIL') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        <template x-for="r in data.rows" :key="r.subsystem + ':' + r.name">
+          <tr class="border-t border-slate-100 dark:border-slate-800">
+            <td class="px-4 py-2 text-xs"
+                x-text="subsystemLabel(r.subsystem)"></td>
+            <td class="px-4 py-2 font-mono text-xs" x-text="r.name"></td>
+            <td class="px-4 py-2 text-right font-mono"
+                :class="overallClass(r.success_rate)"
+                x-text="(r.success_rate * 100).toFixed(2) + '%'"></td>
+            <td class="px-4 py-2 text-right text-xs text-slate-600 dark:text-slate-300"
+                x-text="r.samples"></td>
+            <td class="px-4 py-2 text-right text-xs"
+                :class="r.failures > 0 ? 'text-rose-700 dark:text-rose-300 font-medium' : 'text-slate-500 dark:text-slate-400'"
+                x-text="r.failures"></td>
+            <td class="px-4 py-2 text-xs text-slate-500 dark:text-slate-400"
+                x-text="r.last_failure_ts ? `${formatTime(r.last_failure_ts)} — ${r.last_failure_msg}` : '—'"></td>
+          </tr>
+        </template>
+        <tr x-show="data.rows.length === 0">
+          <td colspan="6" class="px-4 py-6 text-center text-sm text-slate-500 dark:text-slate-400">
+            {{ t('RELIABILITY_EMPTY') }}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+function reliabilityPage(initial) {
+  return {
+    data: initial,
+    windowDays: '7',
+    refreshHandle: null,
+    labels: {
+      samples: {{ t('RELIABILITY_SAMPLES_WORD') | tojson }},
+      failures: {{ t('RELIABILITY_FAILURES_WORD') | tojson }},
+      window: {{ t('RELIABILITY_WINDOW') | tojson }},
+      failed: {{ t('RELIABILITY_FAILED_WORD') | tojson }},
+    },
+    subsystemLabels: {
+      camera:        {{ t('RELIABILITY_SUBSYS_CAMERA') | tojson }},
+      ai_inference:  {{ t('RELIABILITY_SUBSYS_AI') | tojson }},
+      push:          {{ t('RELIABILITY_SUBSYS_PUSH') | tojson }},
+      frigate:       {{ t('RELIABILITY_SUBSYS_FRIGATE') | tojson }},
+      storage:       {{ t('RELIABILITY_SUBSYS_STORAGE') | tojson }},
+      other:         {{ t('RELIABILITY_SUBSYS_OTHER') | tojson }},
+    },
+    subsystemLabel(key) { return this.subsystemLabels[key] || key; },
+    // SLO color-coding tiers — tuned to typical home-lab expectations.
+    // Cameras drop a frame on Wi-Fi hiccups; 99% is "fine", <95% means
+    // wired path issues / camera dying.
+    overallClass(rate) {
+      if (rate >= 0.99) return 'text-emerald-700 dark:text-emerald-300';
+      if (rate >= 0.95) return 'text-amber-700 dark:text-amber-300';
+      return 'text-rose-700 dark:text-rose-300';
+    },
+    formatTime(ts) {
+      if (!ts) return '';
+      const d = new Date(ts * 1000);
+      return d.toLocaleString();
+    },
+    async reload() {
+      try {
+        const r = await fetch(`/api/reliability?days=${this.windowDays}`, {
+          credentials: 'same-origin',
+          headers: { 'X-Requested-With': 'pawcorder' },
+        });
+        if (r.ok) this.data = await r.json();
+      } catch (e) { /* silent — best-effort */ }
+    },
+    autoRefresh() {
+      // 60-s pulse so an operator watching during an outage sees the
+      // numbers tick up without a manual refresh. Cleared on navigation.
+      this.refreshHandle = setInterval(() => this.reload(), 60_000);
+    },
+  };
+}
+</script>
+{% endblock %}

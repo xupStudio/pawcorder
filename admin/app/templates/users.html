@@ -1,11 +1,11 @@
 {% extends "_layout.html" %}
-{% block title %}{{ t('USERS_TITLE') }} · pawcorder{% endblock %}
+{% block title %}{{ t('USERS_TITLE') }} · Pawcorder{% endblock %}
 {% block main %}
 <div x-data='usersPage({{ users | tojson }}, {{ legacy_mode | tojson }}, {{ roles | tojson }})' x-init="loadMe()">
   <div class="flex items-center justify-between mb-6 gap-2">
     <div>
-      <h1 class="text-2xl font-semibold tracking-tight">{{ t('USERS_TITLE') }}</h1>
-      <p class="text-sm text-slate-500 dark:text-slate-400">{{ t('USERS_SUBTITLE') }}</p>
+      <h1 class="text-3xl font-display tracking-display">{{ t('USERS_TITLE') }}</h1>
+      <p class="text-sm text-slate-500 dark:text-slate-400 italic">{{ t('USERS_SUBTITLE') }}</p>
     </div>
     <button @click="openNew()" class="rounded-md bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 text-sm font-medium">
       {{ t('USERS_ADD') }}
@@ -23,15 +23,15 @@
   <!-- Role legend — shown above the user list as quick-reference -->
   <div class="rounded-2xl bg-slate-50 dark:bg-slate-800 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-4 mb-6 text-xs grid grid-cols-1 sm:grid-cols-3 gap-3">
     <div>
-      <p class="font-semibold text-slate-700 dark:text-slate-300 dark:text-slate-200">👑 {{ t('USERS_ROLE_ADMIN') }}</p>
+      <p class="font-semibold text-slate-700 dark:text-slate-300">👑 {{ t('USERS_ROLE_ADMIN') }}</p>
       <p class="text-slate-500 dark:text-slate-400 mt-1">{{ t('USERS_ROLE_ADMIN_HELP') }}</p>
     </div>
     <div>
-      <p class="font-semibold text-slate-700 dark:text-slate-300 dark:text-slate-200">👨‍👩‍👧 {{ t('USERS_ROLE_FAMILY') }}</p>
+      <p class="font-semibold text-slate-700 dark:text-slate-300">👨‍👩‍👧 {{ t('USERS_ROLE_FAMILY') }}</p>
       <p class="text-slate-500 dark:text-slate-400 mt-1">{{ t('USERS_ROLE_FAMILY_HELP') }}</p>
     </div>
     <div>
-      <p class="font-semibold text-slate-700 dark:text-slate-300 dark:text-slate-200">🧒 {{ t('USERS_ROLE_KID') }}</p>
+      <p class="font-semibold text-slate-700 dark:text-slate-300">🧒 {{ t('USERS_ROLE_KID') }}</p>
       <p class="text-slate-500 dark:text-slate-400 mt-1">{{ t('USERS_ROLE_KID_HELP') }}</p>
     </div>
   </div>
@@ -61,7 +61,7 @@
                     }"
                     x-text="u.role"></span>
             </td>
-            <td class="px-4 py-3 text-slate-600 dark:text-slate-300 dark:text-slate-400 text-xs"
+            <td class="px-4 py-3 text-slate-600 dark:text-slate-300 text-xs"
                 x-text="u.last_login_at ? formatDate(u.last_login_at) : labels.never"></td>
             <td class="px-4 py-3 text-right text-sm">
               <button @click="openEdit(u)" class="text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100 dark:hover:text-slate-200">{{ t('EDIT') }}</button>
@@ -84,7 +84,7 @@
        @keydown.escape.window="modal.open = false">
     <div class="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-md">
       <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
-        <h2 class="text-lg font-semibold tracking-tight" x-text="modal.mode === 'edit' ? labels.edit_title : labels.new_title"></h2>
+        <h2 class="text-xl font-display tracking-tight" x-text="modal.mode === 'edit' ? labels.edit_title : labels.new_title"></h2>
         <button @click="modal.open = false" class="text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200">×</button>
       </div>
       <div class="px-6 py-5 space-y-4">

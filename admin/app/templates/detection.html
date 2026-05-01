@@ -1,9 +1,9 @@
 {% extends "_layout.html" %}
-{% block title %}{{ t('DETECTION_TITLE') }} · pawcorder{% endblock %}
+{% block title %}{{ t('DETECTION_TITLE') }} · Pawcorder{% endblock %}
 {% block main %}
 <div x-data="detectionPage()" class="max-w-3xl">
-  <h1 class="text-2xl font-semibold tracking-tight">{{ t('DETECTION_TITLE') }}</h1>
-  <p class="text-sm text-slate-500 dark:text-slate-400 mb-6">{{ t('DETECTION_SUBTITLE') }}</p>
+  <h1 class="text-3xl font-display tracking-display">{{ t('DETECTION_TITLE') }}</h1>
+  <p class="text-sm text-slate-500 dark:text-slate-400 mb-6 italic">{{ t('DETECTION_SUBTITLE') }}</p>
 
   <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5 mb-6">
     <div class="flex items-center justify-between mb-3">
@@ -44,7 +44,7 @@
   </div>
 
   <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-6 mb-6">
-    <h2 class="text-base font-semibold tracking-tight mb-1">{{ t('DET_SENSITIVITY') }}</h2>
+    <h2 class="text-lg font-display tracking-tight mb-1">{{ t('DET_SENSITIVITY') }}</h2>
     <p class="text-sm text-slate-500 dark:text-slate-400 mb-5">{{ t('DET_SENSITIVITY_HELP') }}</p>
 
     <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -75,7 +75,7 @@
   <details class="rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-5 mb-6">
     <summary class="text-sm font-medium cursor-pointer text-slate-700 dark:text-slate-300">{{ t('DET_HOW_IT_WORKS') }}</summary>
     <div class="mt-4 text-sm text-slate-600 dark:text-slate-300 space-y-3">
-      <p>{{ ('pawcorder looks at every frame and gives each detected region a confidence score from 0 (definitely not a pet) to 1 (definitely a pet).' if lang == 'en' else 'pawcorder 會檢視每一張畫面，為每一個偵測到的區塊計算 0（絕對不是寵物）到 1（絕對是寵物）的信心值。') }}</p>
+      <p>{{ ('Pawcorder looks at every frame and gives each detected region a confidence score from 0 (definitely not a pet) to 1 (definitely a pet).' if lang == 'en' else 'Pawcorder 會檢視每一張畫面，為每一個偵測到的區塊計算 0（絕對不是寵物）到 1（絕對是寵物）的信心值。') }}</p>
       <p>{{ ('Two cutoffs decide what happens:' if lang == 'en' else '兩個閾值共同決定後續行為：') }}</p>
       <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-4 font-mono text-xs">
         <div class="relative h-7 bg-gradient-to-r from-rose-100 dark:from-rose-900 via-amber-100 dark:via-amber-900 to-emerald-100 dark:to-emerald-900 dark:from-rose-900 dark:via-amber-900 dark:to-emerald-900 rounded">

@@ -1,19 +1,28 @@
 {% extends "_layout.html" %}
-{% block title %}{{ t('SYSTEM_TITLE') }} · pawcorder{% endblock %}
+{% block title %}{{ t('SYSTEM_TITLE') }} · Pawcorder{% endblock %}
 {% block main %}
-<div x-data="systemPage()" x-init="loadHealth(); checkUpdate(); loadPerf(); loadSchedule(); loadKeys(); loadEnergy(); loadAiTokens(); loadHealthDetectors()" class="max-w-4xl">
-  <h1 class="text-2xl font-semibold tracking-tight">{{ t('SYSTEM_TITLE') }}</h1>
-  <p class="text-sm text-slate-500 dark:text-slate-400 mb-6">{{ t('SYSTEM_SUBTITLE') }}</p>
+<div x-data="systemPage()" x-init="loadHealth(); checkUpdate(); loadPerf(); loadSchedule(); loadKeys(); loadEnergy(); loadAiTokens(); loadHealthDetectors(); loadFederated()" class="max-w-4xl">
+  <h1 class="text-3xl font-display tracking-display">{{ t('SYSTEM_TITLE') }}</h1>
+  <p class="text-sm text-slate-500 dark:text-slate-400 mb-6 italic">{{ t('SYSTEM_SUBTITLE') }}</p>
 
   <!-- Health summary -->
   <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5 mb-6">
     <div class="flex items-start justify-between gap-3">
       <div>
-        <h2 class="text-base font-semibold tracking-tight">{{ t('HEALTH_HEADING') }}</h2>
+        <h2 class="text-lg font-display tracking-tight">{{ t('HEALTH_HEADING') }}</h2>
         <p class="text-xs text-slate-500 dark:text-slate-400 mt-1" x-text="health.overall_ok ? labels.health_ok : labels.health_warn"></p>
       </div>
       <span class="inline-flex h-3 w-3 rounded-full mt-1"
             x-bind:class="health.overall_ok ? 'bg-emerald-500' : 'bg-amber-500'"></span>
+    </div>
+    {# 7-day uptime ribbon — gives a glance at "how solid was last
+       week" without making the user open /reliability. Server-rendered
+       SVG so it's printable and doesn't depend on JS being ready. #}
+    <div class="mt-3">
+      <p class="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+        {{ t('HEALTH_SYS_RIBBON_HEADING') }}
+      </p>
+      {{ uptime_svg | safe }}
     </div>
     <ul class="mt-4 space-y-2 text-sm">
       <li class="flex items-start gap-2">
@@ -51,7 +60,7 @@
 
   <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
     <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5">
-      <h2 class="text-base font-semibold tracking-tight">{{ t('SYS_RECORDER_HEADING') }}</h2>
+      <h2 class="text-lg font-display tracking-tight">{{ t('SYS_RECORDER_HEADING') }}</h2>
       <dl class="mt-3 text-sm space-y-1">
         <div class="flex justify-between"><dt class="text-slate-500 dark:text-slate-400">{{ t('SYS_STATUS') }}</dt><dd class="font-mono">{{ frigate_status.status }}</dd></div>
         <div class="flex justify-between"><dt class="text-slate-500 dark:text-slate-400">{{ t('SYS_HEALTH') }}</dt><dd class="font-mono">{{ frigate_status.health or '—' }}</dd></div>
@@ -64,7 +73,7 @@
     </div>
 
     <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5">
-      <h2 class="text-base font-semibold tracking-tight">{{ t('SYS_CHANGE_PASSWORD') }}</h2>
+      <h2 class="text-lg font-display tracking-tight">{{ t('SYS_CHANGE_PASSWORD') }}</h2>
       <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('SYS_PASSWORD_HELP') }}</p>
       <div class="mt-3 space-y-2">
         <input type="password" x-model="newPassword" placeholder="{{ t('SYS_NEW_PASSWORD') }}"
@@ -81,11 +90,11 @@
   </div>
 
   {# AI tokens — OSS users bring their own OpenAI key; Pro users paste a
-     license key issued by pawcorder cloud, which proxies the LLM calls
+     license key issued by Pawcorder cloud, which proxies the LLM calls
      so they never expose their key. The same input fields drive both —
      whichever is non-empty wins. #}
   <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5 mb-6">
-    <h2 class="text-base font-semibold tracking-tight">{{ t('SYS_AI_TOKENS_HEADING') }}</h2>
+    <h2 class="text-lg font-display tracking-tight">{{ t('SYS_AI_TOKENS_HEADING') }}</h2>
     <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('SYS_AI_TOKENS_HELP') }}</p>
     <div class="mt-3 space-y-3">
       <div>
@@ -100,10 +109,163 @@
                class="w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm font-mono" />
         <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('SYS_OPENAI_KEY_HELP') }}</p>
       </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">{{ t('SYS_GEMINI_KEY_LABEL') }}</label>
+        <input type="password" x-model="geminiApiKey" placeholder="AIza..."
+               class="w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm font-mono" />
+        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('SYS_GEMINI_KEY_HELP') }}</p>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">{{ t('SYS_ANTHROPIC_KEY_LABEL') }}</label>
+        <input type="password" x-model="anthropicApiKey" placeholder="sk-ant-..."
+               class="w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm font-mono" />
+        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('SYS_ANTHROPIC_KEY_HELP') }}</p>
+      </div>
+      <div class="border-t border-slate-200 dark:border-slate-700 pt-3 mt-3">
+        <div class="flex items-center gap-2 mb-1">
+          <label class="block text-xs font-medium text-slate-700 dark:text-slate-300">{{ t('SYS_OLLAMA_URL_LABEL') }}</label>
+          <span class="text-[10px] uppercase tracking-wider rounded bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-100 px-1.5 py-0.5">{{ t('SYS_OLLAMA_LOCAL_BADGE') }}</span>
+        </div>
+        <input type="text" x-model="ollamaBaseUrl" placeholder="http://ollama:11434"
+               class="w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm font-mono" />
+        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('SYS_OLLAMA_URL_HELP') }}</p>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">{{ t('SYS_OLLAMA_MODEL_LABEL') }}</label>
+        <input type="text" x-model="ollamaModel" placeholder="qwen2.5:3b"
+               class="w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm font-mono" />
+        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('SYS_OLLAMA_MODEL_HELP') }}</p>
+      </div>
+      <div class="border-t border-slate-200 dark:border-slate-700 pt-3 mt-3">
+        <label class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">{{ t('SYS_LLM_PREFERENCE_LABEL') }}</label>
+        <select x-model="llmProviderPreference"
+                class="w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm">
+          <option value="auto">{{ t('SYS_LLM_PREF_AUTO') }}</option>
+          <option value="ollama">{{ t('SYS_LLM_PREF_OLLAMA') }}</option>
+          <option value="openai">{{ t('SYS_LLM_PREF_OPENAI') }}</option>
+          <option value="gemini">{{ t('SYS_LLM_PREF_GEMINI') }}</option>
+          <option value="anthropic">{{ t('SYS_LLM_PREF_ANTHROPIC') }}</option>
+          <option value="pro_relay">{{ t('SYS_LLM_PREF_PRO_RELAY') }}</option>
+        </select>
+        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('SYS_LLM_PREFERENCE_HELP') }}</p>
+      </div>
+      <div class="border-t border-slate-200 dark:border-slate-700 pt-3 mt-3">
+        <label class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">{{ t('SYS_TTS_PREFERENCE_LABEL') }}</label>
+        <select x-model="ttsProviderPreference"
+                class="w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm">
+          <option value="auto">{{ t('SYS_TTS_PREF_AUTO') }}</option>
+          <option value="cartesia">{{ t('SYS_TTS_PREF_CARTESIA') }}</option>
+          <option value="elevenlabs">{{ t('SYS_TTS_PREF_ELEVENLABS') }}</option>
+          <option value="openai">{{ t('SYS_TTS_PREF_OPENAI') }}</option>
+          <option value="xtts">{{ t('SYS_TTS_PREF_XTTS') }}</option>
+        </select>
+        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('SYS_TTS_PREFERENCE_HELP') }}</p>
+        <input type="text" x-model="ttsVoice"
+               :placeholder="ttsVoicePlaceholder"
+               class="mt-2 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm font-mono" />
+        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('SYS_TTS_VOICE_HELP') }}</p>
+      </div>
+      <p x-show="activeBackend" class="text-xs text-slate-600 dark:text-slate-300">
+        <span class="font-medium">{{ t('SYS_AI_ACTIVE_BACKEND') }}:</span>
+        <span class="font-mono" x-text="activeBackend"></span>
+      </p>
+      <div x-show="license && license.exp" x-cloak
+           class="text-xs rounded-lg p-2 border"
+           :class="license.expired ? 'border-rose-300 dark:border-rose-700 bg-rose-50 dark:bg-rose-900/30 text-rose-800 dark:text-rose-200'
+                     : (license.days_left < 14 ? 'border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200'
+                     : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 text-slate-700 dark:text-slate-300')">
+        <p>
+          <span class="font-medium" x-text="labels.license_status"></span>
+          <span x-show="!license.expired"
+                x-text="`${labels.license_days_left} ${license.days_left}`"></span>
+          <span x-show="license.expired" x-text="labels.license_expired"></span>
+        </p>
+        <p class="text-[11px] opacity-75 mt-0.5">
+          <span x-text="labels.license_id"></span>:
+          <span class="font-mono" x-text="(license.sub || '').slice(0, 24)"></span>
+        </p>
+      </div>
+      <p x-show="license && license.malformed" x-cloak
+         class="text-xs text-rose-700 dark:text-rose-300"
+         x-text="labels.license_malformed"></p>
       <button @click="saveAiTokens()"
               class="rounded-md bg-brand-500 hover:bg-brand-600 text-white px-3 py-2 text-sm font-medium">
         {{ t('SAVE') }}
       </button>
+    </div>
+  </div>
+
+  {# Recognition backbone — picks which embedding model is used for
+     "is this Mochi or Maru" matching. Default MobileNet is fast and
+     fine for one or two pets; DINOv2-small is stronger for multi-pet
+     same-breed households (two tabby cats). Swapping requires re-
+     enrolling existing photos against the new feature space, which
+     this card surfaces as a one-click action. The id="recognition"
+     anchor lets /pets/health's stale-banner deep-link to this card. #}
+  <div id="recognition" class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5 mb-6">
+    <h2 class="text-lg font-display tracking-tight">{{ t('SYS_RECOG_BACKBONE_HEADING') }}</h2>
+    <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('SYS_RECOG_BACKBONE_HELP') }}</p>
+    <div class="mt-3 space-y-3">
+      <div>
+        <label class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">{{ t('SYS_RECOG_BACKBONE_LABEL') }}</label>
+        <select x-model="embeddingBackbone"
+                class="w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm">
+          <option value="">{{ t('SYS_RECOG_BACKBONE_AUTO') }}</option>
+          <option value="mobilenetv3_small_100">{{ t('SYS_RECOG_BACKBONE_MOBILENET') }}</option>
+          <option value="dinov2_small">{{ t('SYS_RECOG_BACKBONE_DINOV2') }}</option>
+        </select>
+        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1" x-text="labels.recog_active.replace('{name}', activeBackbone || '—')"></p>
+      </div>
+      <div x-show="recognitionStaleCount > 0" x-cloak
+           class="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/30 p-3">
+        <p class="text-xs text-amber-900 dark:text-amber-200" x-text="labels.recog_stale.replace('{n}', recognitionStaleCount)"></p>
+        <button @click="reenrollPhotos()"
+                :disabled="reenrolling"
+                class="mt-2 rounded-md bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white px-3 py-1.5 text-xs font-medium"
+                x-text="reenrolling ? labels.reenrolling : labels.reenroll_button"></button>
+      </div>
+      <button @click="saveAiTokens()"
+              class="rounded-md bg-brand-500 hover:bg-brand-600 text-white px-3 py-2 text-sm font-medium">
+        {{ t('SAVE') }}
+      </button>
+      <p class="text-[11px] text-slate-500 dark:text-slate-400">{{ t('SYS_RECOG_BACKBONE_RESTART_HINT') }}</p>
+    </div>
+  </div>
+
+  {# Federated cohort baseline — opt-in only. We never default this
+     to true; gate the toggle behind a Pro-license check so OSS users
+     get a clear "needs Pro" hint instead of a silent broken flow. #}
+  <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5 mb-6">
+    <div class="flex items-center gap-2">
+      <h2 class="text-lg font-display tracking-tight">{{ t('SYS_FEDERATED_HEADING') }}</h2>
+      <span class="text-[10px] uppercase tracking-wider rounded bg-brand-100 dark:bg-brand-900 text-brand-800 dark:text-brand-100 px-1.5 py-0.5">Pro</span>
+    </div>
+    <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('SYS_FEDERATED_HELP') }}</p>
+    <div class="mt-3 space-y-2">
+      <label class="flex items-start gap-2 text-sm">
+        <input type="checkbox" x-model="federated.opt_in"
+               :disabled="!federated.license_present"
+               @change="saveFederated()"
+               class="mt-1 h-4 w-4 rounded border-slate-300 dark:border-slate-600">
+        <span>
+          {{ t('SYS_FEDERATED_TOGGLE_LABEL') }}
+          <span class="block text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+            {{ t('SYS_FEDERATED_TOGGLE_HELP') }}
+          </span>
+        </span>
+      </label>
+      <p x-show="!federated.license_present" x-cloak
+         class="text-xs text-amber-700 dark:text-amber-300">
+        {{ t('SYS_FEDERATED_NEEDS_PRO') }}
+      </p>
+      <div x-show="Object.keys(federated.cohorts || {}).length > 0" x-cloak
+           class="mt-2 rounded-lg bg-slate-50 dark:bg-slate-800/40 p-3 text-xs">
+        <p class="font-medium mb-1">{{ t('SYS_FEDERATED_LATEST') }}</p>
+        <template x-for="(c, key) in federated.cohorts" :key="key">
+          <p class="text-slate-600 dark:text-slate-300"
+             x-text="`${labels.fed_species[c.species] || c.species} · ${labels.fed_age[c.age_band] || c.age_band} — ${labels.fed_avg}: ${c.avg_per_day} ± ${c.std_per_day} (${c.sample_size} ${labels.fed_pets})`"></p>
+        </template>
+      </div>
     </div>
   </div>
 
@@ -115,7 +277,7 @@
   <div x-show="healthDetectors.available" x-cloak
        class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5 mb-6">
     <div class="flex items-center gap-2">
-      <h2 class="text-base font-semibold tracking-tight">{{ t('SYS_HEALTH_HEADING') }}</h2>
+      <h2 class="text-lg font-display tracking-tight">{{ t('SYS_HEALTH_HEADING') }}</h2>
       <span class="text-[10px] uppercase tracking-wider rounded bg-brand-100 dark:bg-brand-900 text-brand-800 dark:text-brand-100 px-1.5 py-0.5">Pro</span>
     </div>
     <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('SYS_HEALTH_HELP') }}</p>
@@ -147,14 +309,14 @@
 
   <!-- Resource usage per container -->
   <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5 mb-6">
-    <h2 class="text-base font-semibold tracking-tight">{{ t('PERF_HEADING') }}</h2>
+    <h2 class="text-lg font-display tracking-tight">{{ t('PERF_HEADING') }}</h2>
     <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('PERF_HELP') }}</p>
     <div class="mt-3 space-y-2 text-sm" x-show="perf.length > 0">
       <template x-for="row in perf" :key="row.name">
         <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-2 last:border-0 last:pb-0">
           <div class="font-mono text-xs" x-text="row.name"></div>
-          <div class="flex items-center gap-3 text-xs text-slate-600 dark:text-slate-300 dark:text-slate-400">
-            <span x-show="!row.running" class="text-slate-400 dark:text-slate-500">stopped</span>
+          <div class="flex items-center gap-3 text-xs text-slate-600 dark:text-slate-300">
+            <span x-show="!row.running" class="text-slate-400 dark:text-slate-500" x-text="labels.stopped"></span>
             <span x-show="row.running" x-text="'CPU ' + row.cpu_percent + '%'"></span>
             <span x-show="row.running" x-text="'RAM ' + humanMB(row.memory_used_bytes) + (row.memory_limit_bytes > 0 ? ' / ' + humanMB(row.memory_limit_bytes) : '')"></span>
             <span x-show="row.running" class="text-slate-400 dark:text-slate-500" x-text="'net ' + humanMB(row.network_rx_bytes + row.network_tx_bytes)"></span>
@@ -172,7 +334,7 @@
   <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5 mb-6">
     <div class="flex items-start justify-between gap-3">
       <div class="min-w-0">
-        <h2 class="text-base font-semibold tracking-tight">{{ t('VERSION_HEADING') }}</h2>
+        <h2 class="text-lg font-display tracking-tight">{{ t('VERSION_HEADING') }}</h2>
         <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('VERSION_HELP') }}</p>
         <div class="mt-3 text-sm">
           <span class="text-slate-500 dark:text-slate-400">{{ t('VERSION_CURRENT') }}:</span>
@@ -198,7 +360,7 @@
   <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5 mb-6">
     <div class="flex items-start justify-between gap-3 mb-4">
       <div>
-        <h2 class="text-base font-semibold tracking-tight">{{ t('BACKUP_HEADING') }}</h2>
+        <h2 class="text-lg font-display tracking-tight">{{ t('BACKUP_HEADING') }}</h2>
         <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('BACKUP_HELP') }}</p>
       </div>
       <a href="/backup" class="rounded-md bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 px-3 py-2 text-sm shrink-0">{{ t('BACKUP_OPEN') }}</a>
@@ -236,12 +398,12 @@
 
   <!-- API keys + Energy mode + Web Push -->
   <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5 mb-6">
-    <h2 class="text-base font-semibold tracking-tight">{{ t('POWER_HEADING') }}</h2>
+    <h2 class="text-lg font-display tracking-tight">{{ t('POWER_HEADING') }}</h2>
     <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('POWER_HELP') }}</p>
 
     <!-- API keys -->
     <details class="mt-4 text-sm">
-      <summary class="cursor-pointer text-slate-700 dark:text-slate-300 dark:text-slate-200">{{ t('APIKEYS_HEADING') }}</summary>
+      <summary class="cursor-pointer text-slate-700 dark:text-slate-300">{{ t('APIKEYS_HEADING') }}</summary>
       <div class="mt-3 space-y-3">
         <p class="text-xs text-slate-500 dark:text-slate-400">{{ t('APIKEYS_HELP') }}
           <a href="/docs/api" class="text-brand-600 hover:text-brand-700 underline ml-1">{{ t('APIKEYS_DOCS_LINK') }} →</a>
@@ -269,7 +431,7 @@
 
     <!-- Energy mode -->
     <details class="mt-4 text-sm">
-      <summary class="cursor-pointer text-slate-700 dark:text-slate-300 dark:text-slate-200">{{ t('ENERGY_HEADING') }}</summary>
+      <summary class="cursor-pointer text-slate-700 dark:text-slate-300">{{ t('ENERGY_HEADING') }}</summary>
       <div class="mt-3 space-y-3">
         <p class="text-xs text-slate-500 dark:text-slate-400">{{ t('ENERGY_HELP') }}</p>
         <label class="flex items-center gap-2">
@@ -295,7 +457,7 @@
 
     <!-- Web Push -->
     <details class="mt-4 text-sm">
-      <summary class="cursor-pointer text-slate-700 dark:text-slate-300 dark:text-slate-200">{{ t('WEBPUSH_HEADING') }}</summary>
+      <summary class="cursor-pointer text-slate-700 dark:text-slate-300">{{ t('WEBPUSH_HEADING') }}</summary>
       <div class="mt-3 space-y-2">
         <p class="text-xs text-slate-500 dark:text-slate-400">{{ t('WEBPUSH_HELP') }}</p>
         <div class="flex gap-2">
@@ -309,7 +471,7 @@
 
   <!-- Open-source acknowledgements -->
   <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5 mb-6">
-    <h2 class="text-base font-semibold tracking-tight">{{ t('OSS_HEADING') }}</h2>
+    <h2 class="text-lg font-display tracking-tight">{{ t('OSS_HEADING') }}</h2>
     <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('OSS_HELP') }}</p>
     <div class="mt-3">
       <a href="/api/system/notices" target="_blank"
@@ -340,7 +502,7 @@
        generate a shell command (admin can't kill itself reliably). -->
   <div class="mt-10 rounded-2xl border-2 border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-900/40 p-5"
        x-data="uninstallPanel()" x-init="loadInventory()">
-    <h2 class="text-base font-semibold tracking-tight text-rose-900 dark:text-rose-200">{{ t('UNINSTALL_HEADING') }}</h2>
+    <h2 class="text-lg font-display tracking-tight text-rose-900 dark:text-rose-200">{{ t('UNINSTALL_HEADING') }}</h2>
     <p class="text-sm text-rose-800 dark:text-rose-200 mt-1">{{ t('UNINSTALL_SUBTITLE') }}</p>
 
     <!-- Inventory: what's where -->
@@ -404,7 +566,7 @@
       <details class="mt-2 text-xs text-slate-600 dark:text-slate-300">
         <summary class="cursor-pointer">{{ t('UNINSTALL_WHAT_HAPPENS') }}</summary>
         <ul class="list-disc ml-5 mt-2 space-y-1">
-          <li>{{ t('UNINSTALL_TIER1_DELETES') }}: cameras.yml, pets.yml, sightings, privacy.json, rclone.conf, pet 照片, embedding model</li>
+          <li>{{ t('UNINSTALL_TIER1_DELETES') }}: {{ t('UNINSTALL_PATH_CAMERAS') }}, {{ t('UNINSTALL_PATH_PETS') }}, {{ t('UNINSTALL_PATH_SIGHTINGS') }}, {{ t('UNINSTALL_PATH_PRIVACY') }}, {{ t('UNINSTALL_PATH_RCLONE') }}, {{ t('UNINSTALL_PATH_PET_PHOTOS') }}, {{ t('UNINSTALL_PATH_MODELS') }}</li>
           <li>{{ t('UNINSTALL_TIER1_KEEPS') }}: {{ t('UNINSTALL_KEEPS_PASSWORD') }}, {{ t('UNINSTALL_KEEPS_RECORDINGS') }}</li>
           <li>{{ t('UNINSTALL_TIER1_AFTER') }}</li>
         </ul>
@@ -482,6 +644,33 @@
       newPasswordConfirm: '',
       proLicenseKey: '',
       openaiApiKey: '',
+      geminiApiKey: '',
+      anthropicApiKey: '',
+      ollamaBaseUrl: '',
+      ollamaModel: 'qwen2.5:3b',
+      llmProviderPreference: 'auto',
+      ttsProviderPreference: 'auto',
+      ttsVoice: '',
+      // Hint text in the voice input changes per provider so the owner
+      // sees an example that actually works for their pick (e.g. an
+      // OpenAI voice name vs a Cartesia voice ID alias).
+      get ttsVoicePlaceholder() {
+        switch ((this.ttsProviderPreference || 'auto').toLowerCase()) {
+          case 'cartesia':   return 'default-en';
+          case 'elevenlabs': return 'default-en';
+          case 'openai':     return 'alloy';
+          case 'xtts':       return 'default-en';
+          default:           return 'alloy';
+        }
+      },
+      activeBackend: '',
+      embeddingBackbone: '',
+      activeBackbone: '',
+      recognitionBackbones: [],
+      recognitionStaleCount: 0,
+      reenrolling: false,
+      license: {},
+      federated: { opt_in: false, license_present: false, cohorts: {} },
       healthDetectors: { available: false, litter_box_camera: '', litter_visits_alert_per_24h: '12', cameras: [] },
       updated: '',
       health: { overall_ok: true, storage: null, frigate: null, cameras: [] },
@@ -508,7 +697,29 @@
         update_available:  {{ t('VERSION_UPDATE_AVAILABLE') | tojson }},
         bk_running:        {{ t('BACKUP_SCHEDULE_RUNNING') | tojson }},
         bk_now:            {{ t('BACKUP_SCHEDULE_RUN_NOW') | tojson }},
+        fed_avg:           {{ t('SYS_FEDERATED_AVG') | tojson }},
+        fed_pets:          {{ t('SYS_FEDERATED_PETS_WORD') | tojson }},
+        fed_species: {
+          cat: {{ t('SYS_FEDERATED_SPECIES_CAT') | tojson }},
+          dog: {{ t('SYS_FEDERATED_SPECIES_DOG') | tojson }},
+        },
+        fed_age: {
+          kitten:  {{ t('SYS_FEDERATED_AGE_KITTEN') | tojson }},
+          adult:   {{ t('SYS_FEDERATED_AGE_ADULT') | tojson }},
+          senior:  {{ t('SYS_FEDERATED_AGE_SENIOR') | tojson }},
+          unknown: {{ t('SYS_FEDERATED_AGE_UNKNOWN') | tojson }},
+        },
+        license_status:    {{ t('SYS_LICENSE_STATUS') | tojson }},
+        license_days_left: {{ t('SYS_LICENSE_DAYS_LEFT') | tojson }},
+        license_expired:   {{ t('SYS_LICENSE_EXPIRED') | tojson }},
+        license_id:        {{ t('SYS_LICENSE_ID') | tojson }},
+        license_malformed: {{ t('SYS_LICENSE_MALFORMED') | tojson }},
         bk_last_ok:        {{ t('BACKUP_SCHEDULE_LAST_OK') | tojson }},
+        recog_active:      {{ t('SYS_RECOG_BACKBONE_ACTIVE') | tojson }},
+        recog_stale:       {{ t('SYS_RECOG_STALE_WARNING') | tojson }},
+        reenroll_button:   {{ t('SYS_RECOG_REENROLL') | tojson }},
+        reenrolling:       {{ t('SYS_RECOG_REENROLLING') | tojson }},
+        reenroll_done:     {{ t('SYS_RECOG_REENROLL_DONE') | tojson }},
       },
       async restart() {
         try {
@@ -541,13 +752,48 @@
           // we render placeholders so users see "已設定" without exposing the key.
           this.proLicenseKey = r.has_pro_license ? '••••••••' : '';
           this.openaiApiKey  = r.has_openai_key  ? '••••••••' : '';
+          this.geminiApiKey   = r.has_gemini_key    ? '••••••••' : '';
+          this.anthropicApiKey = r.has_anthropic_key ? '••••••••' : '';
+          // Ollama base URL isn't a secret (it's a localhost-y address)
+          // so we round-trip the actual value rather than masking it.
+          this.ollamaBaseUrl = r.ollama_base_url || '';
+          this.ollamaModel   = r.ollama_model || 'qwen2.5:3b';
+          this.llmProviderPreference = r.llm_provider_preference || 'auto';
+          this.ttsProviderPreference = r.tts_provider_preference || 'auto';
+          this.ttsVoice = r.tts_voice || '';
+          this.activeBackend = r.active_backend || '';
+          this.embeddingBackbone = r.embedding_backbone || '';
+          this.activeBackbone = r.active_backbone || '';
+          this.recognitionBackbones = r.recognition_backbones || [];
+          this.recognitionStaleCount = r.recognition_stale_count || 0;
+          this.license = r.license || {};
         } catch (e) {}
+      },
+      async reenrollPhotos() {
+        this.reenrolling = true;
+        try {
+          const r = await api('/api/pets/reenroll', { method: 'POST', body: {} });
+          // Result has photos_updated + counts; refresh stale to reflect
+          // any photos that failed to re-embed.
+          this.recognitionStaleCount = (r.photos_failed || 0);
+          toast(this.labels.reenroll_done.replace('{n}', r.photos_updated || 0), 'success');
+        } catch (e) { toast(e.message, 'error'); }
+        finally { this.reenrolling = false; }
       },
       async saveAiTokens() {
         const body = {};
         // Empty means "unchanged" (don't submit dots), explicit empty means "clear".
         if (this.proLicenseKey && this.proLicenseKey !== '••••••••') body.pawcorder_pro_license_key = this.proLicenseKey;
         if (this.openaiApiKey  && this.openaiApiKey  !== '••••••••') body.openai_api_key             = this.openaiApiKey;
+        if (this.geminiApiKey  && this.geminiApiKey  !== '••••••••') body.gemini_api_key            = this.geminiApiKey;
+        if (this.anthropicApiKey && this.anthropicApiKey !== '••••••••') body.anthropic_api_key     = this.anthropicApiKey;
+        // Ollama URL is plain text, always submit (empty = clear).
+        body.ollama_base_url = this.ollamaBaseUrl || '';
+        body.ollama_model    = this.ollamaModel || 'qwen2.5:3b';
+        body.llm_provider_preference = this.llmProviderPreference || 'auto';
+        body.tts_provider_preference = this.ttsProviderPreference || 'auto';
+        body.tts_voice = this.ttsVoice || '';
+        body.embedding_backbone = this.embeddingBackbone || '';
         try {
           await api('/api/system/ai-tokens', { method: 'POST', body });
           toast({{ t('SAVED') | tojson }}, 'success');
@@ -557,6 +803,17 @@
       async loadHealthDetectors() {
         try { this.healthDetectors = await api('/api/system/health-detectors'); }
         catch (e) {}
+      },
+      async loadFederated() {
+        try { this.federated = await api('/api/system/federated'); }
+        catch (e) {}
+      },
+      async saveFederated() {
+        try {
+          await api('/api/system/federated', { method: 'POST',
+                                                 body: { opt_in: this.federated.opt_in } });
+          toast({{ t('SAVED') | tojson }}, 'success');
+        } catch (e) { toast(e.message, 'error'); }
       },
       async saveHealthDetectors() {
         try {

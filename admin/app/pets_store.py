@@ -23,9 +23,10 @@ import logging
 import os
 import re
 import shutil
+import threading
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Optional
 
 import yaml
 
@@ -45,10 +46,22 @@ MAX_PHOTOS_PER_PET = 30  # generous cap; UI will warn at ~10
 
 @dataclass
 class PetPhoto:
-    """One reference image. `embedding` is L2-normalized."""
+    """One reference image. `embedding` is L2-normalized.
+
+    ``backbone`` records which embedding model was active when this
+    photo was enrolled. Recognition uses it to skip embeddings from a
+    different backbone — without this, switching from MobileNet (576-d)
+    to DINOv2 (384-d) would silently start matching against vectors in
+    a foreign feature space until the user re-enrolled.
+
+    Older pets.yml files predate the field; `from_dict` defaults it to
+    "mobilenetv3_small_100" which is what they were actually trained
+    against — so a YAML migration isn't needed.
+    """
     filename: str           # relative to PETS_PHOTO_DIR / pet_id / "photos"
-    embedding: list[float]  # length = embeddings.EMBEDDING_DIM
+    embedding: list[float]  # length = embeddings backbone's dim
     uploaded_at: int = 0    # unix seconds, informational
+    backbone: str = "mobilenetv3_small_100"
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -59,6 +72,7 @@ class PetPhoto:
             filename=str(d.get("filename", "")),
             embedding=[float(x) for x in (d.get("embedding") or [])],
             uploaded_at=int(d.get("uploaded_at") or 0),
+            backbone=str(d.get("backbone") or "mobilenetv3_small_100"),
         )
 
 
@@ -69,6 +83,14 @@ class Pet:
     species: str = "cat"
     notes: str = ""
     photos: list[PetPhoto] = field(default_factory=list)
+    # Per-pet cosine threshold from local calibration / remote fine-tune.
+    # 0.0 means "not calibrated — use the global default". Stored
+    # alongside the pet so backups carry it, and so a YAML-only edit
+    # by the user can bump it manually if they have intuition for the
+    # tradeoff. See pro/finetune.py for how it's chosen.
+    match_threshold: float = 0.0
+    # Latest calibration sweep result for transparency on the UI.
+    calibration: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
@@ -77,6 +99,8 @@ class Pet:
             "species": self.species,
             "notes": self.notes,
             "photos": [p.to_dict() for p in self.photos],
+            "match_threshold": self.match_threshold,
+            "calibration": self.calibration,
         }
 
     @staticmethod
@@ -87,6 +111,8 @@ class Pet:
             species=str(d.get("species") or "cat").strip().lower(),
             notes=str(d.get("notes") or ""),
             photos=[PetPhoto.from_dict(p) for p in (d.get("photos") or []) if isinstance(p, dict)],
+            match_threshold=float(d.get("match_threshold") or 0.0),
+            calibration=dict(d.get("calibration") or {}),
         )
 
 
@@ -129,7 +155,20 @@ def validate_species(species: str) -> None:
 # ---- store ------------------------------------------------------------
 
 class PetStore:
-    """File-backed CRUD. Photos live next to pets.yml, never inside it."""
+    """File-backed CRUD. Photos live next to pets.yml, never inside it.
+
+    All write operations (``save_all``, ``add_photo``, ``remove_photo``,
+    ``create``, ``update``, ``delete``) are serialised through a
+    process-wide lock — re-enroll's read-modify-write loop runs for
+    seconds and a concurrent ``add_photo`` from a different worker
+    would otherwise lose its append when the slower writer's
+    ``save_all`` lands second.
+    """
+
+    # Process-wide so any PetStore instance shares it. The store is
+    # cheap to construct (no I/O until method call) and tests build
+    # them ad-hoc, so a module-level lock is the right scope.
+    _write_lock: threading.RLock = threading.RLock()
 
     def __init__(self, *, yaml_path: Path = PETS_YAML, photo_dir: Path = PETS_PHOTO_DIR) -> None:
         self.yaml_path = yaml_path
@@ -169,61 +208,67 @@ class PetStore:
     # --- write ---
 
     def save_all(self, pets: list[Pet]) -> None:
-        """Atomic — sees no torn writes if killed mid-flight."""
-        payload = {"pets": [p.to_dict() for p in pets]}
-        atomic_write_text(
-            self.yaml_path,
-            yaml.safe_dump(payload, sort_keys=False, allow_unicode=True),
-        )
+        """Atomic — sees no torn writes if killed mid-flight. Lock-
+        protected so a slow read-modify-write (re-enroll) can't race a
+        concurrent ``add_photo`` and silently drop the new entry."""
+        with self._write_lock:
+            payload = {"pets": [p.to_dict() for p in pets]}
+            atomic_write_text(
+                self.yaml_path,
+                yaml.safe_dump(payload, sort_keys=False, allow_unicode=True),
+            )
 
     def create(self, *, name: str, species: str, notes: str = "") -> Pet:
         validate_name(name)
         validate_species(species)
-        pets = self.load()
-        existing_ids = {p.pet_id for p in pets}
-        existing_names = {p.name for p in pets}
-        if name in existing_names:
-            raise PetValidationError(f"a pet named {name!r} already exists")
-        # Disambiguate slug if collision (rare — only happens with similar-looking names).
-        base_slug = slugify(name) or "pet"
-        slug = base_slug
-        i = 2
-        while slug in existing_ids:
-            slug = f"{base_slug}_{i}"
-            i += 1
-        pet = Pet(pet_id=slug, name=name.strip(), species=species, notes=notes)
-        pets.append(pet)
-        self.save_all(pets)
+        with self._write_lock:
+            pets = self.load()
+            existing_ids = {p.pet_id for p in pets}
+            existing_names = {p.name for p in pets}
+            if name in existing_names:
+                raise PetValidationError(f"a pet named {name!r} already exists")
+            # Disambiguate slug if collision (rare — only happens with similar-looking names).
+            base_slug = slugify(name) or "pet"
+            slug = base_slug
+            i = 2
+            while slug in existing_ids:
+                slug = f"{base_slug}_{i}"
+                i += 1
+            pet = Pet(pet_id=slug, name=name.strip(), species=species, notes=notes)
+            pets.append(pet)
+            self.save_all(pets)
         # Pre-create the photo dir so first upload doesn't race.
         (self.photo_dir / pet.pet_id / "photos").mkdir(parents=True, exist_ok=True)
         return pet
 
     def update(self, pet_id: str, *, name: str | None = None, species: str | None = None,
                notes: str | None = None) -> Pet:
-        pets = self.load()
-        target = next((p for p in pets if p.pet_id == pet_id), None)
-        if not target:
-            raise KeyError(pet_id)
-        if name is not None:
-            validate_name(name)
-            other_names = {p.name for p in pets if p.pet_id != pet_id}
-            if name in other_names:
-                raise PetValidationError(f"a pet named {name!r} already exists")
-            target.name = name.strip()
-        if species is not None:
-            validate_species(species)
-            target.species = species
-        if notes is not None:
-            target.notes = notes
-        self.save_all(pets)
-        return target
+        with self._write_lock:
+            pets = self.load()
+            target = next((p for p in pets if p.pet_id == pet_id), None)
+            if not target:
+                raise KeyError(pet_id)
+            if name is not None:
+                validate_name(name)
+                other_names = {p.name for p in pets if p.pet_id != pet_id}
+                if name in other_names:
+                    raise PetValidationError(f"a pet named {name!r} already exists")
+                target.name = name.strip()
+            if species is not None:
+                validate_species(species)
+                target.species = species
+            if notes is not None:
+                target.notes = notes
+            self.save_all(pets)
+            return target
 
     def delete(self, pet_id: str) -> bool:
-        pets = self.load()
-        new = [p for p in pets if p.pet_id != pet_id]
-        if len(new) == len(pets):
-            return False
-        self.save_all(new)
+        with self._write_lock:
+            pets = self.load()
+            new = [p for p in pets if p.pet_id != pet_id]
+            if len(new) == len(pets):
+                return False
+            self.save_all(new)
         # Best-effort photo cleanup. We don't fail the call if the dir
         # has weird permissions — the user can sweep manually.
         target_dir = self.photo_dir / pet_id
@@ -237,43 +282,55 @@ class PetStore:
     # --- photos ---
 
     def add_photo(self, pet_id: str, image_bytes: bytes, embedding: Iterable[float],
-                  *, ext: str = ".jpg", uploaded_at: int = 0) -> PetPhoto:
-        """Persist photo bytes to disk + append a PetPhoto entry."""
-        pets = self.load()
-        target = next((p for p in pets if p.pet_id == pet_id), None)
-        if not target:
-            raise KeyError(pet_id)
-        if len(target.photos) >= MAX_PHOTOS_PER_PET:
-            raise PetValidationError(
-                f"too many photos for {pet_id} (max {MAX_PHOTOS_PER_PET})"
-            )
-        photo_dir = self.photo_dir / pet_id / "photos"
-        photo_dir.mkdir(parents=True, exist_ok=True)
-        # Sequential filename so list order matches upload order.
-        n = len(target.photos) + 1
-        filename = f"photo_{n:02d}{ext}"
-        out = photo_dir / filename
-        out.write_bytes(image_bytes)
-        try:
-            os.chmod(out, 0o600)
-        except (PermissionError, OSError):
-            pass
-        photo = PetPhoto(filename=filename, embedding=list(embedding),
-                         uploaded_at=int(uploaded_at))
-        target.photos.append(photo)
-        self.save_all(pets)
-        return photo
+                  *, ext: str = ".jpg", uploaded_at: int = 0,
+                  backbone: Optional[str] = None) -> PetPhoto:
+        """Persist photo bytes to disk + append a PetPhoto entry.
+
+        ``backbone`` defaults to whichever embedding model is active
+        right now — capturing it at write time means future recognition
+        can skip embeddings from foreign backbones if the operator
+        switches without re-enrolling.
+        """
+        with self._write_lock:
+            pets = self.load()
+            target = next((p for p in pets if p.pet_id == pet_id), None)
+            if not target:
+                raise KeyError(pet_id)
+            if len(target.photos) >= MAX_PHOTOS_PER_PET:
+                raise PetValidationError(
+                    f"too many photos for {pet_id} (max {MAX_PHOTOS_PER_PET})"
+                )
+            photo_dir = self.photo_dir / pet_id / "photos"
+            photo_dir.mkdir(parents=True, exist_ok=True)
+            # Sequential filename so list order matches upload order.
+            n = len(target.photos) + 1
+            filename = f"photo_{n:02d}{ext}"
+            out = photo_dir / filename
+            out.write_bytes(image_bytes)
+            try:
+                os.chmod(out, 0o600)
+            except (PermissionError, OSError):
+                pass
+            if backbone is None:
+                from . import embeddings as _emb
+                backbone = _emb.active_backbone_name()
+            photo = PetPhoto(filename=filename, embedding=list(embedding),
+                             uploaded_at=int(uploaded_at), backbone=backbone)
+            target.photos.append(photo)
+            self.save_all(pets)
+            return photo
 
     def remove_photo(self, pet_id: str, filename: str) -> bool:
-        pets = self.load()
-        target = next((p for p in pets if p.pet_id == pet_id), None)
-        if not target:
-            return False
-        before = len(target.photos)
-        target.photos = [p for p in target.photos if p.filename != filename]
-        if len(target.photos) == before:
-            return False
-        self.save_all(pets)
+        with self._write_lock:
+            pets = self.load()
+            target = next((p for p in pets if p.pet_id == pet_id), None)
+            if not target:
+                return False
+            before = len(target.photos)
+            target.photos = [p for p in target.photos if p.filename != filename]
+            if len(target.photos) == before:
+                return False
+            self.save_all(pets)
         path = self.photo_dir / pet_id / "photos" / filename
         if path.exists():
             try:

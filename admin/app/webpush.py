@@ -176,6 +176,50 @@ def remove_subscription(endpoint: str) -> bool:
     return True
 
 
+_NATIVE_TOKEN_RE = __import__("re").compile(r"^[A-Za-z0-9_\-:./=+]+$")
+_NATIVE_TOKEN_MAX_LEN = 512
+
+
+def add_native_token(*, token: str, platform: str) -> dict:
+    """Register an APNs / FCM token from the Capacitor mobile shell.
+
+    We re-use the Subscription record by encoding the token as the
+    `endpoint` field with a ``native:<platform>:`` prefix, leaving
+    p256dh/auth empty. The push dispatcher in ``send_to_all`` checks
+    the prefix to route through APNs / FCM instead of VAPID.
+
+    Token length is capped at 512 chars and matched against a strict
+    base64-ish charset — without this an authenticated user (or XSS
+    payload) could POST a 10 MB string and explode the on-disk
+    subscriptions JSON. Real APNs hex tokens are 64 chars; FCM
+    base64url tokens are typically 152-200 chars.
+
+    Today we just persist the token — the actual APNs / FCM dispatch
+    needs the operator-side certificates that ship in OPERATIONS.md.
+    Once those land, ``send_to_all`` is the single swap point.
+    """
+    if platform not in ("ios", "android"):
+        raise ValueError("platform must be 'ios' or 'android'")
+    if not isinstance(token, str) or not token:
+        raise ValueError("token must be a non-empty string")
+    if len(token) > _NATIVE_TOKEN_MAX_LEN:
+        raise ValueError(
+            f"token length {len(token)} exceeds {_NATIVE_TOKEN_MAX_LEN}"
+        )
+    if not _NATIVE_TOKEN_RE.match(token):
+        raise ValueError("token contains characters outside the allowed charset")
+    fake_endpoint = f"native:{platform}:{token}"
+    subs = [s for s in list_subscriptions() if s.endpoint != fake_endpoint]
+    sub = Subscription(
+        endpoint=fake_endpoint, p256dh="", auth="",
+        user_agent=f"native:{platform}", created_at=_now(),
+    )
+    subs.append(sub)
+    _save_subscriptions(subs)
+    return {"ok": True, "platform": platform,
+            "total_native": sum(1 for s in subs if s.endpoint.startswith("native:"))}
+
+
 # ---- send -------------------------------------------------------------
 
 def send_to_all(title: str, body: str, *, url: str = "/") -> dict:

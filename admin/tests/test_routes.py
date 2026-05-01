@@ -463,11 +463,16 @@ def test_cameras_page_x_data_uses_single_quotes(authed_client):
 # ---- /api/system/ai-tokens (Pro license + OpenAI key) ------------------
 
 def test_ai_tokens_get_returns_presence_booleans_only(authed_client):
-    """The GET endpoint must never leak the raw secret — only booleans."""
+    """The GET endpoint must never leak the raw secret — only booleans
+    (and the non-secret Ollama URL/model). The OpenAI key in particular
+    must NOT appear anywhere in the response body."""
     authed_client.post("/api/system/ai-tokens", json={"openai_api_key": "sk-secret"})
     resp = authed_client.get("/api/system/ai-tokens")
     body = resp.json()
-    assert body == {"has_openai_key": True, "has_pro_license": False}
+    assert body["has_openai_key"] is True
+    assert body["has_pro_license"] is False
+    # The actual secret must never appear in the response.
+    assert "sk-secret" not in resp.text
 
 
 def test_ai_tokens_post_missing_field_leaves_key_unchanged(authed_client):
@@ -475,7 +480,8 @@ def test_ai_tokens_post_missing_field_leaves_key_unchanged(authed_client):
     # Posting only the OTHER field — OpenAI key must survive.
     authed_client.post("/api/system/ai-tokens", json={"pawcorder_pro_license_key": "pro_x"})
     body = authed_client.get("/api/system/ai-tokens").json()
-    assert body == {"has_openai_key": True, "has_pro_license": True}
+    assert body["has_openai_key"] is True
+    assert body["has_pro_license"] is True
 
 
 def test_ai_tokens_post_explicit_empty_clears_key(authed_client):

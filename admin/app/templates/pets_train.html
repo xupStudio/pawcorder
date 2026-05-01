@@ -1,0 +1,252 @@
+{% extends "_layout.html" %}
+{% block title %}{{ t('CLOUD_TRAIN_TITLE') }} · {{ pet.name }}{% endblock %}
+{% block main %}
+<div class="max-w-3xl mx-auto"
+     x-data='cloudTrainPage({{ pet | tojson }}, {{ initial_state | tojson }}, {{ has_pro | tojson }})'
+     x-init="poll()">
+  <div class="mb-6">
+    <h1 class="text-3xl font-display tracking-display">{{ t('CLOUD_TRAIN_TITLE') }}</h1>
+    <p class="text-sm text-slate-500 dark:text-slate-400 mt-1 italic"
+       x-text="subtitle"></p>
+    <a href="/pets" class="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100">← {{ t('NAV_PETS') }}</a>
+  </div>
+
+  {# Pro-license gate. Without a license the page still loads (so an
+     OSS user can read about the feature) but every action is disabled. #}
+  {% if not has_pro %}
+    <div class="rounded-2xl bg-amber-50 dark:bg-amber-900 border border-amber-200 dark:border-amber-800 p-5 mb-6">
+      <p class="text-sm text-amber-800 dark:text-amber-200">{{ t('CLOUD_TRAIN_NEEDS_PRO') }}</p>
+    </div>
+  {% endif %}
+
+  {# Existing model badge — tells the owner whether they're already
+     running a real custom classifier ("real" = V2 model) or just have
+     the placeholder file from an early Pawcorder version. Stays out of
+     the way when no model exists yet. #}
+  {% if model_status and model_status.kind != 'none' %}
+    {% if model_status.kind == 'real' %}
+      <div class="rounded-2xl bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-800 p-4 mb-6">
+        <p class="text-sm text-emerald-800 dark:text-emerald-200 font-medium">{{ t('CLOUD_TRAIN_MODEL_REAL_BADGE') }}</p>
+        <p class="text-xs text-emerald-700 dark:text-emerald-300 mt-1">
+          {{ t('CLOUD_TRAIN_MODEL_REAL_DETAILS_PREFIX') }}
+          {{ model_status.n_positives }} {{ t('CLOUD_TRAIN_MODEL_REAL_DETAILS_SUFFIX') }}
+        </p>
+      </div>
+    {% else %}
+      <div class="rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 p-4 mb-6">
+        <p class="text-sm text-slate-700 dark:text-slate-200">{{ t('CLOUD_TRAIN_MODEL_PLACEHOLDER_BADGE') }}</p>
+        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('CLOUD_TRAIN_MODEL_PLACEHOLDER_HELP') }}</p>
+      </div>
+    {% endif %}
+  {% endif %}
+
+  <!-- Consent block. We hash the rendered text and send it with the
+       upload, so the relay can store proof of which version of the
+       consent string the owner agreed to. -->
+  <section class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5 mb-6">
+    <h2 class="text-lg font-display tracking-tight mb-2">{{ t('CLOUD_TRAIN_CONSENT_HEADING') }}</h2>
+    <pre class="whitespace-pre-wrap text-xs text-slate-600 dark:text-slate-300 font-sans" x-ref="consentText">{{ consent_text }}</pre>
+    <label class="mt-3 flex items-center gap-2 text-sm cursor-pointer">
+      <input type="checkbox" x-model="consented" :disabled="!hasPro || state.status === 'uploading'"
+             class="rounded border-slate-300 dark:border-slate-600">
+      <span>{{ t('CLOUD_TRAIN_CONSENT_AGREE') }}</span>
+    </label>
+  </section>
+
+  <!-- Drop zone -->
+  <section class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5 mb-6">
+    <div class="rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 p-8 text-center cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40"
+         @click="$refs.fileInput.click()"
+         @dragover.prevent="dragOver = true"
+         @dragleave.prevent="dragOver = false"
+         @drop.prevent="onDrop($event)"
+         :class="dragOver ? 'bg-brand-50 dark:bg-brand-900/30 border-brand-400' : ''">
+      <p class="text-sm text-slate-600 dark:text-slate-300">{{ t('CLOUD_TRAIN_DROPZONE') }}</p>
+      <input type="file" multiple accept="image/jpeg,image/png,image/webp"
+             x-ref="fileInput" class="hidden" @change="onFiles($event.target.files)">
+    </div>
+
+    <div class="mt-4 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2"
+         x-show="previews.length > 0" x-cloak>
+      <template x-for="(p, i) in previews" :key="i">
+        <div class="relative aspect-square rounded-md overflow-hidden bg-slate-100 dark:bg-slate-800">
+          <img :src="p.url" class="absolute inset-0 w-full h-full object-cover">
+          <button @click="remove(i)"
+                  class="absolute top-1 right-1 h-6 w-6 rounded-full bg-black/60 text-white text-xs hover:bg-black/80">×</button>
+        </div>
+      </template>
+    </div>
+
+    <div class="mt-4 flex flex-wrap gap-2">
+      <button @click="upload()"
+              :disabled="!canUpload"
+              class="rounded-md bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 text-sm font-medium disabled:opacity-50"
+              x-text="state.status === 'uploading' ? labels.uploading : labels.upload"></button>
+      <button @click="forget()"
+              :disabled="!hasPro || state.status === 'uploading'"
+              x-show="state.status === 'ready' || state.uploaded_count > 0"
+              class="rounded-md border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 px-4 py-2 text-sm font-medium disabled:opacity-50">
+        {{ t('CLOUD_TRAIN_FORGET') }}
+      </button>
+    </div>
+  </section>
+
+  <!-- Status panel. Mirrors the server-side state ledger so a
+       reload doesn't lose the train of thought. -->
+  <section class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5"
+           x-show="state.status !== 'idle'" x-cloak>
+    <h2 class="text-lg font-display tracking-tight mb-2">
+      <span x-text="statusBadge.label"></span>
+    </h2>
+    <div class="text-xs text-slate-500 dark:text-slate-400" x-show="state.status === 'uploading' || state.status === 'training'">
+      <span x-text="state.uploaded_count + ' / ' + state.total_count"></span>
+    </div>
+    <p class="text-sm mt-2" x-text="statusMessage"></p>
+    <div class="mt-3" x-show="state.receipt" x-cloak>
+      <p class="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400">{{ t('CLOUD_TRAIN_RECEIPT_LABEL') }}</p>
+      <code class="text-xs break-all font-mono" x-text="state.receipt"></code>
+    </div>
+    <p class="text-sm text-rose-600 dark:text-rose-400 mt-2" x-show="state.error" x-text="errorMessage" x-cloak></p>
+  </section>
+</div>
+
+<script>
+  function cloudTrainPage(pet, initial, hasPro) {
+    return {
+      pet, hasPro,
+      consented: false,
+      dragOver: false,
+      previews: [],   // [{url, name, mime, body, size}]
+      // Consent text hash is computed from the rendered <pre> on
+      // first interaction so the user can't bypass by editing the
+      // DOM mid-flight (well, easily).
+      consentHash: null,
+      state: initial || { status: 'idle', uploaded_count: 0, total_count: 0 },
+      pollTimer: null,
+      labels: {
+        uploading: {{ t('CLOUD_TRAIN_UPLOADING') | tojson }},
+        upload: {{ t('CLOUD_TRAIN_UPLOAD') | tojson }},
+        copied: {{ t('VETPACK_SHARE_COPIED') | tojson }},
+      },
+      get subtitle() {
+        return {{ t('CLOUD_TRAIN_SUBTITLE') | tojson }}.replace('{name}', this.pet.name);
+      },
+      get canUpload() {
+        return this.hasPro
+            && this.consented
+            && this.previews.length > 0
+            && this.state.status !== 'uploading';
+      },
+      get statusBadge() {
+        const map = {
+          idle:      { label: '—' },
+          uploading: { label: {{ t('CLOUD_TRAIN_UPLOADING') | tojson }} },
+          queued:    { label: {{ t('CLOUD_TRAIN_QUEUED') | tojson }} },
+          training:  { label: {{ t('CLOUD_TRAIN_TRAINING') | tojson }} },
+          ready:     { label: {{ t('CLOUD_TRAIN_READY') | tojson }} },
+          failed:    { label: {{ t('CLOUD_TRAIN_FAILED') | tojson }} },
+        };
+        return map[this.state.status] || map.idle;
+      },
+      get statusMessage() {
+        return this.statusBadge.label;
+      },
+      get errorMessage() {
+        // Map every error key the upload / poll / forget paths can
+        // surface to a translated, plain-language message. An unknown
+        // key falls through to the raw error string — better to show
+        // *something* than to silently swallow.
+        const i18n = {
+          'cloud_train_relay_unreachable':    {{ t('CLOUD_TRAIN_RELAY_ERROR') | tojson }},
+          'cloud_train_license_invalid':      {{ t('CLOUD_TRAIN_LICENSE_INVALID') | tojson }},
+          'cloud_train_relay_error':          {{ t('CLOUD_TRAIN_RELAY_ERROR') | tojson }},
+          'cloud_train_bad_jpeg':             {{ t('CLOUD_TRAIN_BAD_JPEG_MSG') | tojson }},
+          'cloud_train_bad_png':              {{ t('CLOUD_TRAIN_BAD_PNG_MSG') | tojson }},
+          'cloud_train_bad_webp':             {{ t('CLOUD_TRAIN_BAD_WEBP_MSG') | tojson }},
+          'cloud_train_bad_filename':         {{ t('CLOUD_TRAIN_BAD_FILENAME_MSG') | tojson }},
+          'cloud_train_bad_filetype':         {{ t('CLOUD_TRAIN_BAD_FILETYPE') | tojson }},
+          'cloud_train_file_too_big':         {{ t('CLOUD_TRAIN_FILE_TOO_BIG') | tojson }},
+          'cloud_train_too_many_photos':      {{ t('CLOUD_TRAIN_TOO_MANY') | tojson }},
+          'cloud_train_no_photos':            {{ t('CLOUD_TRAIN_NO_PHOTOS') | tojson }},
+          'cloud_train_photos_too_large':     {{ t('CLOUD_TRAIN_PHOTOS_TOO_LARGE_MSG') | tojson }},
+          'cloud_train_model_download_failed':{{ t('CLOUD_TRAIN_MODEL_DL_FAILED_MSG') | tojson }},
+          'cloud_train_model_too_large':      {{ t('CLOUD_TRAIN_MODEL_TOO_LARGE_MSG') | tojson }},
+          'cloud_train_invalid_pet_id':       {{ t('CLOUD_TRAIN_INVALID_PET_MSG') | tojson }},
+          'cloud_train_requires_pro_license': {{ t('CLOUD_TRAIN_PRO_REQUIRED_MSG') | tojson }},
+        };
+        return i18n[this.state.error] || (this.state.error || '');
+      },
+      onFiles(filelist) {
+        for (const f of filelist) {
+          if (this.previews.length >= 80) {
+            toast({{ t('CLOUD_TRAIN_TOO_MANY') | tojson }}, 'error');
+            break;
+          }
+          if (f.size > 8 * 1024 * 1024) {
+            toast({{ t('CLOUD_TRAIN_FILE_TOO_BIG') | tojson }}, 'error');
+            continue;
+          }
+          if (!['image/jpeg','image/png','image/webp'].includes(f.type)) {
+            toast({{ t('CLOUD_TRAIN_BAD_FILETYPE') | tojson }}, 'error');
+            continue;
+          }
+          this.previews.push({
+            url: URL.createObjectURL(f),
+            file: f,
+          });
+        }
+      },
+      onDrop(ev) {
+        this.dragOver = false;
+        if (ev.dataTransfer && ev.dataTransfer.files) this.onFiles(ev.dataTransfer.files);
+      },
+      remove(i) {
+        URL.revokeObjectURL(this.previews[i].url);
+        this.previews.splice(i, 1);
+      },
+      async ensureConsentHash() {
+        // Computed lazily — same SHA-256 as the server uses.
+        if (this.consentHash) return this.consentHash;
+        const text = this.$refs.consentText.textContent;
+        const buf = new TextEncoder().encode(text);
+        const hash = await crypto.subtle.digest('SHA-256', buf);
+        this.consentHash = Array.from(new Uint8Array(hash))
+                                .map(b => b.toString(16).padStart(2, '0')).join('');
+        return this.consentHash;
+      },
+      async upload() {
+        if (!this.canUpload) return;
+        const fd = new FormData();
+        for (const p of this.previews) fd.append('photos', p.file);
+        fd.append('consent_hash', await this.ensureConsentHash());
+        try {
+          const resp = await apiUpload(`/api/pets/${encodeURIComponent(this.pet.pet_id)}/train-cloud/upload`, fd);
+          this.state = resp || this.state;
+        } catch (e) {
+          toast(e.message, 'error');
+        }
+      },
+      async poll() {
+        try {
+          const resp = await api(`/api/pets/${encodeURIComponent(this.pet.pet_id)}/train-cloud/status`);
+          this.state = resp || this.state;
+        } catch (_) {}
+        // Keep polling while a job is in flight; stop on terminal states.
+        const inflight = ['uploading','queued','training'].includes(this.state.status);
+        clearTimeout(this.pollTimer);
+        if (inflight) this.pollTimer = setTimeout(() => this.poll(), 5000);
+      },
+      async forget() {
+        if (!confirm({{ t('CLOUD_TRAIN_FORGET_CONFIRM') | tojson }})) return;
+        try {
+          const resp = await api(`/api/pets/${encodeURIComponent(this.pet.pet_id)}/train-cloud/forget`,
+                                  { method: 'POST', body: {} });
+          this.state = resp || { status: 'idle', uploaded_count: 0, total_count: 0 };
+          this.previews.forEach(p => URL.revokeObjectURL(p.url));
+          this.previews = [];
+        } catch (e) { toast(e.message, 'error'); }
+      },
+    };
+  }
+</script>
+{% endblock %}

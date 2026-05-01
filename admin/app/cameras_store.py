@@ -31,6 +31,63 @@ CAMERAS_PATH = DATA_DIR / "config" / "cameras.yml"
 
 NAME_RE = re.compile(r"^[a-z][a-z0-9_]{0,30}$")
 
+# Each zone in `Camera.zones` is `{name, points, kind}`. ``kind`` tells
+# the Pro health detectors what the zone *means*: a polygon with
+# kind="litter_box" is what the litter monitor watches, kind="water_bowl"
+# / "food_bowl" feed the bowl monitor. ``detect`` is the default (a
+# generic dwell-time zone). ``privacy`` is reserved — privacy masks
+# stay in their own list because Frigate blacks them out before AI ever
+# sees the frame, semantically distinct from "watch this region".
+ZONE_KIND_DETECT = "detect"
+ZONE_KIND_LITTER_BOX = "litter_box"
+ZONE_KIND_WATER_BOWL = "water_bowl"
+ZONE_KIND_FOOD_BOWL = "food_bowl"
+ZONE_KINDS: tuple[str, ...] = (
+    ZONE_KIND_DETECT,
+    ZONE_KIND_LITTER_BOX,
+    ZONE_KIND_WATER_BOWL,
+    ZONE_KIND_FOOD_BOWL,
+)
+
+
+def zone_kind(zone: dict) -> str:
+    """Read a zone's kind, defaulting to ``detect`` when missing or
+    unknown — keeps old configs (pre-kind) working without migration."""
+    k = (zone or {}).get("kind") or ZONE_KIND_DETECT
+    return k if k in ZONE_KINDS else ZONE_KIND_DETECT
+
+
+def zones_of_kind(camera: "Camera", kind: str) -> list[dict]:
+    """All polygons on this camera with the given purpose."""
+    return [z for z in (camera.zones or []) if zone_kind(z) == kind]
+
+
+def point_in_zone(zone: dict, nx: float, ny: float) -> bool:
+    """Even-odd ray cast for a polygon defined in normalized coords.
+
+    Used by detectors to decide if a sighting (whose bbox center we
+    pass in normalized 0..1) falls inside a litter-box / bowl zone.
+    """
+    pts = (zone or {}).get("points") or []
+    if len(pts) < 3:
+        return False
+    inside = False
+    n = len(pts)
+    j = n - 1
+    for i in range(n):
+        try:
+            xi, yi = float(pts[i][0]), float(pts[i][1])
+            xj, yj = float(pts[j][0]), float(pts[j][1])
+        except (TypeError, ValueError, IndexError):
+            return False
+        # Standard PNPOLY — toggle on each edge crossing.
+        if ((yi > ny) != (yj > ny)) and (
+            nx < (xj - xi) * (ny - yi) / ((yj - yi) or 1e-12) + xi
+        ):
+            inside = not inside
+        j = i
+    return inside
+
 
 def _path_only(rtsp_url: str) -> str:
     """Extract everything from the first slash after the host onwards.
@@ -78,10 +135,11 @@ class Camera:
     # because the AI cost is small but non-zero per stream.
     audio_detection: bool = False
     # User-defined named zones. Each zone is a polygon (list of
-    # [x, y] pairs in 0..1 normalized coords) plus a name like
-    # "food_bowl" / "litter_box". Frigate uses these for dwell-time
-    # tracking and zone-aware events. Stored as a list of dicts so the
-    # YAML round-trip is clean.
+    # [x, y] pairs in 0..1 normalized coords) plus a ``name`` and a
+    # ``kind`` (one of ``ZONE_KINDS`` — see top of module). Frigate
+    # uses zones for dwell-time tracking; Pawcorder uses ``kind`` to
+    # route them to the right Pro health detector (litter_box →
+    # litter_monitor, water_bowl/food_bowl → bowl_monitor).
     zones: list[dict] = field(default_factory=list)
     # Privacy mask polygons — Frigate blacks out these regions BEFORE
     # detection / record. Use case: bathroom corner of a hallway camera,
@@ -99,7 +157,14 @@ class Camera:
     @staticmethod
     def from_dict(d: dict) -> "Camera":
         allowed = {f.name for f in fields(Camera)}
-        return Camera(**{k: v for k, v in d.items() if k in allowed})
+        c = Camera(**{k: v for k, v in d.items() if k in allowed})
+        # Backfill ``kind`` on legacy zones loaded from disk so callers
+        # never have to special-case missing keys. Idempotent — running
+        # this on already-tagged zones is a no-op.
+        for z in c.zones:
+            if isinstance(z, dict) and not z.get("kind"):
+                z["kind"] = ZONE_KIND_DETECT
+        return c
 
     def template_view(self) -> dict:
         """Return a dict the Jinja2 Frigate template can use safely.

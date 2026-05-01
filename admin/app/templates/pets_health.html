@@ -1,0 +1,220 @@
+{% extends "_layout.html" %}
+{% block title %}{{ t('PETS_HEALTH_TITLE') }} · Pawcorder{% endblock %}
+{% block main %}
+<div class="max-w-6xl mx-auto">
+
+  <div class="flex items-start justify-between gap-3 mb-6">
+    <div>
+      <h1 class="text-3xl font-display tracking-display">{{ t('PETS_HEALTH_TITLE') }}</h1>
+      <p class="text-sm text-slate-500 dark:text-slate-400 italic">{{ t('PETS_HEALTH_SUBTITLE') }}</p>
+    </div>
+    {# System uptime ribbon — small, top-right, so a flaky camera
+       hiding pets gets noticed before the owner blames Mochi. #}
+    <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-4 py-3">
+      <p class="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+        {{ t('HEALTH_SYS_RIBBON_HEADING') }}
+      </p>
+      {{ uptime_svg | safe }}
+    </div>
+  </div>
+
+  {% if not overviews %}
+    <div class="rounded-2xl bg-white dark:bg-slate-900 border border-dashed border-slate-300 dark:border-slate-600 p-10 text-center">
+      <p class="text-sm text-slate-500 dark:text-slate-400">{{ t('HEALTH_EMPTY') }}</p>
+    </div>
+  {% endif %}
+
+  {# Recognition stale banner — surfaced here too, not just on System,
+     so an owner who landed on /pets/health after manually editing
+     .env (or after a backbone migration) gets a clear path to fix it
+     in the page they're already on. #}
+  {% if recognition_stale_count and recognition_stale_count > 0 %}
+    <div class="rounded-2xl bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 p-5 mb-6">
+      <p class="text-sm text-amber-900 dark:text-amber-200">
+        {{ t('HEALTH_RECOG_STALE_BANNER') | replace('{n}', recognition_stale_count|string) }}
+      </p>
+      <a href="/system#recognition" class="inline-block mt-2 text-xs rounded-md border border-amber-400 dark:border-amber-700 text-amber-900 dark:text-amber-100 px-3 py-1.5 hover:bg-amber-100 dark:hover:bg-amber-800/50">
+        {{ t('HEALTH_RECOG_STALE_LINK') }} →
+      </a>
+    </div>
+  {% endif %}
+
+  {# Cloud-trained custom models are tied to the backbone they were
+     trained against. After a backbone swap they silently stop helping
+     until the owner re-uploads photos. Surface the affected pets here
+     with a direct link to each pet's train page. #}
+  {% if stale_cloud_pets %}
+    <div class="rounded-2xl bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 p-5 mb-6">
+      <p class="text-sm text-amber-900 dark:text-amber-200">{{ t('HEALTH_CLOUD_MODEL_STALE_BANNER') }}</p>
+      <ul class="mt-2 text-xs text-amber-900 dark:text-amber-200 list-disc list-inside">
+        {% for pet_id in stale_cloud_pets %}
+          <li><a href="/pets/{{ pet_id }}/train-cloud" class="underline">{{ pet_id }}</a></li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+
+  {# Bowl / litter-box discovery hint. Shows when at least one pet
+     exists and NO sparklines (litter/water/food) rendered for any
+     pet — meaning the owner hasn't tagged a zone yet. Hidden once
+     they have, so it doesn't keep yelling at users who already set
+     it up. #}
+  {% if overviews and not any_bowl_or_litter %}
+    <div class="rounded-2xl bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 p-5 mb-6">
+      <h2 class="text-lg font-display tracking-tight">{{ t('HEALTH_BOWL_HINT_HEADING') }}</h2>
+      <p class="text-sm text-amber-800 dark:text-amber-200 mt-1">{{ t('HEALTH_BOWL_HINT_BODY') }}</p>
+      <a href="/cameras" class="inline-block mt-3 text-xs rounded-md border border-amber-400 dark:border-amber-700 text-amber-900 dark:text-amber-100 px-3 py-1.5 hover:bg-amber-100 dark:hover:bg-amber-800/50">
+        {{ t('HEALTH_BOWL_HINT_LINK') }} →
+      </a>
+    </div>
+  {% endif %}
+
+  {% for ov in overviews %}
+    {% set badge_class = ({
+      'ok':    'bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-100',
+      'watch': 'bg-amber-100   dark:bg-amber-900   text-amber-800   dark:text-amber-100',
+      'alert': 'bg-rose-100    dark:bg-rose-900    text-rose-800    dark:text-rose-100',
+    })[ov.score_label] %}
+    {% set badge_text = ({
+      'ok':    t('HEALTH_BADGE_OK'),
+      'watch': t('HEALTH_BADGE_WATCH'),
+      'alert': t('HEALTH_BADGE_ALERT'),
+    })[ov.score_label] %}
+
+    <section class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5 mb-6">
+      <header class="flex items-start gap-4 mb-4 pb-4 border-b border-slate-100 dark:border-slate-700">
+        <div class="shrink-0">{{ ov.score_dial_svg | safe }}</div>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 flex-wrap">
+            <h2 class="text-2xl font-display tracking-display">{{ ov.pet_name }}</h2>
+            <span class="text-xs text-slate-500 dark:text-slate-400">{{ ov.species }}</span>
+            <span class="text-[10px] uppercase tracking-wider rounded px-1.5 py-0.5 {{ badge_class }}">{{ badge_text }}</span>
+          </div>
+          <p class="text-xs text-slate-500 dark:text-slate-400 mt-1" title="{{ t('HEALTH_SCORE_HELP') }}">
+            {{ t('HEALTH_SCORE_LABEL') }}
+          </p>
+          {# Reason chips. Each maps to an i18n key so the message
+             stays plain-language for owners. #}
+          {% set reason_keys = {
+            'not_seen':         'HEALTH_REASON_NOT_SEEN',
+            'activity_low':     'HEALTH_REASON_LOW',
+            'litter_frequent':  'HEALTH_REASON_LITTER_FREQUENT',
+            'litter_phantom':   'HEALTH_REASON_LITTER_PHANTOM',
+            'bowl_drop':        'HEALTH_REASON_BOWL_DROP',
+            'bowl_silent':      'HEALTH_REASON_BOWL_SILENT',
+            'posture':          'HEALTH_REASON_POSTURE',
+          } %}
+          {% if ov.score_reasons %}
+            <ul class="mt-2 flex flex-wrap gap-1.5 text-[11px]">
+              {% for r in ov.score_reasons %}
+                <li class="rounded-full px-2 py-0.5 bg-rose-50 dark:bg-rose-900/40 text-rose-800 dark:text-rose-200">
+                  {{ t(reason_keys.get(r, r)) }}
+                </li>
+              {% endfor %}
+            </ul>
+          {% endif %}
+        </div>
+      </header>
+
+      {# 30-day activity stacked-bar chart. Hidden when no sightings —
+         empty SVGs look like a bug. #}
+      {% if ov.activity_chart_svg %}
+        <div class="mb-5">
+          <h3 class="text-sm font-semibold tracking-tight mb-2">{{ t('HEALTH_HEADING_ACTIVITY') }}</h3>
+          <div class="overflow-x-auto">{{ ov.activity_chart_svg | safe }}</div>
+        </div>
+      {% else %}
+        <p class="text-xs text-slate-400 dark:text-slate-500 italic mb-4">{{ t('HEALTH_NO_ACTIVITY') }}</p>
+      {% endif %}
+
+      {# Sparklines: litter / water / food bowls. Each one is hidden
+         until the owner has zones tagged with the right kind. #}
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
+        {% if ov.sparkline_litter_svg %}
+          <div class="rounded-lg border border-slate-200 dark:border-slate-700 p-3">
+            <p class="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400">{{ t('HEALTH_HEADING_LITTER') }}</p>
+            <div class="mt-1">{{ ov.sparkline_litter_svg | safe }}</div>
+          </div>
+        {% endif %}
+        {% if ov.sparkline_water_svg %}
+          <div class="rounded-lg border border-slate-200 dark:border-slate-700 p-3">
+            <p class="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400">{{ t('HEALTH_HEADING_WATER') }}</p>
+            <div class="mt-1">{{ ov.sparkline_water_svg | safe }}</div>
+          </div>
+        {% endif %}
+        {% if ov.sparkline_food_svg %}
+          <div class="rounded-lg border border-slate-200 dark:border-slate-700 p-3">
+            <p class="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400">{{ t('HEALTH_HEADING_FOOD') }}</p>
+            <div class="mt-1">{{ ov.sparkline_food_svg | safe }}</div>
+          </div>
+        {% endif %}
+      </div>
+
+      {# Hour × weekday heatmap. Reading down a column tells the owner
+         "Thursday afternoon Mochi sleeps", reading across a row shows
+         daily rhythm. #}
+      {% if ov.heatmap_svg %}
+        <div class="mb-2">
+          <h3 class="text-sm font-semibold tracking-tight mb-2">{{ t('HEALTH_HEADING_HEATMAP') }}</h3>
+          <div class="overflow-x-auto">{{ ov.heatmap_svg | safe }}</div>
+        </div>
+      {% endif %}
+
+      {% if ov.fight_pairs %}
+        <div class="mt-4 rounded-lg bg-rose-50 dark:bg-rose-900/30 border border-rose-200 dark:border-rose-800 p-3">
+          <p class="text-xs font-medium text-rose-800 dark:text-rose-200">{{ t('HEALTH_FIGHT_HEADING') }}</p>
+          <ul class="mt-1 text-xs text-rose-700 dark:text-rose-200 list-disc list-inside">
+            {% for pair in ov.fight_pairs %}
+              <li>{{ pair }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endif %}
+
+      {# Plain-language anomaly explanations from the robust-MAD module.
+         Shown for every bowl with a baseline — not just anomalous days —
+         so owners get a quiet "today 4 drinks, usual 3-5" line. Hides
+         entirely when no bowls are configured. #}
+      {% if ov.bowl_explanations %}
+        <div class="mt-3 space-y-1">
+          {% for be in ov.bowl_explanations %}
+            <p class="text-xs {% if be.is_anomaly %}text-amber-700 dark:text-amber-300{% else %}text-slate-500 dark:text-slate-400{% endif %}">
+              <span class="uppercase tracking-wider text-[10px] mr-1">{% if be.bowl_kind == 'water_bowl' %}{{ t('HEALTH_HEADING_WATER') }}{% else %}{{ t('HEALTH_HEADING_FOOD') }}{% endif %}</span>
+              {{ be.explanation }}
+            </p>
+          {% endfor %}
+        </div>
+      {% endif %}
+
+      {# Multi-frame recognition surface: tells the owner the upgrade is
+         actually firing on their footage. Hides on days with no events. #}
+      {% if ov.sightings_today > 0 and ov.multi_frame_today > 0 %}
+        <p class="mt-3 text-[11px] text-emerald-700 dark:text-emerald-300">
+          {{ t('HEALTH_MULTIFRAME_PREFIX') }}
+          {{ ov.multi_frame_today }} / {{ ov.sightings_today }}
+          {{ t('HEALTH_MULTIFRAME_SUFFIX') }}
+        </p>
+      {% endif %}
+
+      {# Behavior chip — surfaces resting / pacing / active when one
+         label dominates the day. Hidden when behavior is empty / idle
+         so the section stays quiet on pet-free or routine days. #}
+      {% if ov.behavior and ov.behavior.get('explanation') %}
+        <div class="mt-3 inline-flex items-center gap-2 rounded-lg
+                    bg-slate-50 dark:bg-slate-800/40 border
+                    border-slate-200 dark:border-slate-700 px-3 py-1.5">
+          <span class="text-[10px] uppercase tracking-wider rounded
+                       bg-brand-100 dark:bg-brand-900 text-brand-800
+                       dark:text-brand-100 px-1.5 py-0.5">
+            {{ t('BEHAVIOR_BADGE_' + ov.behavior.primary | upper) }}
+          </span>
+          <span class="text-xs text-slate-700 dark:text-slate-300">
+            {{ ov.behavior.explanation }}
+          </span>
+        </div>
+      {% endif %}
+    </section>
+  {% endfor %}
+
+</div>
+{% endblock %}

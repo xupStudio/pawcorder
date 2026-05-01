@@ -1,9 +1,9 @@
 {% extends "_layout.html" %}
-{% block title %}{{ t('SETUP_TITLE') }} · pawcorder{% endblock %}
+{% block title %}{{ t('SETUP_TITLE') }} · Pawcorder{% endblock %}
 {% block main %}
 <div x-data="wizard()" x-init="init()" class="max-w-3xl mx-auto">
-  <h1 class="text-2xl font-semibold tracking-tight">{{ t('SETUP_TITLE') }}</h1>
-  <p class="text-sm text-slate-500 dark:text-slate-400 mb-6">{{ t('SETUP_SUBTITLE') }}</p>
+  <h1 class="text-3xl font-display tracking-display">{{ t('SETUP_TITLE') }}</h1>
+  <p class="text-sm text-slate-500 dark:text-slate-400 mb-6 italic">{{ t('SETUP_SUBTITLE') }}</p>
 
   <ol class="flex items-center gap-2 mb-8 text-xs">
     <template x-for="(label, i) in steps" :key="i">
@@ -20,7 +20,7 @@
 
   <!-- Step 1: Welcome -->
   <div x-show="step === 0" class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-6">
-    <h2 class="text-xl font-semibold tracking-tight">{{ t('SETUP_WELCOME_HEAD') }}</h2>
+    <h2 class="text-2xl font-display tracking-display">{{ t('SETUP_WELCOME_HEAD') }}</h2>
     <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">{{ t('SETUP_WELCOME_INTRO') }}</p>
     <ul class="mt-3 list-disc pl-5 text-sm text-slate-600 dark:text-slate-300 space-y-1">
       <li>{{ t('SETUP_WELCOME_BULLET_1') }}</li>
@@ -38,7 +38,7 @@
   <!-- Step 2: Cameras -->
   <div x-show="step === 1" class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-6 space-y-5">
     <div>
-      <h2 class="text-xl font-semibold tracking-tight">{{ t('SETUP_CAM_HEAD') }}</h2>
+      <h2 class="text-2xl font-display tracking-display">{{ t('SETUP_CAM_HEAD') }}</h2>
       <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{ t('SETUP_CAM_HELP') }}</p>
     </div>
 
@@ -57,41 +57,80 @@
                       'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300': c.connection_type === 'wifi',
                       'bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300': c.connection_type === 'wired',
                     }"
-                    x-text="c.connection_type === 'wifi' ? 'Wi-Fi' : 'Wired'"></span>
+                    x-text='c.connection_type === 'wifi' ? {{ t('LINK_WIFI') | tojson }} : {{ t('LINK_WIRED') | tojson }}'></span>
             </span>
-            <button @click="removeAdded(c.name)" class="text-rose-600 dark:text-rose-400 hover:text-rose-700 text-xs">Remove</button>
+            <button @click="removeAdded(c.name)" class="text-rose-600 dark:text-rose-400 hover:text-rose-700 text-xs">{{ t('REMOVE') }}</button>
           </li>
         </template>
       </ul>
     </div>
 
-    <!-- Subnet scan -->
-    <div class="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-4">
-      <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('SCAN_LABEL') }}</label>
-      <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('SCAN_HELP') }}</p>
-      <div class="mt-2 flex gap-2">
-        <input type="text" x-model="cidr" placeholder="192.168.1.0/24"
-               class="flex-1 rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm font-mono" />
-        <button @click="scan()" :disabled="scanning"
-                class="rounded-md bg-slate-900 text-white px-3 py-2 text-sm hover:bg-slate-800 disabled:opacity-50"
-                x-text="scanning ? {{ t('SCANNING') | tojson }} : {{ t('SCAN') | tojson }}"></button>
+    <!-- Auto-detect (primary path) -->
+    <div class="rounded-xl border border-brand-200 dark:border-brand-700 bg-gradient-to-br from-brand-50 to-amber-50 dark:from-slate-800 dark:to-slate-800 p-5">
+      <div class="flex items-start gap-3">
+        <span class="paw-svg text-brand-600 dark:text-brand-400 shrink-0 mt-0.5" style="width:22px;height:22px;" aria-hidden></span>
+        <div class="flex-1">
+          <h3 class="font-display text-lg tracking-tight text-slate-900 dark:text-slate-100">{{ t('SCAN_PRIMARY_TITLE') }}</h3>
+          <ol class="mt-2 list-decimal pl-5 text-sm text-slate-700 dark:text-slate-300 space-y-1">
+            <li>{{ t('SCAN_PRIMARY_STEP_1') }}</li>
+            <li>{{ t('SCAN_PRIMARY_STEP_2') }}</li>
+          </ol>
+        </div>
       </div>
-      <ul x-show="candidates.length > 0" class="mt-3 grid grid-cols-2 gap-2">
-        <template x-for="c in candidates" :key="c.ip">
-          <li>
-            <button @click="form.ip = c.ip"
-                    class="w-full text-left text-sm rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 hover:border-brand-500 px-3 py-2 font-mono"
-                    x-text="c.ip"></button>
-          </li>
-        </template>
-      </ul>
+
+      <div class="mt-4">
+        <button @click="scan()" :disabled="scanning"
+                class="inline-flex items-center gap-2 rounded-full bg-brand-500 hover:bg-brand-600 text-white px-5 py-2.5 text-sm font-medium shadow-sm disabled:opacity-50">
+          <svg x-show="!scanning" class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m21 21-6-6m2-5a7 7 0 1 1-14 0 7 7 0 0 1 14 0z"/>
+          </svg>
+          <svg x-show="scanning" class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden>
+            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-opacity="0.25" stroke-width="4"></circle>
+            <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="4" stroke-linecap="round"></path>
+          </svg>
+          <span x-text='scanning ? {{ t("SCANNING") | tojson }} : {{ t("SCAN_PRIMARY_BUTTON") | tojson }}'></span>
+        </button>
+      </div>
+
+      <!-- Candidate list — appears after a successful scan -->
+      <div x-show="candidates.length > 0" class="mt-4">
+        <p class="text-xs font-medium uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-2">{{ t('SCAN_FOUND_LABEL') }}</p>
+        <ul class="grid grid-cols-2 gap-2">
+          <template x-for="c in candidates" :key="c.ip">
+            <li>
+              <button @click="form.ip = c.ip; document.querySelector('#cam-name')?.focus()"
+                      class="w-full text-left text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 hover:border-brand-500 hover:bg-brand-50 dark:hover:bg-slate-800 px-3 py-2 font-mono transition-colors"
+                      x-text="c.ip"></button>
+            </li>
+          </template>
+        </ul>
+      </div>
+
+      <!-- Advanced: manual CIDR override -->
+      <div class="mt-4" x-data="{ openAdvanced: false }">
+        <button type="button" @click="openAdvanced = !openAdvanced"
+                class="text-xs text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 inline-flex items-center gap-1">
+          <svg class="h-3 w-3 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"
+               :class="openAdvanced ? 'rotate-90' : ''" aria-hidden>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+          </svg>
+          {{ t('SCAN_ADVANCED_TOGGLE') }}
+        </button>
+        <div x-show="openAdvanced" x-cloak class="mt-2 space-y-1">
+          <p class="text-xs text-slate-500 dark:text-slate-400">{{ t('SCAN_MANUAL_CIDR_HELP') }}</p>
+          <input type="text" x-model="cidr" placeholder="192.168.1.0/24"
+                 class="w-full sm:w-64 rounded-md border-slate-300 dark:border-slate-600 px-3 py-1.5 border text-xs font-mono" />
+        </div>
+      </div>
     </div>
 
-    <!-- New camera form -->
+    <!-- Manual entry form (fallback) -->
+    <div>
+      <p class="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">{{ t('SCAN_MANUAL_FORM_LABEL') }}</p>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
       <div>
         <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('CAM_NAME') }}</label>
-        <input type="text" x-model="form.name" placeholder="living_room"
+        <input id="cam-name" type="text" x-model="form.name" placeholder="living_room"
                class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm font-mono" />
       </div>
       <div>
@@ -124,10 +163,10 @@
     <div class="flex items-center gap-3 flex-wrap">
       <button @click="testCurrent()" :disabled="testing || !form.ip || !form.password"
               class="rounded-md bg-slate-900 text-white px-3 py-2 text-sm hover:bg-slate-800 disabled:opacity-50"
-              x-text="testing ? {{ t('TESTING') | tojson }} : {{ t('TEST_CONNECTION') | tojson }}"></button>
+              x-text='testing ? {{ t('TESTING') | tojson }} : {{ t('TEST_CONNECTION') | tojson }}'></button>
       <button @click="addCurrent()" :disabled="adding || !canAdd()"
               class="rounded-md bg-brand-500 hover:bg-brand-600 text-white px-3 py-2 text-sm hover:opacity-90 disabled:opacity-50"
-              x-text="adding ? {{ t('SAVING') | tojson }} : {{ t('SETUP_CAM_ADD_TO_LIST') | tojson }}"></button>
+              x-text='adding ? {{ t('SAVING') | tojson }} : {{ t('SETUP_CAM_ADD_TO_LIST') | tojson }}'></button>
       <div x-show="testResult" class="text-sm flex items-center gap-2 flex-wrap">
         {# Manual sentinel — see cameras.html for the matching block. #}
         <span x-show="testResult?.reolink_login?.manual"
@@ -148,6 +187,7 @@
               x-text="testResult?.connection_type === 'wifi' ? 'Detected: Wi-Fi' : 'Detected: Wired'"></span>
       </div>
     </div>
+    </div>  <!-- /manual entry form wrapper -->
 
     <div class="flex justify-between pt-2">
       <button @click="prev()" class="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200">{{ t('BACK') }}</button>
@@ -161,7 +201,7 @@
   <!-- Step 3: Storage -->
   <div x-show="step === 2" class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-6 space-y-5">
     <div>
-      <h2 class="text-xl font-semibold tracking-tight">{{ t('SETUP_STORAGE_HEAD') }}</h2>
+      <h2 class="text-2xl font-display tracking-display">{{ t('SETUP_STORAGE_HEAD') }}</h2>
       <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{ t('SETUP_STORAGE_HELP') }}</p>
     </div>
     <div>
@@ -183,7 +223,7 @@
   <!-- Step 4: Detection -->
   <div x-show="step === 3" class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-6 space-y-5">
     <div>
-      <h2 class="text-xl font-semibold tracking-tight">{{ t('SETUP_DET_HEAD') }}</h2>
+      <h2 class="text-2xl font-display tracking-display">{{ t('SETUP_DET_HEAD') }}</h2>
       <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{ t('SETUP_DET_HELP') }}</p>
     </div>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -208,7 +248,7 @@
   <!-- Step 5: Admin password & finish -->
   <div x-show="step === 4" class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-6 space-y-5">
     <div>
-      <h2 class="text-xl font-semibold tracking-tight">{{ t('SETUP_FIN_HEAD') }}</h2>
+      <h2 class="text-2xl font-display tracking-display">{{ t('SETUP_FIN_HEAD') }}</h2>
       <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{ t('SETUP_FIN_HELP') }}</p>
     </div>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -235,7 +275,7 @@
       <button @click="finish()"
               :disabled="finishing || (newPassword && newPassword !== newPasswordConfirm) || (newPassword && newPassword.length < 8)"
               class="rounded-md bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 text-sm font-medium disabled:opacity-50"
-              x-text="finishing ? {{ t('SETUP_FIN_STARTING') | tojson }} : {{ t('SETUP_FIN_BUTTON') | tojson }}"></button>
+              x-text='finishing ? {{ t('SETUP_FIN_STARTING') | tojson }} : {{ t('SETUP_FIN_BUTTON') | tojson }}'></button>
     </div>
   </div>
 </div>
@@ -266,11 +306,17 @@
       pet_threshold: {{ config.pet_threshold | tojson }},
       form: emptyCameraForm(),
       labels: {
-        cam_login_fail: {{ t('SETUP_CAM_LOGIN_FAIL') | tojson }},
-        cam_main_fail:  {{ t('SETUP_CAM_MAIN_FAIL') | tojson }},
-        cam_sub_fail:   {{ t('SETUP_CAM_SUB_FAIL') | tojson }},
-        cam_test_fail:  {{ t('CAM_TEST_FAIL') | tojson }},
-        scan_no_hits:   {{ t('SCAN_NO_HITS') | tojson }},
+        cam_login_fail:    {{ t('SETUP_CAM_LOGIN_FAIL') | tojson }},
+        cam_main_fail:     {{ t('SETUP_CAM_MAIN_FAIL') | tojson }},
+        cam_sub_fail:      {{ t('SETUP_CAM_SUB_FAIL') | tojson }},
+        cam_test_fail:     {{ t('CAM_TEST_FAIL') | tojson }},
+        scan_no_hits:      {{ t('SCAN_NO_HITS') | tojson }},
+        scan_failed:       {{ t('TOAST_SCAN_FAILED') | tojson }},
+        generic_error:     {{ t('TOAST_GENERIC_ERROR') | tojson }},
+        cam_connected:     {{ t('TOAST_CAM_CONNECTED') | tojson }},
+        cam_conn_failed:   {{ t('TOAST_CAM_CONN_FAILED') | tojson }},
+        cam_added:         {{ t('TOAST_CAM_ADDED') | tojson }},
+        cam_removed:       {{ t('TOAST_CAM_REMOVED') | tojson }},
       },
       async init() {
         // Pick up where the user left off if some sections are already configured.
@@ -299,13 +345,25 @@
         if (r.rtsp_sub && !r.rtsp_sub.ok) return this.labels.cam_sub_fail + ': ' + r.rtsp_sub.error;
         return this.labels.cam_test_fail;
       },
+      // Surface a translated message — backend HTTPException details are
+      // English-only, so prefer the page-level fallback and keep raw detail
+      // as supplementary context only when it's likely meaningful (e.g. a
+      // user-input validation message rather than "Internal Server Error").
+      _toastError(e, fallback) {
+        const raw = e && e.message ? String(e.message) : '';
+        const looksGeneric = !raw
+          || /^internal/i.test(raw)
+          || /^http\s*5\d\d/i.test(raw)
+          || raw === 'Internal Server Error';
+        toast(looksGeneric ? fallback : `${fallback}: ${raw}`, 'error');
+      },
       async scan() {
         this.scanning = true;
         try {
           const data = await api('/api/scan', { method: 'POST', body: { cidr: this.cidr } });
           this.candidates = data.candidates || [];
           if (this.candidates.length === 0) toast(this.labels.scan_no_hits, 'info');
-        } catch (e) { toast(e.message, 'error'); }
+        } catch (e) { this._toastError(e, this.labels.scan_failed); }
         finally { this.scanning = false; }
       },
       async testCurrent() {
@@ -315,8 +373,9 @@
           if (this.testResult?.connection_type) {
             this.form.connection_type = this.testResult.connection_type;
           }
-          toast(this.testResult.ok ? 'Camera connected' : 'Connection failed', this.testResult.ok ? 'success' : 'error');
-        } catch (e) { toast(e.message, 'error'); }
+          toast(this.testResult.ok ? this.labels.cam_connected : this.labels.cam_conn_failed,
+                this.testResult.ok ? 'success' : 'error');
+        } catch (e) { this._toastError(e, this.labels.cam_conn_failed); }
         finally { this.testing = false; }
       },
       async addCurrent() {
@@ -327,21 +386,22 @@
           this.addedCameras.push({ ...this.form });
           this.form = emptyCameraForm();
           this.testResult = null;
-          toast('Camera added', 'success');
-        } catch (e) { toast(e.message, 'error'); }
+          toast(this.labels.cam_added, 'success');
+        } catch (e) { this._toastError(e, this.labels.generic_error); }
         finally { this.adding = false; }
       },
       async removeAdded(name) {
         try {
           await api(`/api/cameras/${encodeURIComponent(name)}`, { method: 'DELETE' });
           this.addedCameras = this.addedCameras.filter(c => c.name !== name);
-        } catch (e) { toast(e.message, 'error'); }
+          toast(this.labels.cam_removed, 'success');
+        } catch (e) { this._toastError(e, this.labels.generic_error); }
       },
       async saveAndNext(section, data) {
         try {
           await api('/api/config/save', { method: 'POST', body: { section, data } });
           this.next();
-        } catch (e) { toast(e.message, 'error'); }
+        } catch (e) { this._toastError(e, this.labels.generic_error); }
       },
       async finish() {
         this.finishing = true;
@@ -355,7 +415,7 @@
           // Send first-time finishers through /welcome so they see the
           // next-step guidance. Returning users land on the dashboard.
           setTimeout(() => window.location = '/welcome', 800);
-        } catch (e) { toast(e.message, 'error'); }
+        } catch (e) { this._toastError(e, this.labels.generic_error); }
         finally { this.finishing = false; }
       },
     };

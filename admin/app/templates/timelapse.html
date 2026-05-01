@@ -1,11 +1,11 @@
 {% extends "_layout.html" %}
-{% block title %}{{ t('TIMELAPSE_TITLE') }} · pawcorder{% endblock %}
+{% block title %}{{ t('TIMELAPSE_TITLE') }} · Pawcorder{% endblock %}
 {% block main %}
 <div x-data='timelapsePage({{ items | tojson }})' x-init="poll()">
   <div class="flex items-center justify-between mb-6 gap-2">
     <div>
-      <h1 class="text-2xl font-semibold tracking-tight">{{ t('TIMELAPSE_TITLE') }}</h1>
-      <p class="text-sm text-slate-500 dark:text-slate-400">{{ t('TIMELAPSE_SUBTITLE') }}</p>
+      <h1 class="text-3xl font-display tracking-display">{{ t('TIMELAPSE_TITLE') }}</h1>
+      <p class="text-sm text-slate-500 dark:text-slate-400 italic">{{ t('TIMELAPSE_SUBTITLE') }}</p>
     </div>
     <button @click="buildNow()" :disabled="building"
             class="rounded-md bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 px-3 py-2 text-sm font-medium disabled:opacity-50"

@@ -75,7 +75,7 @@ def test_evaluate_async_manual_keeps_state(data_dir):
     s = privacy.PrivacyState(enabled=True, auto_pause_when_home=False, paused_now=True)
     out = asyncio.run(privacy.evaluate_async(s))
     assert out.paused_now is True
-    assert "manual" in out.reason
+    assert out.reason_key == "PRIVACY_REASON_MANUAL"
 
 
 def test_evaluate_async_auto_pause_no_tailscale_resumes(data_dir, monkeypatch):
@@ -109,7 +109,8 @@ def test_evaluate_async_auto_pause_when_home_device_online(data_dir, monkeypatch
     )
     out = asyncio.run(privacy.evaluate_async(s))
     assert out.paused_now is True
-    assert "my-iphone" in out.reason
+    assert out.reason_key == "PRIVACY_REASON_HOME_ONLINE"
+    assert "my-iphone" in out.reason_arg
 
 
 def test_privacy_route_get(authed_client):

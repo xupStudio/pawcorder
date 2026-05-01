@@ -4,8 +4,8 @@
 <div x-data='zonesEditor({{ camera | tojson }})' x-init="loadImage()" class="max-w-5xl mx-auto">
   <div class="flex items-center justify-between mb-4 gap-2">
     <div>
-      <h1 class="text-2xl font-semibold tracking-tight">{{ t('ZONES_TITLE') }}: <span x-text="camera.name" class="font-mono text-brand-600"></span></h1>
-      <p class="text-sm text-slate-500 dark:text-slate-400">{{ t('ZONES_SUBTITLE') }}</p>
+      <h1 class="text-3xl font-display tracking-display">{{ t('ZONES_TITLE') }}: <span x-text="camera.name" class="font-mono text-brand-600"></span></h1>
+      <p class="text-sm text-slate-500 dark:text-slate-400 italic">{{ t('ZONES_SUBTITLE') }}</p>
     </div>
     <a :href="`/cameras`" class="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 dark:hover:text-slate-200">← {{ t('NAV_CAMERAS') }}</a>
   </div>
@@ -51,16 +51,31 @@
     <div class="space-y-3">
       <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-4">
         <h2 class="text-sm font-semibold mb-2" x-text="mode === 'zones' ? labels.zone_list : labels.mask_list"></h2>
-        <ul class="space-y-1 text-sm" x-show="currentPolygons.length > 0">
+        <p x-show="mode === 'zones'" class="text-xs text-slate-500 dark:text-slate-400 mb-2">
+          {{ t('ZONE_KIND_HELP') }}
+        </p>
+        <ul class="space-y-2 text-sm" x-show="currentPolygons.length > 0">
           <template x-for="(p, i) in currentPolygons" :key="i">
-            <li class="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 dark:border-slate-800 pb-1.5">
-              <input x-show="mode === 'zones'" type="text" x-model="p.name"
-                     placeholder="food_bowl"
-                     class="flex-1 mr-2 rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-2 py-1 text-xs font-mono" />
-              <span x-show="mode === 'privacy_masks'" class="font-mono text-xs text-slate-500 dark:text-slate-400"
-                    x-text="`mask #${i + 1}`"></span>
-              <span class="text-xs text-slate-400 dark:text-slate-500" x-text="(p.points || []).length + ' pts'"></span>
-              <button @click="removePolygon(i)" class="ml-2 text-rose-600 dark:text-rose-400 hover:text-rose-700 text-sm">×</button>
+            <li class="border-b border-slate-100 dark:border-slate-700 dark:border-slate-800 pb-2">
+              <div class="flex items-center justify-between gap-1">
+                <input x-show="mode === 'zones'" type="text" x-model="p.name"
+                       placeholder="food_bowl"
+                       class="flex-1 mr-2 rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-2 py-1 text-xs font-mono" />
+                <span x-show="mode === 'privacy_masks'" class="font-mono text-xs text-slate-500 dark:text-slate-400"
+                      x-text="`mask #${i + 1}`"></span>
+                <span class="text-xs text-slate-400 dark:text-slate-500" x-text="(p.points || []).length + ' pts'"></span>
+                <button @click="removePolygon(i)" class="ml-2 text-rose-600 dark:text-rose-400 hover:text-rose-700 text-sm">×</button>
+              </div>
+              <div x-show="mode === 'zones'" class="mt-1.5 flex items-center gap-2">
+                <label class="text-[11px] text-slate-500 dark:text-slate-400 shrink-0" x-text="labels.zone_kind_label + ':'"></label>
+                <select x-model="p.kind"
+                        class="flex-1 rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-2 py-1 text-xs">
+                  <option value="detect" x-text="labels.zone_kind_detect"></option>
+                  <option value="litter_box" x-text="labels.zone_kind_litter_box"></option>
+                  <option value="water_bowl" x-text="labels.zone_kind_water_bowl"></option>
+                  <option value="food_bowl" x-text="labels.zone_kind_food_bowl"></option>
+                </select>
+              </div>
             </li>
           </template>
         </ul>
@@ -94,6 +109,11 @@
         add_mask:    {{ t('PRIVACY_MASK_ADD') | tojson }},
         zone_list:   {{ t('ZONES_LIST') | tojson }},
         mask_list:   {{ t('PRIVACY_MASK_LIST') | tojson }},
+        zone_kind_label:      {{ t('ZONE_KIND_LABEL') | tojson }},
+        zone_kind_detect:     {{ t('ZONE_KIND_DETECT') | tojson }},
+        zone_kind_litter_box: {{ t('ZONE_KIND_LITTER_BOX') | tojson }},
+        zone_kind_water_bowl: {{ t('ZONE_KIND_WATER_BOWL') | tojson }},
+        zone_kind_food_bowl:  {{ t('ZONE_KIND_FOOD_BOWL') | tojson }},
       },
       get currentPolygons() {
         return this.camera[this.mode] || [];
@@ -202,6 +222,9 @@
           points: this.drawing.points.map(p => [Math.round(p[0] * 1000) / 1000,
                                                  Math.round(p[1] * 1000) / 1000]),
         };
+        // New zones default to "detect"; the user picks a real purpose
+        // (litter box / water bowl / food bowl) from the dropdown.
+        if (this.mode === 'zones') final.kind = 'detect';
         this.camera[this.mode].push(final);
         this.drawing = null;
         this.redraw();

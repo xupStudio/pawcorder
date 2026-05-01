@@ -1,11 +1,11 @@
 {% extends "_layout.html" %}
-{% block title %}{{ t('TUTORIAL_HEADING') }} · pawcorder{% endblock %}
+{% block title %}{{ t('TUTORIAL_HEADING') }} · Pawcorder{% endblock %}
 {% block main %}
 <div class="max-w-3xl mx-auto" x-data="tutorial()" x-init="init()">
   <div class="flex items-center justify-between mb-4">
     <div>
-      <h1 class="text-2xl font-semibold tracking-tight">{{ t('TUTORIAL_HEADING') }}</h1>
-      <p class="text-sm text-slate-500 dark:text-slate-400">{{ t('TUTORIAL_SUBTITLE') }}</p>
+      <h1 class="text-3xl font-display tracking-display">{{ t('TUTORIAL_HEADING') }}</h1>
+      <p class="text-sm text-slate-500 dark:text-slate-400 italic">{{ t('TUTORIAL_SUBTITLE') }}</p>
     </div>
     <button type="button" @click="resetAll()"
             class="text-sm rounded-md border border-slate-300 dark:border-slate-600 px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-800">

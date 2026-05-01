@@ -67,9 +67,27 @@ DEFAULTS: dict[str, str] = {
     "CLOUD_ADAPTIVE_FRACTION": "0.80", # used when mode == 'adaptive'
     # AI tokens (System page). OPENAI_API_KEY = OSS LLM diary path
     # (user pays OpenAI directly). PAWCORDER_PRO_LICENSE_KEY = managed
-    # path (we proxy LLM + own the bill).
+    # path (we proxy LLM + own the bill). OLLAMA_BASE_URL = local
+    # offline LLM (no cloud, no token cost — runs on the user's host).
     "OPENAI_API_KEY": "",
     "PAWCORDER_PRO_LICENSE_KEY": "",
+    "OLLAMA_BASE_URL": "",
+    "OLLAMA_MODEL": "qwen2.5:3b",
+    # Multi-provider LLM support — bring-your-own-key for direct vendor
+    # access, or fall through to Pro relay. Default empty = provider not
+    # configured; LLM dispatcher silently skips it.
+    "GEMINI_API_KEY": "",
+    "ANTHROPIC_API_KEY": "",
+    # "auto" preserves the historical priority order
+    # (ollama > openai > gemini > anthropic > pro_relay). An explicit
+    # value pins the dispatcher to one vendor — useful when an operator
+    # wants Claude Haiku 4.5 specifically for zh-TW prosody.
+    "LLM_PROVIDER_PREFERENCE": "auto",
+    "TTS_PROVIDER_PREFERENCE": "auto",
+    "TTS_VOICE": "",
+    "PAWCORDER_EMBEDDING_BACKBONE": "",
+    # Federated baseline opt-in. Default OFF — explicit consent only.
+    "FEDERATED_OPT_IN": "0",
     # Pro health detectors. Empty / 0-equivalent values disable.
     "LITTER_BOX_CAMERA": "",
     "LITTER_VISITS_ALERT_PER_24H": "12",
@@ -115,8 +133,42 @@ class Config:
     # Pro path: a license key is exchanged for a relay token at the
     # pawcorder cloud; the admin then makes LLM calls via that relay
     # without ever holding the user's OpenAI credentials.
+    # Offline path: local Ollama (or any OpenAI-compatible local
+    # server) reachable at ``ollama_base_url``. Wins over the cloud
+    # backends when set, because the user explicitly opted into local.
     openai_api_key: str = ""
     pawcorder_pro_license_key: str = ""
+    ollama_base_url: str = ""
+    ollama_model: str = "qwen2.5:3b"
+    # Additional cloud LLM providers (mid-2026 best-in-class options).
+    # Bring-your-own-key, same shape as openai_api_key — admin holds
+    # nothing the user wouldn't already have to acquire from the vendor.
+    # Empty string disables that provider; the dispatcher then ignores
+    # it during selection.
+    gemini_api_key: str = ""
+    anthropic_api_key: str = ""
+    # Preferred LLM provider for the diary / Q&A path. Values:
+    # "auto" picks the first configured in priority order
+    # (ollama → openai → gemini → anthropic → pro_relay), matching the
+    # historical default. Operators set this when they want to pin a
+    # specific vendor (e.g. "anthropic" for zh-TW prosody).
+    llm_provider_preference: str = "auto"
+    # TTS provider for the weekly podcast / digest. "auto" lets the
+    # admin pick whatever the relay supports; explicit values forward to
+    # the matching adapter on the relay side.
+    tts_provider_preference: str = "auto"
+    tts_voice: str = ""
+    # Recognition embedding backbone. "" = use whatever
+    # PAWCORDER_EMBEDDING_BACKBONE env or default points at; explicit
+    # values override the env. Surfaced on System so the operator can
+    # opt into DINOv2-small for better fine-grained features without
+    # editing .env by hand. A change here without re-enroll leaves
+    # photos in the old feature space — the /pets page surfaces a
+    # "Re-enroll needed" badge in that case.
+    embedding_backbone: str = ""
+    # Opt-in toggle for federated cohort baselines (Pro-only).
+    # Default false; user explicitly enables under System.
+    federated_opt_in: bool = False
     # Pro health detectors. Empty values disable the detector — the
     # OSS build never reads them, but it's tidier to keep one canonical
     # config schema rather than scatter Pro-only fields elsewhere.
@@ -157,6 +209,15 @@ class Config:
             cloud_adaptive_fraction=env.get("CLOUD_ADAPTIVE_FRACTION", "0.80"),
             openai_api_key=env.get("OPENAI_API_KEY", ""),
             pawcorder_pro_license_key=env.get("PAWCORDER_PRO_LICENSE_KEY", ""),
+            ollama_base_url=env.get("OLLAMA_BASE_URL", ""),
+            ollama_model=env.get("OLLAMA_MODEL", "qwen2.5:3b"),
+            gemini_api_key=env.get("GEMINI_API_KEY", ""),
+            anthropic_api_key=env.get("ANTHROPIC_API_KEY", ""),
+            llm_provider_preference=env.get("LLM_PROVIDER_PREFERENCE", "auto"),
+            tts_provider_preference=env.get("TTS_PROVIDER_PREFERENCE", "auto"),
+            tts_voice=env.get("TTS_VOICE", ""),
+            embedding_backbone=env.get("PAWCORDER_EMBEDDING_BACKBONE", ""),
+            federated_opt_in=env.get("FEDERATED_OPT_IN", "0") in ("1", "true", "True"),
             litter_box_camera=env.get("LITTER_BOX_CAMERA", ""),
             litter_visits_alert_per_24h=env.get("LITTER_VISITS_ALERT_PER_24H", "12"),
         )
@@ -194,6 +255,15 @@ class Config:
             "CLOUD_ADAPTIVE_FRACTION": self.cloud_adaptive_fraction,
             "OPENAI_API_KEY": self.openai_api_key,
             "PAWCORDER_PRO_LICENSE_KEY": self.pawcorder_pro_license_key,
+            "OLLAMA_BASE_URL": self.ollama_base_url,
+            "OLLAMA_MODEL": self.ollama_model,
+            "GEMINI_API_KEY": self.gemini_api_key,
+            "ANTHROPIC_API_KEY": self.anthropic_api_key,
+            "LLM_PROVIDER_PREFERENCE": self.llm_provider_preference,
+            "TTS_PROVIDER_PREFERENCE": self.tts_provider_preference,
+            "TTS_VOICE": self.tts_voice,
+            "PAWCORDER_EMBEDDING_BACKBONE": self.embedding_backbone,
+            "FEDERATED_OPT_IN": "1" if self.federated_opt_in else "0",
             "LITTER_BOX_CAMERA": self.litter_box_camera,
             "LITTER_VISITS_ALERT_PER_24H": self.litter_visits_alert_per_24h,
         }

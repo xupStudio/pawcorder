@@ -1,11 +1,11 @@
 {% extends "_layout.html" %}
-{% block title %}{{ t('HW_TITLE') }} · pawcorder{% endblock %}
+{% block title %}{{ t('HW_TITLE') }} · Pawcorder{% endblock %}
 {% block main %}
 <div x-data="hardwarePage()" x-init="init()" class="max-w-3xl">
   <div class="flex items-center justify-between mb-6">
     <div>
-      <h1 class="text-2xl font-semibold tracking-tight">{{ t('HW_TITLE') }}</h1>
-      <p class="text-sm text-slate-500 dark:text-slate-400">{{ t('HW_SUBTITLE') }}</p>
+      <h1 class="text-3xl font-display tracking-display">{{ t('HW_TITLE') }}</h1>
+      <p class="text-sm text-slate-500 dark:text-slate-400 italic">{{ t('HW_SUBTITLE') }}</p>
     </div>
     <button @click="rescan()" :disabled="rescanning"
             class="rounded-md bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700 px-3 py-2 text-sm"
@@ -22,7 +22,7 @@
             :class="info.is_dev_host ? 'bg-amber-500' : 'bg-emerald-500'"
             x-text="info.is_dev_host ? '!' : '✓'"></span>
       <div class="flex-1 min-w-0">
-        <h2 class="text-base font-semibold tracking-tight"
+        <h2 class="text-lg font-display tracking-tight"
             x-text="info.is_dev_host ? labels.overview_dev : labels.overview"></h2>
         <p class="text-sm text-slate-600 dark:text-slate-300 mt-1">
           <span x-text="info.cpu_brand"></span>
@@ -45,7 +45,7 @@
 
   <!-- Detected accelerators (collapsed by default) -->
   <details class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5 mb-6">
-    <summary class="text-base font-semibold tracking-tight cursor-pointer">{{ t('HW_ACCELERATORS') }}</summary>
+    <summary class="text-lg font-display tracking-tight cursor-pointer">{{ t('HW_ACCELERATORS') }}</summary>
     <ul x-show="info.accelerators && info.accelerators.length > 0" class="mt-3 space-y-2 text-sm">
       <template x-for="a in info.accelerators" :key="a.kind">
         <li class="flex items-start gap-2">
@@ -61,7 +61,7 @@
 
   <!-- Advanced: machine details + override AI engine -->
   <details class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5">
-    <summary class="text-base font-semibold tracking-tight cursor-pointer">{{ t('ADVANCED') }}</summary>
+    <summary class="text-lg font-display tracking-tight cursor-pointer">{{ t('ADVANCED') }}</summary>
 
     <div class="mt-4">
       <h3 class="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">{{ t('HW_OS') }}</h3>

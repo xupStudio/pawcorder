@@ -161,6 +161,56 @@ async def test_openai_takes_precedence_over_pro_license(data_dir):
     assert seen == ["openai"]
 
 
+@pytest.mark.asyncio
+async def test_ollama_wins_over_cloud_backends(data_dir):
+    """Local Ollama is an explicit privacy / no-cost opt-in, so it
+    should beat both OpenAI and the Pro relay even when all three are
+    configured."""
+    from app import pet_diary
+    cfg = _cfg(
+        ollama_base_url="http://ollama:11434",
+        ollama_model="qwen2.5:3b",
+        openai_api_key="sk-x",
+        pawcorder_pro_license_key="pro_y",
+    )
+    seen = []
+
+    async def fake_ollama(base_url, system, user, *, model, **kw):
+        seen.append(("ollama", base_url, model))
+        return "Today I napped on the keyboard."
+
+    async def fake_openai(*a, **kw):
+        seen.append("openai")
+        return "ok"
+
+    async def fake_relay(*a, **kw):
+        seen.append("relay")
+        return "ok"
+
+    d = await pet_diary.generate_diary(
+        _pet(), cfg=cfg, sightings=[],
+        ollama_caller=fake_ollama,
+        openai_caller=fake_openai, relay_caller=fake_relay,
+    )
+    assert d.backend == "ollama"
+    assert seen == [("ollama", "http://ollama:11434", "qwen2.5:3b")]
+
+
+def test_active_backend_reports_priority(data_dir):
+    from app import pet_diary
+    assert pet_diary.active_backend(_cfg()) is None
+    assert pet_diary.active_backend(_cfg(pawcorder_pro_license_key="pro_x")) == "pro_relay"
+    assert pet_diary.active_backend(_cfg(openai_api_key="sk-x")) == "openai"
+    assert pet_diary.active_backend(_cfg(
+        openai_api_key="sk-x", pawcorder_pro_license_key="pro_x",
+    )) == "openai"
+    assert pet_diary.active_backend(_cfg(
+        ollama_base_url="http://ollama:11434",
+        openai_api_key="sk-x",
+        pawcorder_pro_license_key="pro_x",
+    )) == "ollama"
+
+
 # ---- persistence -------------------------------------------------------
 
 def test_append_diary_overwrites_same_pet_same_day(data_dir):

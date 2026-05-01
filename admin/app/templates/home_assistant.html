@@ -1,9 +1,9 @@
 {% extends "_layout.html" %}
-{% block title %}{{ t('HA_TITLE') }} · pawcorder{% endblock %}
+{% block title %}{{ t('HA_TITLE') }} · Pawcorder{% endblock %}
 {% block main %}
 <div x-data="haPage()" class="max-w-3xl">
-  <h1 class="text-2xl font-semibold tracking-tight">{{ t('HA_TITLE') }}</h1>
-  <p class="text-sm text-slate-500 dark:text-slate-400 mb-6">{{ t('HA_SUBTITLE') }}</p>
+  <h1 class="text-3xl font-display tracking-display">{{ t('HA_TITLE') }}</h1>
+  <p class="text-sm text-slate-500 dark:text-slate-400 mb-6 italic">{{ t('HA_SUBTITLE') }}</p>
 
   <div class="rounded-2xl bg-amber-50 dark:bg-amber-900 border border-amber-200 dark:border-amber-800 p-4 mb-6 text-sm text-amber-800 dark:text-amber-200">
     <p class="font-medium">{{ t('HA_HEADS_UP_HEAD') }}</p>
@@ -12,7 +12,7 @@
 
   <!-- Step 1 -->
   <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-6 mb-6">
-    <h2 class="text-base font-semibold tracking-tight mb-3">{{ t('HA_STEP1_HEAD') }}</h2>
+    <h2 class="text-lg font-display tracking-tight mb-3">{{ t('HA_STEP1_HEAD') }}</h2>
     <p class="text-sm text-slate-600 dark:text-slate-300 mb-3">{{ t('HA_STEP1_INTRO') }}</p>
     <pre class="bg-slate-900 text-slate-100 rounded-lg p-4 text-xs overflow-x-auto"><code>  homeassistant:
     container_name: pawcorder-ha
@@ -36,7 +36,7 @@
 
   <!-- Step 2 -->
   <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-6 mb-6">
-    <h2 class="text-base font-semibold tracking-tight mb-3">{{ t('HA_STEP2_HEAD') }}</h2>
+    <h2 class="text-lg font-display tracking-tight mb-3">{{ t('HA_STEP2_HEAD') }}</h2>
     <ol class="list-decimal pl-5 space-y-2 text-sm text-slate-600 dark:text-slate-300">
       <li>{{ t('HA_STEP2_1') }}</li>
       <li>{{ t('HA_STEP2_2') }}</li>
@@ -47,7 +47,7 @@
 
   <!-- Step 3 -->
   <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-6 mb-6">
-    <h2 class="text-base font-semibold tracking-tight mb-3">{{ t('HA_STEP3_HEAD') }}</h2>
+    <h2 class="text-lg font-display tracking-tight mb-3">{{ t('HA_STEP3_HEAD') }}</h2>
     <ol class="list-decimal pl-5 space-y-2 text-sm text-slate-600 dark:text-slate-300">
       <li>{{ t('HA_STEP3_1') }}
         <a href="https://apps.apple.com/app/home-assistant/id1099568401" target="_blank" rel="noopener" class="text-brand-600 underline">iOS</a> /
@@ -60,9 +60,9 @@
 
   <!-- Step 4 -->
   <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-6 mb-6">
-    <h2 class="text-base font-semibold tracking-tight mb-3">{{ t('HA_STEP4_HEAD') }}</h2>
+    <h2 class="text-lg font-display tracking-tight mb-3">{{ t('HA_STEP4_HEAD') }}</h2>
     <p class="text-sm text-slate-600 dark:text-slate-300 mb-3">{{ t('HA_STEP4_INTRO') }}</p>
-    <pre class="bg-slate-900 text-slate-100 rounded-lg p-4 text-xs overflow-x-auto"><code>{% raw %}alias: pawcorder — pet detected
+    <pre class="bg-slate-900 text-slate-100 rounded-lg p-4 text-xs overflow-x-auto"><code>{% raw %}alias: Pawcorder — pet detected
 trigger:
   - platform: mqtt
     topic: frigate/events

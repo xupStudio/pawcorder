@@ -238,7 +238,7 @@ def test_alert_cooldown_resets_on_recovery(data_dir, monkeypatch):
     assert len(sent) == 2  # not 3 (cooldown) and not 1 (no recovery reset)
     # Each alert is in HTML format with the failing check's message embedded.
     for msg in sent:
-        assert "<b>pawcorder health</b>" in msg
+        assert "<b>Pawcorder health</b>" in msg
         assert "full" in msg
 
 
