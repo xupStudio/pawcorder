@@ -13,8 +13,10 @@ silently forgotten.
 Format: each section is a category, each item is one row in
 `Status / Item / Why human / Next step`.
 
-Last updated: 2026-05-01 (Batch 3: marketing + admin design polish — Fraunces /
-Geist typography, paper-warm palette, paw-+-lens logo).
+Last updated: 2026-05-01 (Batch 4: 13-item polish drop — self-hosted
+fonts, conformal-on-litter, eating/drinking chips, /recognition diag,
+weekly-digest behavior, API docs, playwright screenshots, mobile audit,
+profile script, SECURITY.md, pose scaffold, sensitivity slider).
 
 ---
 
@@ -58,6 +60,7 @@ Geist typography, paper-warm palette, paw-+-lens logo).
 | ✅ Done (interim) | **Bbox-based behavior chips** | Coarse resting / pacing / active labels from existing bbox stream — no model needed | Surfaced on /pets/health (batch 2). Validate the thresholds against real-customer footage and tune. |
 | ⏳ Open | **YOLOv11-pose / RTMPose pre-trained for pets** | Current public pose models are mostly human-trained; pet performance varies | Download top candidate models, run on 100 frames, pick the one that lands keypoints reliably |
 | ⏳ Open | **Pose-based behavior rules** | Rules like "hind legs flexed + head down ⇒ scratching" need a human to spec, code can implement | Watch own pet for 1 hour, write 4-6 rule signatures, encode in `pro/pose_behavior.py` |
+| ⏳ Open | **Wire pose-derived chips into /pets/health** | Batch 4 added `admin/app/pose_scaffold.py` with `is_available()` + a `_RULES` registry. When a real pose model + rules land, the page needs to render new `BEHAVIOR_BADGE_*` keys (scratching / grooming / etc.) and `label_explanation()` should grow defaults for them. Without this, the scaffold rots silently | After model lands: extend `pets_health.html` "Behavior chip" block to call `pose_scaffold.is_available()` and surface the dominant rule label; add `BEHAVIOR_BADGE_SCRATCHING` etc. to `i18n.py`; extend `label_explanation` defaults in `behavior.py` |
 | ⏳ Open | **Vomit / seizure detection** — NOT IMPLEMENTED | Liability risk if false-negatives; needs vet sign-off and curated training clips | **Do not promise in marketing.** Defer until partnered with a vet research group |
 
 ## Per-pet model training (auto when owners upload)
@@ -78,14 +81,15 @@ Geist typography, paper-warm palette, paw-+-lens logo).
 
 | Status | Item | Why human | Next step |
 |---|---|---|---|
-| ⏳ Open | Updated screenshots for [marketing/index.html](../marketing/index.html) | The page now mentions health-overview / vet-pack-share / weekly-digest features that need fresh screenshots | Designer round |
+| 🟡 Partial | Updated screenshots for [marketing/index.html](../marketing/index.html) | Batch 4 added `scripts/screenshot-marketing.py` (playwright-driven). Run it after starting the demo to get base captures of dashboard / pets / health / system / recognition. Designer still owns hero composition + final crop | `playwright install chromium && python scripts/screenshot-marketing.py` |
 | ⏳ Open | Pricing page copy for new providers | We added Gemini / Anthropic / Cartesia / ElevenLabs — owners may want a "what does each cost?" comparison | Marketing copywriting |
 | ⏳ Open | Onboarding video for /pets/<id>/train-cloud | Drag-drop flow is live but no video walkthrough | Record 90-second screencast |
-| ⏳ Open | Self-host Fraunces + Geist + JetBrains Mono | Batch 3 loads from Google Fonts. China / corporate networks blocking it fall through to system fonts. ~200 KB total | Mirror the woff2 files to `admin/app/static/fonts/`; rewrite the `<link>` to `/static/fonts/...` |
+| ✅ Done | Self-host Fraunces + Geist + JetBrains Mono | Batch 4 mirrored the woff2 files to `admin/app/static/fonts/` + `marketing/fonts/`. ~200 KB total. Templates load `./fonts/fonts.css` instead of the Google Fonts CDN | — |
 | ⏳ Open | Marketing screenshots after Batch 3 polish | Page now uses Fraunces / Geist / paper-warm palette and refers to features by visible UI labels — old screenshots are stale | Designer round captures fresh hero / features / cameras / pricing screens |
 | ⏳ Open | OG / social-share image (og:image) | Marketing index has `og:title` + `og:description` but no preview image; share previews on Twitter / iMessage / Discord look bare | Export a 1200×630 PNG of the new logo + Pawcorder wordmark on warm-paper background; upload to `/marketing/og.png` and add `<meta property="og:image">` |
 | ⏳ Open | Favicon raster fallbacks | The new SVG icon ([admin/app/static/icon.svg](../admin/app/static/icon.svg)) is the canonical mark, but older clients (IE / older Android browsers / iMessage previews) need raster sizes | Generate `favicon-32.png`, `apple-touch-icon-180.png`, `android-chrome-192/512.png` from the SVG; reference them in admin `base.html` and marketing `index.html` |
 | ⏳ Open | Final review of editorial typography on real CJK + EN strings | Marketing & admin upgraded to Fraunces (display) + Geist (body). Need a non-zh-TW reviewer to confirm the warm-paper palette + Fraunces tracking doesn't feel "off" in en / ja / ko | Visit /login, /, /pets after switching language; check letter-spacing isn't too tight on long English/Japanese strings |
+| 📝 Doc | WSL2 mirrored networking note for Windows users | Camera auto-detect (`/api/scan` with empty cidr) calls `network_scan.detect_local_subnet()` which sees the *container* / *WSL2 virtual* subnet, not the user's LAN. In WSL2 default bridged mode this means the auto-scan finds 0 cameras even though manual IP entry works fine. Fix is one-time user setup: `.wslconfig` with `[wsl2]\nnetworkingMode=mirrored` (Windows 11 22H2+ + `wsl --update`) | Add a docs page (or a hint in the wizard's "0 results" toast) explaining mirrored mode for Windows users; meanwhile the manual-IP fallback in setup step 2 is a working escape hatch |
 
 ## Hosted services (production deploys)
 

@@ -86,6 +86,7 @@ DEFAULTS: dict[str, str] = {
     "TTS_PROVIDER_PREFERENCE": "auto",
     "TTS_VOICE": "",
     "PAWCORDER_EMBEDDING_BACKBONE": "",
+    "CONFORMAL_SENSITIVITY": "0.10",
     # Federated baseline opt-in. Default OFF — explicit consent only.
     "FEDERATED_OPT_IN": "0",
     # Pro health detectors. Empty / 0-equivalent values disable.
@@ -166,6 +167,12 @@ class Config:
     # photos in the old feature space — the /pets page surfaces a
     # "Re-enroll needed" badge in that case.
     embedding_backbone: str = ""
+    # Conformal anomaly sensitivity for /pets/health chips. Higher =
+    # more chatty (top X% of days surface a chip). 0.10 = top 10%
+    # (default — once or twice a fortnight on average); 0.01 = only
+    # the most unusual day. Slider clamps to [0.01, 0.30] in
+    # main.api_system_ai_tokens_update.
+    conformal_sensitivity: str = "0.10"
     # Opt-in toggle for federated cohort baselines (Pro-only).
     # Default false; user explicitly enables under System.
     federated_opt_in: bool = False
@@ -217,6 +224,7 @@ class Config:
             tts_provider_preference=env.get("TTS_PROVIDER_PREFERENCE", "auto"),
             tts_voice=env.get("TTS_VOICE", ""),
             embedding_backbone=env.get("PAWCORDER_EMBEDDING_BACKBONE", ""),
+            conformal_sensitivity=env.get("CONFORMAL_SENSITIVITY", "0.10"),
             federated_opt_in=env.get("FEDERATED_OPT_IN", "0") in ("1", "true", "True"),
             litter_box_camera=env.get("LITTER_BOX_CAMERA", ""),
             litter_visits_alert_per_24h=env.get("LITTER_VISITS_ALERT_PER_24H", "12"),
@@ -263,6 +271,7 @@ class Config:
             "TTS_PROVIDER_PREFERENCE": self.tts_provider_preference,
             "TTS_VOICE": self.tts_voice,
             "PAWCORDER_EMBEDDING_BACKBONE": self.embedding_backbone,
+            "CONFORMAL_SENSITIVITY": self.conformal_sensitivity,
             "FEDERATED_OPT_IN": "1" if self.federated_opt_in else "0",
             "LITTER_BOX_CAMERA": self.litter_box_camera,
             "LITTER_VISITS_ALERT_PER_24H": self.litter_visits_alert_per_24h,

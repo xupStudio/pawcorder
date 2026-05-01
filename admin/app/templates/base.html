@@ -60,10 +60,15 @@
       },
     };
   </script>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet"
-    href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,400..700,100,1;1,9..144,400..700,100,1&family=Geist:wght@300..700&family=JetBrains+Mono:wght@400;500&display=swap" />
+  {# Self-hosted variable fonts — Fraunces (display), Geist (body),
+     JetBrains Mono (code). Latin subset only, ~200 KB total. Lives at
+     /static/fonts/ so it works on offline / China / captive networks
+     where Google Fonts would otherwise be blocked. #}
+  <link rel="stylesheet" href="/static/fonts/fonts.css" />
+  <link rel="preload" as="font" type="font/woff2" crossorigin
+        href="/static/fonts/geist.woff2" />
+  <link rel="preload" as="font" type="font/woff2" crossorigin
+        href="/static/fonts/fraunces-roman.woff2" />
   <link rel="manifest" href="/static/manifest.json" />
   <link rel="icon" type="image/svg+xml" href="/static/icon.svg" />
   <link rel="apple-touch-icon" href="/static/icon.svg" />

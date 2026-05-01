@@ -9,10 +9,13 @@
   <meta property="og:description" content="放在自己家裡的寵物攝影機系統。影片只存在你家或你自己的 Google Drive / Dropbox / NAS。" />
   <link rel="icon" type="image/svg+xml" href="./icon.svg" />
 
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet"
-    href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,400..700,100,1;1,9..144,400..700,100,1&family=Geist:wght@300..700&family=JetBrains+Mono:wght@400;500&display=swap" />
+  <!-- Self-hosted variable fonts; latin subset, ~200 KB. Avoids
+       Google Fonts blockage in restricted networks. -->
+  <link rel="stylesheet" href="./fonts/fonts.css" />
+  <link rel="preload" as="font" type="font/woff2" crossorigin
+        href="./fonts/geist.woff2" />
+  <link rel="preload" as="font" type="font/woff2" crossorigin
+        href="./fonts/fraunces-roman.woff2" />
 
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
@@ -268,8 +271,6 @@
     <img src="./icon.svg" alt="" class="h-9 w-9 transition-transform group-hover:rotate-[-6deg]" />
     <span class="font-display text-lg tracking-display">Pawcorder</span>
   </a>
-  {# 44px+ tap targets: py-2 + leading bumps each link past WCAG's
-     minimum so keyboard/screen-reader users on phones can hit them. #}
   <div class="hidden sm:flex items-center gap-6 text-sm text-ink-2">
     <a href="#features"     class="ulink hover:text-ink py-2">功能</a>
     <a href="#cameras"      class="ulink hover:text-ink py-2">攝影機</a>

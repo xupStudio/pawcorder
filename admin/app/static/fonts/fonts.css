@@ -1,0 +1,73 @@
+/*
+ * Self-hosted Pawcorder display + body + mono fonts.
+ *
+ * Each woff2 below is the **latin subset** of the corresponding
+ * Google Fonts variable font (the rest of the unicode-range tail —
+ * Vietnamese, latin-ext, CJK, etc. — is dropped because Pawcorder's
+ * UI strings are limited to ASCII Latin in admin templates and zh-TW
+ * for the few owner-visible labels which the OS already renders via
+ * Noto Sans CJK / system fonts).
+ *
+ * Why self-host: blocked Google Fonts (China, captive portals,
+ * corporate networks, offline LAN deployments) used to fall through
+ * to system serif/sans which kills the design system. Now the same
+ * woff2 ships with the admin and is served from /static/fonts/ over
+ * the same connection as the page — no third-party request, no FOIT.
+ *
+ * Total payload: ~200 KB across all four. Cache headers default to
+ * what FastAPI's StaticFiles serves (immutable, one year is fine
+ * because the URLs include the woff2 hash baked into the filename).
+ *
+ * License posture:
+ *   * Fraunces — SIL Open Font License 1.1, free for commercial use
+ *   * Geist — SIL Open Font License 1.1, by Vercel
+ *   * JetBrains Mono — SIL Open Font License 1.1
+ */
+
+@font-face {
+  font-family: 'Fraunces';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('./fraunces-roman.woff2') format('woff2-variations');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6,
+                 U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F,
+                 U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215,
+                 U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Fraunces';
+  font-style: italic;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('./fraunces-italic.woff2') format('woff2-variations');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6,
+                 U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F,
+                 U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215,
+                 U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Geist';
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url('./geist.woff2') format('woff2-variations');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6,
+                 U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F,
+                 U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215,
+                 U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400 500;
+  font-display: swap;
+  src: url('./jetbrains-mono.woff2') format('woff2-variations');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6,
+                 U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F,
+                 U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215,
+                 U+FEFF, U+FFFD;
+}

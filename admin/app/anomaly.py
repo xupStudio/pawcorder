@@ -206,20 +206,30 @@ def conformal_p_value(today: float, baseline: Sequence[float]) -> float | None:
     return (n_at_or_above + 1) / (len(baseline) + 1)
 
 
-def conformal_explanation(p_value: float | None, *, units: str = "visits") -> str:
+def conformal_explanation(p_value: float | None, *,
+                            units: str = "visits",
+                            sensitivity: float = 0.10) -> str:
     """Plain-language UI string for the conformal score. Owner-friendly
     rather than statistical — "top 3% of unusual days" not "p < 0.03".
+
+    ``sensitivity`` is the operator's threshold from the System page
+    slider — only days where ``p_value <= sensitivity`` get a chip.
+    Lower = quieter feed (only the most unusual days surface); higher =
+    more chatty. Default 0.10 (top 10% of days surface) is calibrated
+    against owner-friendly chattiness expectations — once or twice a
+    fortnight, not every fourth day.
     """
     if p_value is None:
         return ""
+    if p_value > max(0.01, min(1.0, sensitivity)):
+        return ""
     pct = round(p_value * 100)
+    # Single voice across the bands so a chatty-mode user gets the
+    # same pet-personal framing as a strict-mode user. Pre-r4 fix had
+    # the >5% branch drop "for your pet" — felt impersonal.
     if pct <= 1:
         return f"This is in the top 1% of unusual {units} days for your pet."
-    if pct <= 5:
-        return f"In the top {pct}% of unusual {units} days for your pet."
-    if pct <= 20:
-        return f"A bit unusual — in the top {pct}% of days."
-    return ""
+    return f"In the top {pct}% of unusual {units} days for your pet."
 
 
 def anomaly_explanation(snap: AnomalySnapshot, *, units: str = "visits") -> str:

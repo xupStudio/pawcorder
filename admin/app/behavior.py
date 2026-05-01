@@ -76,7 +76,18 @@ ACTIVE_MIN_EVENTS = 3
 ACTIVE_WINDOW_SECONDS = 60
 
 
-LABELS = ("resting", "pacing", "active", "idle")
+# Five labels from the bbox + zone stream. ``eating`` / ``drinking``
+# are zone-derived (bbox center inside the operator's tagged
+# food_bowl / water_bowl polygon for ≥ N seconds); the other three
+# come from temporal clustering on the same bbox stream. ``idle``
+# stays the default for events not matching any of the above.
+LABELS = ("resting", "pacing", "active", "eating", "drinking", "idle")
+
+# Eating / drinking trigger if the pet is inside the corresponding
+# bowl zone for at least this many seconds across at least N events
+# in one cluster. Tuned conservatively — a quick sniff isn't a meal.
+ZONE_BEHAVIOR_MIN_DURATION = 15      # seconds
+ZONE_BEHAVIOR_MIN_EVENTS = 2
 
 
 @dataclass
@@ -125,6 +136,79 @@ def _coefficient_of_variation(values: Sequence[float]) -> float:
         return 0.0
     var = sum((v - mean) ** 2 for v in values) / len(values)
     return (var ** 0.5) / mean
+
+
+def _bbox_center(bbox) -> tuple[float, float] | None:
+    """Mid-point of the persisted [x, y, w, h] bbox in normalized
+    0..1 coords. Returns None when the field is missing or in pixel
+    space — same shape and tolerance as bowl_monitor._bbox_center."""
+    if not isinstance(bbox, (list, tuple)) or len(bbox) < 4:
+        return None
+    try:
+        x, y, w, h = float(bbox[0]), float(bbox[1]), float(bbox[2]), float(bbox[3])
+    except (TypeError, ValueError):
+        return None
+    cx, cy = x + w / 2, y + h / 2
+    if cx > 1.5 or cy > 1.5:
+        return None      # pixel-space bbox, can't compare against polygon
+    return (max(0.0, min(1.0, cx)), max(0.0, min(1.0, cy)))
+
+
+def _zone_label_for_cluster(events: list[dict], *,
+                              zones_by_camera: dict) -> str | None:
+    """If the cluster's bbox centers spend ≥ ZONE_BEHAVIOR_MIN_DURATION
+    inside a tagged food_bowl / water_bowl zone, return "eating" or
+    "drinking" respectively. None otherwise — caller falls through to
+    the bbox-only rules.
+
+    ``zones_by_camera`` is a precomputed lookup that maps camera name →
+    list of {kind, polygon}. We pass it in (not load per cluster)
+    because a 30-day overview can iterate over thousands of clusters
+    and the cameras.yml read isn't cached.
+    """
+    if not events:
+        return None
+    cam = str(events[0].get("camera") or "")
+    zones = zones_by_camera.get(cam, [])
+    if not zones:
+        return None
+    # Tally seconds-in-zone per zone kind.
+    from . import cameras_store
+    times = sorted(float(e.get("start_time") or 0) for e in events
+                    if float(e.get("start_time") or 0) > 0)
+    if len(times) < ZONE_BEHAVIOR_MIN_EVENTS:
+        return None
+    span = times[-1] - times[0]
+    if span < ZONE_BEHAVIOR_MIN_DURATION:
+        return None
+    # For each zone kind, count events whose bbox center sits inside it.
+    inside_counts: dict[str, int] = {}
+    for ev in events:
+        center = _bbox_center(ev.get("bbox"))
+        if center is None:
+            continue
+        for entry in zones:
+            if cameras_store.point_in_zone(entry["polygon"],
+                                              center[0], center[1]):
+                inside_counts[entry["kind"]] = (
+                    inside_counts.get(entry["kind"], 0) + 1
+                )
+    # Pick the dominant zone kind, but only if a strict majority of
+    # this cluster's events were inside it. ``(len + 1) // 2`` is the
+    # ceiling-half so a 5-event cluster needs 3, a 4-event cluster
+    # needs 2 (50%) — the floor version misclassified 5-event clusters
+    # at 2/5 = 40% as eating.
+    if not inside_counts:
+        return None
+    best_kind, best_count = max(inside_counts.items(), key=lambda kv: kv[1])
+    majority = max(ZONE_BEHAVIOR_MIN_EVENTS, (len(events) + 1) // 2)
+    if best_count < majority:
+        return None
+    if best_kind == "food_bowl":
+        return "eating"
+    if best_kind == "water_bowl":
+        return "drinking"
+    return None
 
 
 def _label_cluster(events: list[dict]) -> str:
@@ -197,17 +281,49 @@ def _split_into_clusters(events: list[dict],
     return clusters
 
 
-def label_events(events: Iterable[dict]) -> list[str]:
+def _build_zones_by_camera() -> dict:
+    """Cameras.yml lookup: ``{camera_name: [{kind, polygon}, ...]}``.
+
+    Loaded lazily — callers without bowl zones see an empty dict and
+    eating / drinking labels never fire. Soft-fails on cameras.yml
+    parse error rather than crashing the whole behavior pipeline.
+    """
+    try:
+        from . import cameras_store
+        cams = cameras_store.CameraStore().load()
+    except Exception:  # noqa: BLE001
+        return {}
+    out: dict[str, list[dict]] = {}
+    for cam in cams:
+        for kind in (cameras_store.ZONE_KIND_WATER_BOWL,
+                      cameras_store.ZONE_KIND_FOOD_BOWL):
+            for poly in cameras_store.zones_of_kind(cam, kind):
+                if poly.get("points"):
+                    out.setdefault(cam.name, []).append(
+                        {"kind": kind, "polygon": poly}
+                    )
+    return out
+
+
+def label_events(events: Iterable[dict],
+                  *, zones_by_camera: dict | None = None) -> list[str]:
     """Per-event labels — output preserves *input* order.
 
     Each event's label is the label of the cluster (per-camera) it
     belongs to. Clustering happens internally on a chronological copy,
     but the returned list mirrors the caller's input order so they can
     pair `events[i]` with `labels[i]` directly without re-sorting.
+
+    ``zones_by_camera`` (auto-loaded when not provided) lets clusters
+    upgrade to ``eating`` / ``drinking`` when the bbox centers spend
+    enough time in a tagged bowl zone. Without zones, the four bbox-
+    only labels apply.
     """
     rows = list(events)
     if not rows:
         return []
+    if zones_by_camera is None:
+        zones_by_camera = _build_zones_by_camera()
     # Cluster per camera, on a per-camera-chronological view, so a pet
     # ping-ponging between two cameras (e.g. living room ↔ kitchen at
     # meal time) doesn't get its within-camera resting cluster mixed up
@@ -221,7 +337,13 @@ def label_events(events: Iterable[dict]) -> list[str]:
         cam_sorted = sorted(cam_events,
                              key=lambda e: float(e.get("start_time") or 0))
         for cluster in _split_into_clusters(cam_sorted):
-            label = _label_cluster(cluster)
+            # Zone label wins when applicable (eating / drinking is a
+            # more specific story than the resting / pacing it would
+            # otherwise be classified as).
+            label = (
+                _zone_label_for_cluster(cluster, zones_by_camera=zones_by_camera)
+                or _label_cluster(cluster)
+            )
             for ev in cluster:
                 eid = str(ev.get("event_id") or id(ev))
                 label_by_event_id[eid] = label
@@ -232,13 +354,18 @@ def label_events(events: Iterable[dict]) -> list[str]:
 
 
 def day_summary(pet_id: str, pet_name: str, *,
-                 events: Iterable[dict], now: float | None = None) -> DaySummary:
+                 events: Iterable[dict], now: float | None = None,
+                 zones_by_camera: dict | None = None) -> DaySummary:
     """One day of behavior labels for one pet.
 
     ``events`` is the slice of ``sightings.ndjson`` already filtered
     by pet_id (caller does this — they typically already loaded
     sightings for the activity chart). Defensive about pet_id mismatch
     anyway.
+
+    ``zones_by_camera`` is forwarded to :func:`label_events`. Callers
+    that already loaded the cameras.yml zones once for a multi-pet
+    page should pass it in to avoid re-parsing per pet.
     """
     now = now or time.time()
     today = time.strftime("%Y-%m-%d", time.localtime(now))
@@ -252,7 +379,7 @@ def day_summary(pet_id: str, pet_name: str, *,
     ]
     if not today_events:
         return summary
-    labels = label_events(today_events)
+    labels = label_events(today_events, zones_by_camera=zones_by_camera)
     for lab in labels:
         summary.counts[lab] = summary.counts.get(lab, 0) + 1
     summary.total_events = len(labels)
@@ -277,7 +404,8 @@ def label_explanation(label: str, count: int, *, lang: str = "en") -> str:
     ``i18n.py`` keyed ``BEHAVIOR_<LABEL>_EXPLANATION`` with a ``{n}``
     placeholder so non-English locales render the same idea natively.
     """
-    if count <= 0 or label not in ("resting", "pacing", "active"):
+    if count <= 0 or label not in ("resting", "pacing", "active",
+                                      "eating", "drinking"):
         return ""
     from . import i18n
     key = f"BEHAVIOR_{label.upper()}_EXPLANATION"
@@ -286,9 +414,11 @@ def label_explanation(label: str, count: int, *, lang: str = "en") -> str:
         # Fallback when the i18n table doesn't have the key — keeps
         # tests that don't import i18n green.
         defaults = {
-            "resting": f"Mostly resting today ({count} events).",
-            "pacing":  f"Pacing back and forth detected ({count} events).",
-            "active":  f"Lots of active movement today ({count} events).",
+            "resting":  f"Mostly resting today ({count} events).",
+            "pacing":   f"Pacing back and forth detected ({count} events).",
+            "active":   f"Lots of active movement today ({count} events).",
+            "eating":   f"Spent time at the food bowl today ({count} events).",
+            "drinking": f"Spent time at the water bowl today ({count} events).",
         }
         return defaults[label]
     return template.replace("{n}", str(count))

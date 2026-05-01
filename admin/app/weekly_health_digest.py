@@ -78,9 +78,22 @@ def build_digest_message(*, now: Optional[float] = None) -> Optional[str]:
         recent = [d.total for d in ov.timeline_days[-7:]]
         if any(recent):
             avg = sum(recent) / len(recent)
-            lines.append(
-                f"  · ~{avg:.0f} sightings/day this week"
-            )
+            lines.append(f"  · ~{avg:.0f} sightings/day this week")
+        # Behavior chip — surface the dominant non-idle behavior label
+        # (resting / pacing / active / eating / drinking) when one
+        # category dominated the day. Quiet days are skipped so the
+        # digest doesn't start every line with a behavior badge.
+        primary = (ov.behavior or {}).get("primary")
+        primary_count = (ov.behavior or {}).get("counts", {}).get(primary, 0)
+        primary_phrases = {
+            "resting":  "mostly resting",
+            "pacing":   "doing a lot of back-and-forth pacing",
+            "active":   "running around a lot",
+            "eating":   "spending time at the food bowl",
+            "drinking": "spending time at the water bowl",
+        }
+        if primary in primary_phrases and primary_count > 0:
+            lines.append(f"  · {primary_phrases[primary]}")
         # Surface the loud signals; quiet ones stay off the digest.
         if ov.absence_anomaly:
             lines.append("  · ⚠ not seen for 24h+")

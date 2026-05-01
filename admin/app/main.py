@@ -777,14 +777,23 @@ async def api_scan(request: Request, payload: dict):
     _require_auth(request)
     cidr = (payload.get("cidr") or "").strip()
     if not cidr:
-        raise HTTPException(status_code=400, detail="cidr is required")
+        # Empty cidr → auto-detect the host's LAN /24. Saves users from
+        # typing CIDR notation in the wizard — they put the camera on
+        # the same Wi-Fi and tap the button.
+        try:
+            cidr = network_scan.detect_local_subnet()
+        except OSError as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"could not auto-detect local subnet: {exc}",
+            ) from exc
     try:
         candidates = await network_scan.scan_for_cameras(cidr)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
-    return {"candidates": [c.__dict__ for c in candidates]}
+    return {"candidates": [c.__dict__ for c in candidates], "cidr": cidr}
 
 
 # ---- cameras CRUD --------------------------------------------------------
@@ -1136,6 +1145,7 @@ async def api_system_ai_tokens(request: Request):
         "tts_provider_preference": getattr(cfg, "tts_provider_preference", "auto"),
         "tts_voice":          getattr(cfg, "tts_voice", ""),
         "embedding_backbone": getattr(cfg, "embedding_backbone", ""),
+        "conformal_sensitivity": getattr(cfg, "conformal_sensitivity", "0.10"),
         "active_backbone":    active_display,
         "recognition_backbones": embeddings.supported_backbones(),
         # Stale = photos whose stored backbone doesn't match the active
@@ -1252,6 +1262,17 @@ async def api_system_ai_tokens_update(request: Request, payload: dict):
             raise HTTPException(status_code=400,
                                  detail="invalid_embedding_backbone")
         cfg.embedding_backbone = raw
+    if "conformal_sensitivity" in payload:
+        try:
+            v = float(payload.get("conformal_sensitivity") or 0.10)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400,
+                                 detail="invalid_conformal_sensitivity")
+        # Clamp into the slider's published range — both ends. 0.30
+        # ceiling keeps an API caller from configuring a value that
+        # would chip on half their days.
+        v = max(0.01, min(0.30, v))
+        cfg.conformal_sensitivity = f"{v:.2f}"
     config_store.save_config(cfg)
     if "embedding_backbone" in payload:
         # Save just rewrote .env; the running process still has the old
@@ -1558,6 +1579,34 @@ async def pets_health_page(request: Request):
         stale_cloud_pets=stale_cloud_pets,
         uptime_svg=pet_health_overview.system_uptime_ribbon(days=7),
     )
+
+
+@app.get("/recognition", response_class=HTMLResponse)
+async def recognition_page(request: Request):
+    """Read-only diagnostics for the recognition pipeline.
+
+    Shows score histograms per pet, multi-frame coverage, cloud-boost
+    activity, confidence mix — so an owner can see what the AI
+    upgrades are actually doing on their footage rather than trusting
+    the marketing claims.
+    """
+    if not auth.is_authenticated(request):
+        return _redirect_login()
+    from . import recognition_stats
+    diag = recognition_stats.build()
+    return _render(
+        "recognition.html", request,
+        diag=diag.to_dict(),
+    )
+
+
+@app.get("/api/recognition/stats")
+async def api_recognition_stats(request: Request):
+    """JSON shape of /recognition. Useful for ad-hoc queries / external
+    dashboards."""
+    _require_auth(request)
+    from . import recognition_stats
+    return recognition_stats.build().to_dict()
 
 
 @app.get("/api/pets/health")

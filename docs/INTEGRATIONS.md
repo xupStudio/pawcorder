@@ -150,6 +150,12 @@ A non-exhaustive list of endpoints useful from outside pawcorder:
 | `/api/privacy` | POST | Toggle privacy mode |
 | `/api/backup/run-now` | POST | Manual backup-to-cloud now |
 | `/api/energy-mode` | POST | Update quiet-hour schedules |
+| `/api/pets/reenroll` | POST | Re-embed every reference photo against the active backbone (after switching MobileNet → DINOv2 or vice versa). Synchronous; returns counts. |
+| `/api/recognition/stats` | GET | Recognition diagnostics: per-pet score histograms, multi-frame coverage, cloud-boost status, confidence mix over the last 14 days. |
+| `/api/system/ai-tokens` | GET / POST | Admin AI provider config: BYOK keys for OpenAI / Gemini / Anthropic / Ollama, LLM and TTS provider preference, embedding backbone, conformal anomaly sensitivity (0.01-0.30, default 0.10). POST writes the values to `.env` and refreshes the in-process state — no restart required for backbone, provider, or sensitivity swaps. |
+| `/api/pets/<id>/train-cloud/upload` | POST | Multipart upload of 20-60 reference photos for the per-pet custom model. Pro-only. |
+| `/api/pets/<id>/train-cloud/status` | GET | Latest job state for one pet. |
+| `/api/pets/<id>/train-cloud/forget` | POST | Owner-triggered purge of uploaded photos + trained model on the relay. |
 
 Everything returns JSON. Errors return `{"error": "..."}` with a
 4xx / 5xx status.

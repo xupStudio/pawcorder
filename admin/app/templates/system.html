@@ -232,6 +232,31 @@
     </div>
   </div>
 
+  {# Health alert sensitivity — controls when the conformal "today is
+     unusual" chip surfaces on /pets/health. Default 0.10 = top 10% of
+     unusual days; tighter values mean a quieter feed. #}
+  <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5 mb-6">
+    <h2 id="sensitivity-heading" class="text-base font-semibold tracking-tight">{{ t('SYS_SENSITIVITY_HEADING') }}</h2>
+    <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('SYS_SENSITIVITY_HELP') }}</p>
+    <div class="mt-3 flex items-center gap-3">
+      <input type="range" min="0.01" max="0.30" step="0.01"
+             x-model.number="conformalSensitivity"
+             aria-labelledby="sensitivity-heading"
+             aria-describedby="sensitivity-label"
+             class="flex-1 accent-brand-500" />
+      <span class="font-mono text-sm w-16 text-right"
+            x-text="(conformalSensitivity * 100).toFixed(0) + '%'"></span>
+    </div>
+    <p id="sensitivity-label"
+       aria-live="polite" aria-atomic="true"
+       class="text-[11px] text-slate-500 dark:text-slate-400 mt-1"
+       x-text="conformalLabel"></p>
+    <button @click="saveAiTokens()"
+            class="mt-3 rounded-md bg-brand-500 hover:bg-brand-600 text-white px-3 py-2 text-sm font-medium">
+      {{ t('SAVE') }}
+    </button>
+  </div>
+
   {# Federated cohort baseline — opt-in only. We never default this
      to true; gate the toggle behind a Pro-license check so OSS users
      get a clear "needs Pro" hint instead of a silent broken flow. #}
@@ -665,6 +690,16 @@
       },
       activeBackend: '',
       embeddingBackbone: '',
+      conformalSensitivity: 0.10,
+      get conformalLabel() {
+        const pct = Math.round(this.conformalSensitivity * 100);
+        // 1-3% strict, 4-15% default (default 0.10 sits in middle),
+        // 16%+ chatty. Slider caps at 30% so 50% panic-mode isn't even
+        // reachable.
+        if (pct <= 3) return this.labels.cs_strict.replace('{n}', pct);
+        if (pct <= 15) return this.labels.cs_default.replace('{n}', pct);
+        return this.labels.cs_chatty.replace('{n}', pct);
+      },
       activeBackbone: '',
       recognitionBackbones: [],
       recognitionStaleCount: 0,
@@ -720,6 +755,9 @@
         reenroll_button:   {{ t('SYS_RECOG_REENROLL') | tojson }},
         reenrolling:       {{ t('SYS_RECOG_REENROLLING') | tojson }},
         reenroll_done:     {{ t('SYS_RECOG_REENROLL_DONE') | tojson }},
+        cs_strict:         {{ t('SYS_SENSITIVITY_STRICT') | tojson }},
+        cs_default:        {{ t('SYS_SENSITIVITY_DEFAULT') | tojson }},
+        cs_chatty:         {{ t('SYS_SENSITIVITY_CHATTY') | tojson }},
       },
       async restart() {
         try {
@@ -763,6 +801,9 @@
           this.ttsVoice = r.tts_voice || '';
           this.activeBackend = r.active_backend || '';
           this.embeddingBackbone = r.embedding_backbone || '';
+          if (r.conformal_sensitivity != null) {
+            this.conformalSensitivity = parseFloat(r.conformal_sensitivity) || 0.10;
+          }
           this.activeBackbone = r.active_backbone || '';
           this.recognitionBackbones = r.recognition_backbones || [];
           this.recognitionStaleCount = r.recognition_stale_count || 0;
@@ -794,6 +835,7 @@
         body.tts_provider_preference = this.ttsProviderPreference || 'auto';
         body.tts_voice = this.ttsVoice || '';
         body.embedding_backbone = this.embeddingBackbone || '';
+        body.conformal_sensitivity = String(this.conformalSensitivity || 0.10);
         try {
           await api('/api/system/ai-tokens', { method: 'POST', body });
           toast({{ t('SAVED') | tojson }}, 'success');

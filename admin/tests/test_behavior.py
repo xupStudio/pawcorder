@@ -126,7 +126,8 @@ def test_day_summary_empty_when_nothing_today():
     summary = behavior.day_summary("mochi", "Mochi", events=events, now=base)
     assert summary.total_events == 0
     assert summary.primary == "idle"
-    assert summary.counts == {"resting": 0, "pacing": 0, "active": 0, "idle": 0}
+    # All defined labels should be present in the counts dict, all 0.
+    assert summary.counts == {k: 0 for k in behavior.LABELS}
 
 
 def test_label_explanation_quiet_for_idle():
