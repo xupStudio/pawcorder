@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}{{ t('USERS_INVITE_HEADING') }} · Pawcorder{% endblock %}
+{% block body %}
+<div class="relative min-h-full flex items-center justify-center px-4 py-12 overflow-hidden">
+
+  <span class="paw-svg paw-float text-brand-300 dark:text-brand-400/40 absolute" aria-hidden
+        style="top:14%; left:10%; width:42px; height:42px; --r:-18deg;"></span>
+  <span class="paw-svg paw-float text-brand-200 dark:text-brand-400/30 absolute" aria-hidden
+        style="bottom:14%; right:14%; width:36px; height:36px; --r:-30deg; animation-delay:-0.8s;"></span>
+
+  <div class="relative w-full max-w-sm">
+    <div class="flex flex-col items-center mb-8">
+      <img src="/static/icon.svg" alt="" class="h-16 w-16" />
+      <h1 class="mt-4 text-3xl font-display tracking-display">{{ t('APP_NAME') }}</h1>
+      <p class="text-sm text-slate-500 dark:text-slate-400 italic">{{ t('USERS_INVITE_HEADING') }}</p>
+    </div>
+
+    {% if invite_valid %}
+    <form id="redeemForm" class="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 p-6 space-y-4">
+      <p class="text-xs text-slate-500 dark:text-slate-400">
+        {% if lang == 'zh-TW' %}
+          這個邀請是{{ '家人' if invite_role == 'family' else '小朋友' }}權限。請設定你的帳號 ——
+          設好之後就會自動登入。
+        {% else %}
+          You're being invited as a <strong>{{ invite_role }}</strong> member.
+          Pick your username and password — you'll be signed in automatically.
+        {% endif %}
+      </p>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('LOGIN_USERNAME_LABEL') }}</label>
+        <input type="text" id="username" required autofocus autocomplete="username"
+               class="mt-1 block w-full rounded-md border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-3 py-2 border" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('LOGIN_PASSWORD_LABEL') }}</label>
+        <input type="password" id="password" required autocomplete="new-password" minlength="8"
+               class="mt-1 block w-full rounded-md border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-3 py-2 border" />
+        <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+          {{ '至少 8 個字' if lang == 'zh-TW' else 'At least 8 characters' }}
+        </p>
+      </div>
+      <p id="redeemError" class="hidden text-sm text-rose-600 dark:text-rose-400"></p>
+      <button type="submit"
+              class="w-full inline-flex justify-center rounded-md bg-brand-500 hover:bg-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm">
+        {{ '建立帳號並登入' if lang == 'zh-TW' else 'Create account and sign in' }}
+      </button>
+    </form>
+    <script>
+      (function () {
+        const form = document.getElementById('redeemForm');
+        const err  = document.getElementById('redeemError');
+        form.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          err.classList.add('hidden');
+          err.textContent = '';
+          const username = document.getElementById('username').value.trim();
+          const password = document.getElementById('password').value;
+          try {
+            const r = await fetch('/api/invite/redeem', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ token: {{ invite_token | tojson }}, username, password }),
+            });
+            if (!r.ok) {
+              const detail = await r.json().catch(() => ({}));
+              throw new Error(detail.detail || ('HTTP ' + r.status));
+            }
+            window.location.href = '/';
+          } catch (e) {
+            err.textContent = e.message || 'failed';
+            err.classList.remove('hidden');
+          }
+        });
+      })();
+    </script>
+    {% else %}
+    <div class="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-rose-200 dark:border-rose-800 p-6 text-center">
+      <p class="text-lg font-display text-rose-700 dark:text-rose-300">
+        {{ '邀請連結無效' if lang == 'zh-TW' else 'Invite link is no longer valid' }}
+      </p>
+      <p class="text-sm text-slate-600 dark:text-slate-300 mt-2">
+        {{ '可能已過期、被使用或被作廢。請聯絡邀請人重新產生一條連結。' if lang == 'zh-TW' else 'It may have expired, been used, or been revoked. Ask whoever invited you for a new link.' }}
+      </p>
+      <a href="/login" class="mt-4 inline-block text-sm text-brand-600 hover:underline">
+        {{ '我已經有帳號了 →' if lang == 'zh-TW' else 'I already have an account →' }}
+      </a>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

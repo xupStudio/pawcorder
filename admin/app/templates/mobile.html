@@ -30,8 +30,8 @@
 
   {# Native iOS / Android shell. Until the app is on the App Store / Play
      Store this is informational + build-from-source for tinkerers.
-     The end-user-visible value is the install URL and what to type
-     on first launch (= one of the LAN / Tailscale URLs above). #}
+     The build commands are hidden behind a <details> so non-technical
+     users see the value pitch without `npx cap` shell jumping out. #}
   <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-6 mb-6">
     <div class="mb-4">
       <div class="flex items-center gap-2">
@@ -47,18 +47,24 @@
       <li>{{ t('MOBILE_NATIVE_BENEFIT_HOMESCREEN') }}</li>
       <li>{{ t('MOBILE_NATIVE_BENEFIT_BACKGROUND') }}</li>
     </ul>
-    <div class="mt-3 rounded-lg bg-slate-50 dark:bg-slate-800/40 p-3 text-xs text-slate-600 dark:text-slate-300">
-      <p class="font-medium mb-1">{{ t('MOBILE_NATIVE_DIY_HEADING') }}</p>
-      <p>{{ t('MOBILE_NATIVE_DIY_HELP') }}</p>
-      <pre class="mt-2 font-mono text-[11px] bg-white dark:bg-slate-900 p-2 rounded overflow-x-auto">cd mobile
+    <details class="mt-3 rounded-lg bg-slate-50 dark:bg-slate-800/40 p-3 text-xs text-slate-600 dark:text-slate-300">
+      <summary class="cursor-pointer font-medium select-none">{{ t('MOBILE_NATIVE_DIY_TOGGLE') }}</summary>
+      <p class="mt-2">{{ t('MOBILE_NATIVE_DIY_HELP') }}</p>
+      <div class="mt-2 relative">
+        <pre id="capBuildCmd" class="font-mono text-[11px] bg-white dark:bg-slate-900 p-2 rounded overflow-x-auto">cd mobile
 npm install
 npx cap add ios     # or: npx cap add android
 npm run ios         # or: npm run android</pre>
-    </div>
-    <p class="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
-      {{ t('MOBILE_NATIVE_FIRST_LAUNCH') }}
-      <code class="font-mono">{{ lan_admin_url }}</code>
-    </p>
+        <button type="button" @click="copyText('capBuildCmd')"
+                class="absolute top-1 right-1 text-[10px] rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-1.5 py-0.5 hover:bg-slate-50 dark:hover:bg-slate-700">
+          {{ t('SETUP_FIN_COPY') }}
+        </button>
+      </div>
+      <p class="mt-2">
+        {{ t('MOBILE_NATIVE_FIRST_LAUNCH') }}
+        <code class="font-mono">{{ lan_admin_url }}</code>
+      </p>
+    </details>
   </div>
 
   <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-6 mb-6">
@@ -71,13 +77,22 @@ npm run ios         # or: npm run android</pre>
       <p class="font-medium">{{ t('MOBILE_TS_NOT_SETUP') }}</p>
       <p class="mt-1">
         {{ t('MOBILE_TS_INSTR_BEFORE') }}
-        <code class="font-mono bg-amber-100 dark:bg-amber-900 px-1 py-0.5 rounded">./scripts/install-tailscale.sh</code>
         {{ t('MOBILE_TS_INSTR_THEN') }}
-        <code class="font-mono bg-amber-100 dark:bg-amber-900 px-1 py-0.5 rounded">sudo tailscale up</code>.
         {{ t('MOBILE_TS_INSTR_AFTER') }}
         <code class="font-mono">machine.tailnet.ts.net</code>
         {{ t('MOBILE_TS_INSTR_END') }}
       </p>
+      <details class="mt-3">
+        <summary class="cursor-pointer text-xs font-medium select-none">{{ t('MOBILE_NATIVE_DIY_TOGGLE') }}</summary>
+        <div class="mt-2 relative">
+          <pre id="tsInstallCmd" class="font-mono text-[11px] bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 p-2 rounded overflow-x-auto">./scripts/install-tailscale.sh
+sudo tailscale up</pre>
+          <button type="button" @click="copyText('tsInstallCmd')"
+                  class="absolute top-1 right-1 text-[10px] rounded border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-800 px-1.5 py-0.5 hover:bg-amber-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200">
+            {{ t('SETUP_FIN_COPY') }}
+          </button>
+        </div>
+      </details>
     </div>
 
     <div class="flex gap-2 mb-4">
@@ -162,6 +177,17 @@ npm run ios         # or: npm run android</pre>
       </a>
     </div>
   </div>
+
+  {# Android battery-saver heads-up. OPPO / Xiaomi / Samsung / Vivo's
+     aggressive memory management kills background browser tabs after
+     a few hours, so push notifications silently stop arriving. We can
+     only spot the user agent — the user has to flip the OS toggle
+     themselves. Hidden on iOS / desktop because it doesn't apply. #}
+  <div x-show="isAndroid" x-cloak
+       class="rounded-2xl bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 p-6 mt-6">
+    <h2 class="text-lg font-display tracking-tight mb-2">{{ t('MOBILE_BATTERY_HINT_TITLE') }}</h2>
+    <p class="text-sm text-amber-800 dark:text-amber-200">{{ t('MOBILE_BATTERY_HINT_BODY') }}</p>
+  </div>
 </div>
 
 <script>
@@ -170,6 +196,7 @@ npm run ios         # or: npm run android</pre>
       form: {
         tailscale_hostname: {{ config.tailscale_hostname | tojson }},
       },
+      isAndroid: /Android/.test(navigator.userAgent),
       qrSrc(url) {
         return '/api/qrcode?url=' + encodeURIComponent(url);
       },
@@ -188,6 +215,14 @@ npm run ios         # or: npm run android</pre>
             body: { section: 'tailscale', data: { tailscale_hostname: this.form.tailscale_hostname } },
           });
           toast({{ t('SAVED') | tojson }}, 'success');
+        } catch (e) { toast(e.message, 'error'); }
+      },
+      async copyText(elementId) {
+        const el = document.getElementById(elementId);
+        if (!el) return;
+        try {
+          await navigator.clipboard.writeText(el.textContent);
+          toast({{ t('SETUP_FIN_COPIED') | tojson }}, 'success');
         } catch (e) { toast(e.message, 'error'); }
       },
     };

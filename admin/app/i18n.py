@@ -142,6 +142,7 @@ T: dict[str, dict[str, str]] = {
     "BACK":                  {"en": "← Back", "zh-TW": "← 上一步"},
     "CONTINUE":              {"en": "Continue", "zh-TW": "繼續"},
     "REMOVE":                {"en": "Remove", "zh-TW": "移除"},
+    "CLOSE":                 {"en": "Close", "zh-TW": "關閉"},
     "EDIT":                  {"en": "Edit", "zh-TW": "編輯"},
     "ADD":                   {"en": "Add", "zh-TW": "新增"},
     "SCAN":                  {"en": "Scan", "zh-TW": "掃描"},
@@ -607,6 +608,11 @@ T: dict[str, dict[str, str]] = {
                                             "zh-TW": "遠端看貓"},
     "ONBOARDING_STEP_REMOTE_ACCESS_WHY":   {"en": "Install Tailscale (a free private-network app) or turn on Pawcorder Connect — either lets you watch from outside the home.",
                                             "zh-TW": "裝 Tailscale（一個免費的私人連線小工具）或開啟 Pawcorder Connect，在外面也能看到家裡。"},
+
+    "ONBOARDING_STEP_WIRELESS_CAMERA_TITLE": {"en": "Add a wireless camera",
+                                                "zh-TW": "加入無線攝影機"},
+    "ONBOARDING_STEP_WIRELESS_CAMERA_WHY":   {"en": "Got a camera that's only plugged into power — no Ethernet, no Wi-Fi yet? Pawcorder will pair it for you.",
+                                                "zh-TW": "有一台只插了電源、沒接網路線、也還沒上 Wi-Fi 的攝影機？Pawcorder 幫你配對到網路上。"},
 
     # ---- AI tokens (System page) ---------------------------------------
     "SYS_AI_TOKENS_HEADING": {"en": "AI service", "zh-TW": "AI 服務"},
@@ -1150,6 +1156,24 @@ T: dict[str, dict[str, str]] = {
     "SETUP_DET_HEAD":        {"en": "Detection", "zh-TW": "偵測"},
     "SETUP_DET_HELP":        {"en": "Same sensitivity is applied to all cameras.",
                               "zh-TW": "靈敏度設定會套用到所有攝影機。"},
+    "SETUP_STORAGE_VIEW_FULL_PATH": {"en": "View full path",
+                                      "zh-TW": "查看完整路徑"},
+    "SETUP_STORAGE_FULL_PATH_HEAD": {"en": "Full storage path",
+                                      "zh-TW": "完整儲存路徑"},
+    "SETUP_DET_LEVEL_LABEL": {"en": "How carefully should we look?",
+                              "zh-TW": "要多認真盯著看？"},
+    "SETUP_DET_LEVEL_HINT":  {"en": "You can fine-tune this later in the Detection page.",
+                              "zh-TW": "之後可以到「偵測」頁再細調。"},
+    "SETUP_DET_LEVEL_RECOMMENDED": {"en": "Recommended", "zh-TW": "推薦"},
+    "SETUP_DET_LEVEL_LOOSE_NAME":  {"en": "Looser", "zh-TW": "寬鬆"},
+    "SETUP_DET_LEVEL_LOOSE_DESC":  {"en": "Catches more, but expect a few false alarms.",
+                                     "zh-TW": "抓得多，會有少數誤判。"},
+    "SETUP_DET_LEVEL_BALANCED_NAME": {"en": "Balanced", "zh-TW": "平衡"},
+    "SETUP_DET_LEVEL_BALANCED_DESC": {"en": "What most homes want.",
+                                       "zh-TW": "多數家庭適用。"},
+    "SETUP_DET_LEVEL_STRICT_NAME": {"en": "Stricter", "zh-TW": "嚴格"},
+    "SETUP_DET_LEVEL_STRICT_DESC": {"en": "Fewer alerts. May miss quick passes.",
+                                     "zh-TW": "通知少，可能漏掉一閃而過的。"},
 
     # Setup finish
     "SETUP_FIN_HEAD":        {"en": "Set admin password", "zh-TW": "設定管理密碼"},
@@ -1163,6 +1187,86 @@ T: dict[str, dict[str, str]] = {
     "SETUP_FIN_STARTING":    {"en": "Starting…", "zh-TW": "啟動中…"},
     "SETUP_FIN_DONE":        {"en": "Setup complete. Loading dashboard…",
                               "zh-TW": "設定完成，載入儀表板中…"},
+
+    # Wizard polish — Accept-Language banner, scan-result enrichment,
+    # storage cards, timezone hint, password generator, WSL2 fallback.
+    "SETUP_LANG_AUTO_BANNER":{"en": "We picked your browser's language — switch it any time using the picker at the top right.",
+                              "zh-TW": "已自動使用瀏覽器語言，要切換隨時可用右上角的選單。"},
+    "SCAN_PROBING":          {"en": "Identifying cameras…",
+                              "zh-TW": "辨識攝影機中…"},
+    "SCAN_BRAND_DETECTED":   {"en": "Detected",
+                              "zh-TW": "已辨識"},
+    "SCAN_DEFAULT_CREDS_HIT":{"en": "Default credentials worked — change the password on the camera before you go live.",
+                              "zh-TW": "用預設帳密就能登入 — 上線前請改掉攝影機的密碼。"},
+    "SCAN_USE_THIS_CAMERA":  {"en": "Use this camera",
+                              "zh-TW": "使用這台"},
+    "SCAN_NO_HITS_WSL_HINT": {"en": "Looks like you're on WSL2 with bridged networking — Pawcorder only sees Windows's virtual subnet, not your real LAN. Add `networkingMode=mirrored` to .wslconfig and reboot WSL, or fall back to manual IP entry below.",
+                              "zh-TW": "偵測到你跑在 WSL2 預設橋接模式 — Pawcorder 只看得到虛擬子網段，掃不到家裡的攝影機。把 `.wslconfig` 加上 `networkingMode=mirrored` 後重啟 WSL，或直接在下方手動填 IP。"},
+    "SCAN_NO_HITS_RETRY":    {"en": "Try again",
+                              "zh-TW": "重新掃描"},
+
+    "SETUP_STORAGE_PICK_HEAD":{"en": "Pick where recordings go",
+                               "zh-TW": "選擇影片要存放的位置"},
+    "SETUP_STORAGE_PICK_HELP":{"en": "Tap a card to use it. Pawcorder will create the folder if it doesn't exist yet.",
+                               "zh-TW": "點一張卡片就會用那個位置。資料夾不存在時 Pawcorder 會自動建立。"},
+    "SETUP_STORAGE_FREE":    {"en": "free",
+                              "zh-TW": "可用"},
+    "SETUP_STORAGE_OF":      {"en": "of",
+                              "zh-TW": "／共"},
+    "SETUP_STORAGE_BADGE_RECOMMENDED": {"en": "Recommended",
+                                         "zh-TW": "推薦"},
+    "SETUP_STORAGE_BADGE_CURRENT": {"en": "Current",
+                                     "zh-TW": "目前使用中"},
+    "SETUP_STORAGE_BADGE_USB": {"en": "USB",
+                                 "zh-TW": "USB"},
+    "SETUP_STORAGE_BADGE_NAS": {"en": "NAS",
+                                 "zh-TW": "NAS"},
+    "SETUP_STORAGE_BADGE_LOCAL": {"en": "Local",
+                                   "zh-TW": "本機"},
+    "SETUP_STORAGE_NOT_EXIST":{"en": "Will be created on first save",
+                                "zh-TW": "儲存時會自動建立"},
+    "SETUP_STORAGE_MANUAL_TOGGLE": {"en": "Or enter a different path",
+                                     "zh-TW": "或自己輸入路徑"},
+    "SETUP_STORAGE_NAS_LINK": {"en": "Need a NAS? Connect one first →",
+                                "zh-TW": "要用 NAS？先在這裡連線 →"},
+    "SETUP_STORAGE_REFRESH": {"en": "Re-scan",
+                              "zh-TW": "重新掃描"},
+
+    "SETUP_DET_TZ_LABEL":    {"en": "Time zone",
+                              "zh-TW": "時區"},
+    "SETUP_DET_TZ_HELP":     {"en": "Detected from your browser. Used to timestamp recordings — change it on the System page later if you're configuring this for a remote machine.",
+                              "zh-TW": "從你的瀏覽器自動偵測，用來標記錄影時間。若是替遠端主機設定，可稍後到「系統」頁修改。"},
+
+    "SETUP_FIN_GENERATE":    {"en": "Generate a strong password",
+                              "zh-TW": "幫我產生一組強密碼"},
+    "SETUP_FIN_REVEAL":      {"en": "Show",
+                              "zh-TW": "顯示"},
+    "SETUP_FIN_HIDE":        {"en": "Hide",
+                              "zh-TW": "隱藏"},
+    "SETUP_FIN_COPY":        {"en": "Copy",
+                              "zh-TW": "複製"},
+    "SETUP_FIN_COPIED":      {"en": "Copied — save it somewhere safe",
+                              "zh-TW": "已複製 — 請妥善保存"},
+    "SETUP_FIN_STRENGTH_LABEL": {"en": "Strength",
+                                  "zh-TW": "密碼強度"},
+    "SETUP_FIN_STRENGTH_WEAK":  {"en": "Weak",
+                                   "zh-TW": "弱"},
+    "SETUP_FIN_STRENGTH_OK":    {"en": "OK",
+                                   "zh-TW": "尚可"},
+    "SETUP_FIN_STRENGTH_GOOD":  {"en": "Good",
+                                   "zh-TW": "良好"},
+    "SETUP_FIN_STRENGTH_STRONG":{"en": "Strong",
+                                   "zh-TW": "強"},
+
+    # Welcome page personalization
+    "WELCOME_SUMMARY_CAMERAS_ONE": {"en": "1 camera connected",
+                                      "zh-TW": "已連線 1 台攝影機"},
+    "WELCOME_SUMMARY_CAMERAS_MANY":{"en": "{count} cameras connected",
+                                      "zh-TW": "已連線 {count} 台攝影機"},
+    "WELCOME_SUMMARY_STORAGE":     {"en": "Recording to {path} — {free} free",
+                                      "zh-TW": "影片存於 {path}，剩餘 {free}"},
+    "WELCOME_SUMMARY_TIMEZONE":    {"en": "Time zone: {tz}",
+                                      "zh-TW": "時區：{tz}"},
 
     # ---- HA guide ------------------------------------------------------
     "HA_HEADS_UP_HEAD":      {"en": "Heads up — this is the heavier path.",
@@ -1811,6 +1915,267 @@ T: dict[str, dict[str, str]] = {
                                  "zh-TW": "使用者帳號與密碼"},
     "UNINSTALL_PATH_SMBCREDS":  {"en": "NAS mount login info",
                                  "zh-TW": "NAS 掛載的帳密"},
+
+    # ---- Wireless onboarding (cameras with no Ethernet) -------------
+    "NAV_WIRELESS_ONBOARDING": {"en": "Add wireless camera",
+                                "zh-TW": "新增無線攝影機"},
+    "WIRELESS_ONBOARDING_TITLE": {"en": "Add a wireless camera",
+                                   "zh-TW": "新增無線攝影機"},
+    "WIRELESS_ONBOARDING_SUBTITLE": {
+        "en": "Pairs cameras that only have a power cable — no Ethernet, no Wi-Fi yet. Pawcorder will detect, set up, and add the camera for you.",
+        "zh-TW": "替只插電的攝影機配對 Wi-Fi——不需要網路線、也還沒上網。Pawcorder 會自動偵測、設定，並把攝影機加進來。",
+    },
+    "WIRELESS_STEP_1_TITLE": {"en": "Step 1 — Plug your camera in", "zh-TW": "第一步——把攝影機插上電源"},
+    "WIRELESS_STEP_1_BODY": {
+        "en": "Power on the camera and place it within ~5 metres of the Pawcorder host. Most cameras enter setup mode on first power-up; some need you to hold a small reset button for 5 seconds.",
+        "zh-TW": "把攝影機接上電源，放在離 Pawcorder 主機約 5 公尺以內。大多數攝影機第一次開機就會進入配對模式；有些要按住背面的重置鈕約 5 秒。",
+    },
+    "WIRELESS_STEP_2_TITLE": {"en": "Step 2 — Look for it", "zh-TW": "第二步——找到它"},
+    "WIRELESS_STEP_2_BODY": {
+        "en": "Pawcorder scans Bluetooth and Wi-Fi for cameras in setup mode. The camera closest to the host appears at the top.",
+        "zh-TW": "Pawcorder 會掃描藍牙和 Wi-Fi 上處於配對模式的攝影機。離主機越近的會排在越上面。",
+    },
+    "WIRELESS_STEP_3_TITLE": {"en": "Step 3 — Wi-Fi for the camera", "zh-TW": "第三步——告訴攝影機要連哪個 Wi-Fi"},
+    "WIRELESS_STEP_3_BODY": {
+        "en": "Type the Wi-Fi name and password the camera should join. Pawcorder remembers it (encrypted) so you don't have to type it again next time.",
+        "zh-TW": "輸入要讓攝影機連的 Wi-Fi 名稱和密碼。Pawcorder 會幫你記住（加密儲存），下次新增不用再輸入。",
+    },
+    "WIRELESS_SCAN_BUTTON": {"en": "Scan now", "zh-TW": "立即掃描"},
+    "WIRELESS_SCAN_AGAIN": {"en": "Scan again", "zh-TW": "重新掃描"},
+    "WIRELESS_SCAN_RUNNING": {"en": "Looking for cameras…", "zh-TW": "正在搜尋攝影機…"},
+    "WIRELESS_SCAN_NONE": {
+        "en": "No cameras in setup mode. Make sure the camera is powered on and within Bluetooth range, then scan again.",
+        "zh-TW": "目前沒有處於配對模式的攝影機。確認攝影機已開機、並在藍牙範圍內，然後再掃一次。",
+    },
+    "WIRELESS_NO_BLE_HINT": {
+        "en": "This host has no Bluetooth adapter. Pawcorder can still find cameras via Wi-Fi setup mode — power on the camera and try the scan.",
+        "zh-TW": "這台主機沒有藍牙介面卡。Pawcorder 仍可以透過 Wi-Fi 配對模式偵測攝影機——把攝影機開機後試試掃描。",
+    },
+    "WIRELESS_NO_WIFI_SCAN_HINT": {
+        "en": "This host can't scan Wi-Fi (no nmcli / iw / airport / netsh found). Bluetooth-pairing cameras still work; for SoftAP cameras, use the vendor app first and Pawcorder will pick them up after they join.",
+        "zh-TW": "這台主機無法掃描 Wi-Fi（找不到 nmcli / iw / airport / netsh）。藍牙配對的攝影機仍可使用；SoftAP 模式的攝影機請先用原廠 App 設定，Pawcorder 會在它連上 Wi-Fi 後自動加入。",
+    },
+    "WIRELESS_OR": {"en": "Or", "zh-TW": "或者"},
+    "WIRELESS_MANUAL_QR_BUTTON": {"en": "Show a Wi-Fi QR for the camera to scan",
+                                    "zh-TW": "顯示 Wi-Fi QR 讓攝影機掃描"},
+    "WIRELESS_MANUAL_QR_HINT": {
+        "en": "For Reolink Argus, Hikvision Hik-Connect setup, Aqara, and a few others — show the QR in front of the camera lens.",
+        "zh-TW": "適用 Reolink Argus、Hikvision Hik-Connect 設定、Aqara 等——把 QR 拿到攝影機鏡頭前。",
+    },
+    "WIRELESS_MANUAL_BROADCAST_BUTTON": {"en": "Broadcast Wi-Fi via EspTouch",
+                                          "zh-TW": "用 EspTouch 廣播 Wi-Fi"},
+    "WIRELESS_MANUAL_BROADCAST_HINT": {
+        "en": "For ESP32-based DIY cameras and other devices that listen for EspTouch v2 broadcasts.",
+        "zh-TW": "適用 ESP32 自製攝影機和支援 EspTouch v2 廣播配對的裝置。",
+    },
+    "WIRELESS_PICK_DEVICE": {"en": "Pick the camera you're setting up", "zh-TW": "選擇要設定的攝影機"},
+    "WIRELESS_HOME_SSID_LABEL": {"en": "Wi-Fi name (SSID)", "zh-TW": "Wi-Fi 名稱（SSID）"},
+    "WIRELESS_HOME_PSK_LABEL": {"en": "Wi-Fi password", "zh-TW": "Wi-Fi 密碼"},
+    "WIRELESS_HOME_AUTH_LABEL": {"en": "Security", "zh-TW": "安全性類型"},
+    "WIRELESS_REMEMBER_LABEL": {"en": "Remember this Wi-Fi for next time",
+                                  "zh-TW": "下次新增時記住此 Wi-Fi"},
+    "WIRELESS_GO_BUTTON": {"en": "Set up this camera", "zh-TW": "開始設定這台攝影機"},
+    "WIRELESS_PROVISION_RUNNING": {"en": "Sending Wi-Fi to the camera…",
+                                     "zh-TW": "正在把 Wi-Fi 設定送到攝影機…"},
+    "WIRELESS_WAITING_ARRIVAL": {"en": "Waiting for the camera to join Wi-Fi…",
+                                   "zh-TW": "等待攝影機連上 Wi-Fi…"},
+    "WIRELESS_ARRIVED": {"en": "Camera joined the network", "zh-TW": "攝影機已連上網路"},
+    "WIRELESS_CONFIGURED": {"en": "Camera added", "zh-TW": "攝影機已加入"},
+    "WIRELESS_TIMED_OUT": {
+        "en": "The camera didn't appear on Wi-Fi in time. Try again, or finish setup with the vendor app.",
+        "zh-TW": "攝影機沒有在預期時間內連上 Wi-Fi。請再試一次，或用原廠 App 完成設定。",
+    },
+    "WIRELESS_VENDOR_HANDOFF_TITLE": {"en": "Use the vendor app", "zh-TW": "請使用原廠 App"},
+    "WIRELESS_OPEN_VENDOR_APP": {"en": "Open the vendor app", "zh-TW": "開啟原廠 App"},
+    "WIRELESS_QR_HOLD_HINT": {
+        "en": "Keep the QR steady about 15–30 cm in front of the camera lens. Camera will beep / chime when it reads the code.",
+        "zh-TW": "把 QR 穩定地拿在離攝影機鏡頭約 15–30 公分處。攝影機讀到碼時會發出嗶聲或鈴聲。",
+    },
+    "WIRELESS_TRANSPORT_BLE": {"en": "Bluetooth pairing", "zh-TW": "藍牙配對"},
+    "WIRELESS_TRANSPORT_SOFTAP": {"en": "Wi-Fi setup AP", "zh-TW": "Wi-Fi 設定熱點"},
+    "WIRELESS_TRANSPORT_QR": {"en": "QR code", "zh-TW": "QR 碼"},
+    "WIRELESS_TRANSPORT_ESPTOUCH": {"en": "EspTouch broadcast", "zh-TW": "EspTouch 廣播"},
+    "WIRELESS_TRANSPORT_WPS": {"en": "WPS push-button", "zh-TW": "WPS 按鈕"},
+    "WIRELESS_TRANSPORT_HOMEKIT": {"en": "HomeKit", "zh-TW": "HomeKit"},
+    "WIRELESS_TRANSPORT_MATTER": {"en": "Matter", "zh-TW": "Matter"},
+    "WIRELESS_TRANSPORT_VENDOR": {"en": "Vendor app", "zh-TW": "原廠 App"},
+    "WIRELESS_KEY_PROTECTION_LABEL": {"en": "Wi-Fi password protection", "zh-TW": "Wi-Fi 密碼保護方式"},
+    "WIRELESS_KEY_PROTECTION_TPM": {"en": "TPM 2.0 sealed (strongest — disk theft can't decrypt)",
+                                       "zh-TW": "TPM 2.0 封存（最強——磁碟被偷也解不開）"},
+    "WIRELESS_KEY_PROTECTION_KEYRING": {"en": "OS keyring (Keychain / DPAPI / Secret Service)",
+                                          "zh-TW": "作業系統金鑰串（Keychain / DPAPI / Secret Service）"},
+    "WIRELESS_KEY_PROTECTION_FILE": {"en": "Encrypted file (master key has 0600 perms)",
+                                       "zh-TW": "加密檔案（金鑰檔權限 0600）"},
+
+    # ---- PWA install prompt (Android Chrome only) -------------------
+    # iOS Safari ignores beforeinstallprompt; we hide the button there.
+    "PWA_INSTALL_TITLE":     {"en": "Add Pawcorder to your home screen",
+                              "zh-TW": "把 Pawcorder 加到主畫面"},
+    "PWA_INSTALL_BODY":      {"en": "Open Pawcorder like a real app, get faster launches, and (on Android) receive notifications even when the browser is closed.",
+                              "zh-TW": "從主畫面直接打開，啟動更快，Android 上即使關掉瀏覽器也能收到通知。"},
+    "PWA_INSTALL_BUTTON":    {"en": "Add to home screen",
+                              "zh-TW": "加到主畫面"},
+    "PWA_INSTALL_LATER":     {"en": "Maybe later",
+                              "zh-TW": "之後再說"},
+    "PWA_INSTALL_IOS_HELP":  {"en": "On iPhone / iPad: tap the Share button below, then \"Add to Home Screen\".",
+                              "zh-TW": "iPhone / iPad：點下方的「分享」按鈕，再選「加入主畫面」。"},
+    "PWA_INSTALLED":         {"en": "Pawcorder is installed on this device.",
+                              "zh-TW": "Pawcorder 已安裝在這台裝置上。"},
+
+    # ---- Push notification permission pre-prompt (double opt-in) ----
+    # Native browser prompt can only be shown ONCE; if user hits Block,
+    # it's blocked forever. Show a custom prompt first to qualify.
+    "PUSH_PREPROMPT_TITLE":  {"en": "Get instant pet alerts",
+                              "zh-TW": "即時收到寵物提醒"},
+    "PUSH_PREPROMPT_BODY":   {"en": "We'll only ping you when your camera sees something — pet detected, sound alarm, or camera offline. No marketing.",
+                              "zh-TW": "只會在攝影機看到事情時推送——寵物出現、聲音警報、攝影機離線。不傳廣告。"},
+    "PUSH_PREPROMPT_ENABLE": {"en": "Turn on alerts",
+                              "zh-TW": "開啟提醒"},
+    "PUSH_PREPROMPT_LATER":  {"en": "Not now",
+                              "zh-TW": "暫時不要"},
+    "PUSH_BLOCKED_TITLE":    {"en": "Notifications are blocked",
+                              "zh-TW": "通知被擋掉了"},
+    "PUSH_BLOCKED_BODY":     {"en": "Your browser is blocking notifications for this site. Click the lock icon in the address bar → Site settings → Notifications → Allow.",
+                              "zh-TW": "瀏覽器擋掉了這個網站的通知。請點網址列旁的鎖頭圖示 → 網站設定 → 通知 → 允許。"},
+    "PUSH_OK_LABEL":         {"en": "Notifications on ✓",
+                              "zh-TW": "通知已開啟 ✓"},
+    "PUSH_TEST_BUTTON":      {"en": "Send a test notification",
+                              "zh-TW": "送一個測試通知"},
+
+    # ---- Android-specific notification copy ------------------------
+    # Counterpart to NOTIF_IOS_BODY. Without this, Android users see
+    # only the iOS narrative and miss that web push works natively.
+    "NOTIF_ANDROID_HEADING": {"en": "Android heads-up",
+                              "zh-TW": "Android 提醒"},
+    "NOTIF_ANDROID_BODY":    {"en": "Android Chrome supports browser notifications natively — tap \"Turn on alerts\" below to receive pet detections without installing anything else. If your phone is OPPO / Xiaomi / Samsung, also disable battery optimisation for Chrome (Settings → Apps → Chrome → Battery) so the OS doesn't kill background delivery.",
+                              "zh-TW": "Android Chrome 直接支援瀏覽器通知——按下方「開啟提醒」就能收到寵物事件，不必再裝別的 App。如果你用 OPPO / 小米 / Samsung，請另外關掉 Chrome 的省電限制（設定 → 應用程式 → Chrome → 電池），系統才不會殺掉背景通知。"},
+
+    # ---- Three-state recording status (was binary running/stopped) ---
+    # Privacy mode (auto-pause when phone in home Wi-Fi) used to render
+    # as red "Stopped" — alarming when it's intentional. Add a third
+    # neutral state.
+    "STATE_PRIVACY_PAUSED":  {"en": "Paused (privacy)",
+                              "zh-TW": "暫停（隱私模式）"},
+    "STATE_PRIVACY_PAUSED_HINT": {"en": "Recording is paused because you're home. Will auto-resume when you leave.",
+                                    "zh-TW": "你在家所以暫停錄影了，離家後會自動繼續。"},
+    "DASHBOARD_LAST_EVENT_LABEL": {"en": "Last event",
+                                     "zh-TW": "上次事件"},
+    "DASHBOARD_LAST_EVENT_NEVER": {"en": "No events yet",
+                                     "zh-TW": "尚未有事件"},
+    "DASHBOARD_LAST_RECORDING_LABEL": {"en": "Last recorded",
+                                          "zh-TW": "上次錄影"},
+    "DASHBOARD_LAST_RECORDING_NEVER": {"en": "Not recording yet",
+                                          "zh-TW": "還沒開始錄影"},
+    "TIME_AGO_JUST_NOW":     {"en": "just now", "zh-TW": "剛剛"},
+    "TIME_AGO_MIN":          {"en": "{n} min ago", "zh-TW": "{n} 分鐘前"},
+    "TIME_AGO_HOURS":        {"en": "{n} h ago", "zh-TW": "{n} 小時前"},
+    "TIME_AGO_DAYS":         {"en": "{n} d ago", "zh-TW": "{n} 天前"},
+
+    # ---- Empty state variants on dashboard / pets ------------------
+    "DASHBOARD_EMPTY_NO_PETS_TITLE":  {"en": "Tell Pawcorder who lives here",
+                                          "zh-TW": "告訴 Pawcorder 家裡有誰"},
+    "DASHBOARD_EMPTY_NO_PETS_BODY":   {"en": "Upload a few photos of your pet so Pawcorder can recognise them in your camera footage. The model runs on your machine — photos never leave your home.",
+                                          "zh-TW": "上傳幾張寵物的照片，Pawcorder 就會在影片裡認出牠。模型在你家主機上跑，照片不會傳到雲端。"},
+    "DASHBOARD_EMPTY_NO_PETS_CTA":    {"en": "Add my pet",
+                                          "zh-TW": "加入我的寵物"},
+    "DASHBOARD_EMPTY_WAITING_TITLE":  {"en": "Waiting for the first sighting…",
+                                          "zh-TW": "等第一次被拍到中…"},
+    "DASHBOARD_EMPTY_WAITING_BODY":   {"en": "Cameras are connected and recognition is running. Most owners get their first event within 30 minutes.",
+                                          "zh-TW": "攝影機已連線，辨識也在跑。大部分用戶 30 分鐘內就會出現第一筆事件。"},
+
+    # ---- Diagnostic copy buttons (errors with tech support) ---------
+    "ERR_COPY_DIAG":         {"en": "Copy diagnostic",
+                              "zh-TW": "複製診斷資訊"},
+    "ERR_COPIED":            {"en": "Copied",
+                              "zh-TW": "已複製"},
+    "ERR_DIAG_PURPOSE":      {"en": "Paste this into LINE / GitHub Issues if you need help.",
+                              "zh-TW": "需要協助時把這段貼到 LINE / GitHub Issues。"},
+
+    # ---- User-friendly error mappings (errors.py wires these) ------
+    "ERR_FRIGATE_DOWN_TITLE":  {"en": "Camera service is down",
+                                 "zh-TW": "影像服務沒在跑"},
+    "ERR_FRIGATE_DOWN_BODY":   {"en": "The recorder process isn't running. This usually means the box just rebooted and the service is still starting, or it crashed.",
+                                 "zh-TW": "錄影服務沒在跑。通常是主機剛開機還在啟動，或是程式不小心當掉。"},
+    "ERR_FRIGATE_DOWN_FIX":    {"en": "Try \"Restart camera service\" below. If it keeps failing, check System → Logs.",
+                                 "zh-TW": "點下面的「重啟影像服務」試試。一直失敗的話到「系統 → 日誌」看一下。"},
+    "ERR_CAMERA_OFFLINE_TITLE": {"en": "Camera \"{name}\" is offline",
+                                   "zh-TW": "攝影機「{name}」斷線了"},
+    "ERR_CAMERA_OFFLINE_BODY":  {"en": "Pawcorder can't reach this camera. Common reasons: power unplugged, network cable loose, camera rebooting, Wi-Fi out of range.",
+                                   "zh-TW": "連不到這台攝影機。常見原因：插頭鬆了、網路線沒插好、攝影機正在重開機、Wi-Fi 收不到訊號。"},
+    "ERR_CAMERA_OFFLINE_FIX":   {"en": "1. Check the camera's power LED. 2. Re-seat the network cable. 3. Reboot the camera. 4. If it's wireless, check the Wi-Fi signal in the camera vendor app.",
+                                   "zh-TW": "1. 看攝影機電源燈是否亮。 2. 把網路線拔起來重插。 3. 重開攝影機。 4. 無線款請用原廠 App 看訊號強度。"},
+    "ERR_DISK_FULL_TITLE":      {"en": "Storage is almost full",
+                                   "zh-TW": "儲存空間快滿了"},
+    "ERR_DISK_FULL_BODY":       {"en": "Less than 5% disk free. Pawcorder will start dropping the oldest recordings to make room. If you want to keep old footage, expand storage now.",
+                                   "zh-TW": "硬碟剩不到 5%。Pawcorder 會開始刪舊的錄影空出空間。想留舊影片的話現在擴充儲存。"},
+    "ERR_DISK_FULL_FIX":        {"en": "Open Storage page → check retention setting, attach a NAS, or plug in a USB drive.",
+                                   "zh-TW": "去「儲存」頁面 → 調保留天數，或接 NAS / 外接硬碟。"},
+    "ERR_NETWORK_DOWN_TITLE":   {"en": "Pawcorder lost the internet",
+                                   "zh-TW": "Pawcorder 斷線了"},
+    "ERR_NETWORK_DOWN_BODY":    {"en": "The box is up but can't reach the outside world. Cloud backup, OTA updates, and remote-access push notifications are paused.",
+                                   "zh-TW": "主機開著但連不到外網。雲端備份、自動更新、遠端推播都會暫停。"},
+    "ERR_NETWORK_DOWN_FIX":     {"en": "Check your router. Local recording and detection still work — just no cloud features until the link comes back.",
+                                   "zh-TW": "檢查家裡的路由器。本機錄影跟偵測仍正常——只是雲端功能等網路恢復才會動。"},
+    "ERR_RESTART_BUTTON":       {"en": "Restart the service",
+                                   "zh-TW": "重啟服務"},
+
+    # ---- Family invite link flow (/users) ---------------------------
+    "USERS_INVITE_HEADING":   {"en": "Invite a family member",
+                                 "zh-TW": "邀請家人"},
+    "USERS_INVITE_HELP":      {"en": "Generate a link your partner / family member opens once on their phone. The link expires in 7 days. They get the family role automatically (can view, can't change settings).",
+                                 "zh-TW": "產生一條連結，傳給家人在手機點一次。連結 7 天後失效。對方會自動拿到 family 權限（能看，不能改設定）。"},
+    "USERS_INVITE_GENERATE":  {"en": "Generate invite link",
+                                 "zh-TW": "產生邀請連結"},
+    "USERS_INVITE_LINK_LABEL": {"en": "Share this link",
+                                  "zh-TW": "把這條連結傳給對方"},
+    "USERS_INVITE_EXPIRES":   {"en": "Expires {when} — single-use",
+                                 "zh-TW": "{when} 失效——只能用一次"},
+    "USERS_INVITE_COPY":      {"en": "Copy",
+                                 "zh-TW": "複製"},
+    "USERS_INVITE_COPIED":    {"en": "Copied!",
+                                 "zh-TW": "已複製！"},
+    "USERS_INVITE_LINE":      {"en": "Send via LINE",
+                                 "zh-TW": "用 LINE 傳"},
+    "USERS_INVITE_REVOKE":    {"en": "Revoke",
+                                 "zh-TW": "作廢"},
+    "USERS_INVITE_NO_LIVE":   {"en": "No active invites",
+                                 "zh-TW": "目前沒有有效邀請"},
+    "USERS_INVITE_LIVE_HEAD": {"en": "Active invites",
+                                 "zh-TW": "有效中的邀請"},
+    "USERS_INVITE_USED":      {"en": "Used",
+                                 "zh-TW": "已使用"},
+
+    # ---- Welcome page next-step cards (added: live, install, invite) -
+    "WELCOME_NEXT_LIVE":      {"en": "See your camera right now",
+                                 "zh-TW": "現在看攝影機"},
+    "WELCOME_NEXT_LIVE_HELP": {"en": "Open the live camera grid",
+                                 "zh-TW": "打開即時影像"},
+    "WELCOME_NEXT_INSTALL":   {"en": "Add to home screen",
+                                 "zh-TW": "加到主畫面"},
+    "WELCOME_NEXT_INSTALL_HELP": {"en": "Open like a real app",
+                                    "zh-TW": "從主畫面像 App 一樣打開"},
+    "WELCOME_NEXT_INVITE":    {"en": "Invite family",
+                                 "zh-TW": "邀請家人"},
+    "WELCOME_NEXT_INVITE_HELP": {"en": "Share access with partner / kids",
+                                    "zh-TW": "讓另一半 / 孩子也能看"},
+
+    # ---- Mobile page restructure (one-click Tailscale + advanced) ---
+    "MOBILE_TS_INSTALL_BUTTON": {"en": "Install Tailscale on this Pawcorder box",
+                                    "zh-TW": "把 Tailscale 裝到這台 Pawcorder"},
+    "MOBILE_TS_INSTALL_RUNNING": {"en": "Installing… this may take a minute",
+                                     "zh-TW": "安裝中…大約一分鐘"},
+    "MOBILE_TS_INSTALL_DONE":   {"en": "Installed. Now sign in to Tailscale on your account:",
+                                    "zh-TW": "安裝完成。請登入 Tailscale 帳號："},
+    "MOBILE_TS_START_BUTTON":   {"en": "Start Tailscale (sign in)",
+                                    "zh-TW": "啟動 Tailscale（登入）"},
+    "MOBILE_TS_AUTH_URL_LABEL": {"en": "Open this URL in your browser to sign in:",
+                                    "zh-TW": "在瀏覽器打開這個網址登入："},
+    "MOBILE_NATIVE_DIY_TOGGLE": {"en": "Build the native iOS / Android shell yourself (advanced)",
+                                    "zh-TW": "自己編譯原生 iOS / Android App（進階）"},
+    "MOBILE_BATTERY_HINT_TITLE": {"en": "Android battery saver heads-up",
+                                     "zh-TW": "Android 省電模式提醒"},
+    "MOBILE_BATTERY_HINT_BODY":  {"en": "OPPO, Xiaomi, Samsung and Vivo phones aggressively kill background browser tabs. If notifications stop arriving after a few hours, go to Settings → Apps → Chrome → Battery → No restrictions.",
+                                     "zh-TW": "OPPO、小米、Samsung、Vivo 的省電模式會殺掉背景瀏覽器分頁。如果通知過幾小時就不來了，請去「設定 → 應用程式 → Chrome → 電池 → 無限制」。"},
 }
 
 
@@ -1818,6 +2183,54 @@ def get_lang_from_request(request: Request) -> str:
     cookie = request.cookies.get(LANG_COOKIE)
     if cookie in SUPPORTED:
         return cookie
+    return _negotiate_accept_language(request.headers.get("accept-language", ""))
+
+
+def _negotiate_accept_language(header: str) -> str:
+    """Pick the best supported language from an Accept-Language header.
+
+    First-time visitors don't have a cookie yet — falling back to zh-TW
+    means an English-speaking user sees a Chinese wizard. Parsing the
+    header lets the wizard greet them in their browser language without
+    them having to find the language picker first.
+    """
+    if not header:
+        return DEFAULT_LANG
+    candidates: list[tuple[float, str]] = []
+    for part in header.split(","):
+        token = part.strip()
+        if not token:
+            continue
+        if ";" in token:
+            tag, _, params = token.partition(";")
+            tag = tag.strip().lower()
+            q = 1.0
+            for p in params.split(";"):
+                p = p.strip()
+                if p.startswith("q="):
+                    try:
+                        q = float(p[2:])
+                    except ValueError:
+                        q = 0.0
+        else:
+            tag, q = token.lower(), 1.0
+        if not tag or q <= 0:
+            continue
+        candidates.append((q, tag))
+    candidates.sort(key=lambda x: x[0], reverse=True)
+    for _, tag in candidates:
+        # Exact (case-insensitive) match — "zh-tw" → "zh-TW".
+        for lang in SUPPORTED:
+            if tag == lang.lower():
+                return lang
+        # Prefix match — "zh", "zh-hant", "zh-cn" all map to zh-TW
+        # (only zh variant we ship). Bare "ja" / "ko" / "en" hit here too.
+        primary = tag.split("-", 1)[0]
+        if primary == "zh":
+            return "zh-TW"
+        for lang in SUPPORTED:
+            if lang.lower().split("-", 1)[0] == primary:
+                return lang
     return DEFAULT_LANG
 
 

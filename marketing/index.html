@@ -353,16 +353,30 @@
             <span class="terminal-dot"></span>
             <span class="terminal-dot"></span>
             <span class="terminal-dot"></span>
-            <span class="ml-3">~ pawcorder · install</span>
+            <span class="ml-3">~ pawcorder · install (Linux / macOS)</span>
           </div>
           <div class="px-5 py-5 font-mono text-sm overflow-x-auto whitespace-nowrap">
             <span class="text-brand-300 select-none">$</span>
             <span class="ml-2">curl -fsSL https://raw.githubusercontent.com/xupStudio/pawcorder/main/scripts/bootstrap.sh | bash</span>
           </div>
         </div>
+        <div class="terminal mt-3">
+          <div class="terminal-bar">
+            <span class="terminal-dot"></span>
+            <span class="terminal-dot"></span>
+            <span class="terminal-dot"></span>
+            <span class="ml-3">PS · pawcorder · install (Windows)</span>
+          </div>
+          <div class="px-5 py-5 font-mono text-sm overflow-x-auto whitespace-nowrap">
+            <span class="text-brand-300 select-none">PS&gt;</span>
+            <span class="ml-2">irm https://raw.githubusercontent.com/xupStudio/pawcorder/main/install.ps1 | iex</span>
+          </div>
+        </div>
         <p class="mt-3 text-xs text-ink-3 leading-relaxed">
-          Windows 用戶請先在系統內開啟 WSL2（一行 <span class="kbd">wsl --install</span> 即可）。想看這條指令到底做了什麼？
-          <a href="https://github.com/xupStudio/pawcorder/blob/main/scripts/bootstrap.sh" class="ulink text-ink hover:text-brand-700">點這裡看原始碼</a>。
+          Windows 用戶請以「系統管理員」身分開啟 PowerShell 後貼上第二行 — 會幫你自動安裝 WSL2 + Ubuntu + Pawcorder 全套。第一次跑完需要重開機，再貼一次同一行就完成。想看這些指令做了什麼？
+          <a href="https://github.com/xupStudio/pawcorder/blob/main/scripts/bootstrap.sh" class="ulink text-ink hover:text-brand-700">看 bootstrap.sh</a>
+          <span class="mx-1 text-ink-3">·</span>
+          <a href="https://github.com/xupStudio/pawcorder/blob/main/install.ps1" class="ulink text-ink hover:text-brand-700">看 install.ps1</a>。
         </p>
       </div>
     </div>
@@ -440,6 +454,10 @@
         <div class="card rounded-xl p-6">
           <h4 class="font-display text-lg mb-2">攝影機相容</h4>
           <p class="text-sm text-ink-2 leading-relaxed">10+ 主流品牌一鍵自動設定（見下方相容表），其他主流 IP 攝影機只要有標準串流也都能接。</p>
+        </div>
+        <div class="card rounded-xl p-6">
+          <h4 class="font-display text-lg mb-2">無線攝影機自動配對</h4>
+          <p class="text-sm text-ink-2 leading-relaxed">只插了電源、沒接網路線、也還沒上 Wi-Fi 的攝影機，後台一個按鈕替你掃描藍牙與 Wi-Fi 配對熱點，把家裡 Wi-Fi 直接設給攝影機。支援 Matter / HomeKit / Foscam / Dahua / D-Link HNAP / 通用 ESP32 SoftAP / Reolink XML QR / 標準 Wi-Fi QR / EspTouch v2 / WPS 共十種配對方式。Tapo / Wyze / Eufy / Ring / Nest 等只認自家 App 的款式也會偵測，並引導使用者用原廠 App 完成設定。</p>
         </div>
         <div class="card rounded-xl p-6">
           <h4 class="font-display text-lg mb-2">自動挑最快的 AI 引擎</h4>
@@ -638,7 +656,7 @@
     <header class="mb-12 max-w-3xl">
       <div class="eyebrow eyebrow-rule">章節 03 · 攝影機相容</div>
       <h2 class="mt-4 font-display text-4xl sm:text-5xl tracking-display leading-[1.05]">10 個主流品牌已測過。</h2>
-      <p class="mt-3 text-ink-2 leading-relaxed">沒列在表上的品牌，只要支援標準串流協定（ONVIF / RTSP，多數 IP 攝影機都有）都能接。</p>
+      <p class="mt-3 text-ink-2 leading-relaxed">沒列在表上的品牌，只要支援標準串流協定（ONVIF / RTSP，多數 IP 攝影機都有）都能接。<strong>沒有網路孔的純無線攝影機</strong>也能用後台的「新增無線攝影機」流程，自動透過藍牙、Wi-Fi 配對熱點、或 QR Code 把家裡 Wi-Fi 設給攝影機，不用再額外裝廠商 App。</p>
     </header>
 
     <div class="overflow-x-auto rounded-2xl border border-line bg-[#FFFDF8]">
@@ -847,6 +865,35 @@
         免費版永遠夠用 — Pro 是「把伺服器、AI 帳單、未來修補都丟給我們」的省心方案。
         喜歡自己研究的人走免費版，想要省心的人月費 NT$149 一鍵到位。
       </p>
+    </div>
+
+    <!-- Free vs Pro at-a-glance comparison. The detailed cards below show
+         what Pro adds; this table is the reverse view — what every
+         install (paying or not) gets out of the box. Without it,
+         "0 月費" reads like a hook that quietly hides paywalls. -->
+    <div class="rounded-2xl bg-[#FFFDF8] border border-line overflow-hidden mb-12">
+      <table class="w-full text-sm">
+        <thead class="bg-paper-2/80 text-xs uppercase tracking-eyebrow text-ink-3 font-mono">
+          <tr>
+            <th class="text-left px-4 sm:px-6 py-3 font-medium">功能</th>
+            <th class="text-center px-3 sm:px-6 py-3 font-medium w-[28%]">免費版（OSS）</th>
+            <th class="text-center px-3 sm:px-6 py-3 font-medium w-[28%]">Pro</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-line">
+          <tr><td class="px-4 sm:px-6 py-3 text-ink-2">所有錄影、AI 偵測、寵物辨識</td><td class="text-center text-leaf-700 font-medium">✓</td><td class="text-center text-leaf-700 font-medium">✓</td></tr>
+          <tr><td class="px-4 sm:px-6 py-3 text-ink-2">Telegram / LINE 推播、Web Push</td><td class="text-center text-leaf-700 font-medium">✓</td><td class="text-center text-leaf-700 font-medium">✓</td></tr>
+          <tr><td class="px-4 sm:px-6 py-3 text-ink-2">本機儲存 + 自帶雲端備份（Drive / Dropbox / S3 / NAS）</td><td class="text-center text-leaf-700 font-medium">✓</td><td class="text-center text-leaf-700 font-medium">✓</td></tr>
+          <tr><td class="px-4 sm:px-6 py-3 text-ink-2">Tailscale 遠端看貓（自架）</td><td class="text-center text-leaf-700 font-medium">✓</td><td class="text-center text-leaf-700 font-medium">✓</td></tr>
+          <tr><td class="px-4 sm:px-6 py-3 text-ink-2">多人權限 + 家人邀請連結</td><td class="text-center text-leaf-700 font-medium">✓</td><td class="text-center text-leaf-700 font-medium">✓</td></tr>
+          <tr class="bg-paper-2/40"><td class="px-4 sm:px-6 py-3 text-ink-2">AI 寵物日記</td><td class="text-center text-ink-3 text-xs">自備 OpenAI 金鑰</td><td class="text-center text-brand-700 font-medium">代付 AI 費用</td></tr>
+          <tr class="bg-paper-2/40"><td class="px-4 sm:px-6 py-3 text-ink-2">健康異常偵測</td><td class="text-center text-ink-3 text-xs">「太久沒看到」一種</td><td class="text-center text-brand-700 font-medium">5 種（嘔吐 / 步態 / 砂盆 / 食慾 / 打架）</td></tr>
+          <tr class="bg-paper-2/40"><td class="px-4 sm:px-6 py-3 text-ink-2">回溯辨識</td><td class="text-center text-ink-3 text-xs">7 天</td><td class="text-center text-brand-700 font-medium">30 天</td></tr>
+          <tr class="bg-paper-2/40"><td class="px-4 sm:px-6 py-3 text-ink-2">雲端訓練家貓專屬模型</td><td class="text-center text-ink-3">—</td><td class="text-center text-brand-700 font-medium">✓</td></tr>
+          <tr class="bg-paper-2/40"><td class="px-4 sm:px-6 py-3 text-ink-2">Pawcorder Connect 一鍵遠端看貓</td><td class="text-center text-ink-3 text-xs">自己接 Tailscale</td><td class="text-center text-brand-700 font-medium">送專屬 .pawcorder.io 網址</td></tr>
+          <tr class="bg-ink/[0.03]"><td class="px-4 sm:px-6 py-3 font-display text-ink">每月支出</td><td class="text-center font-display text-ink text-lg">NT$0</td><td class="text-center font-display text-brand-700 text-lg">NT$149</td></tr>
+        </tbody>
+      </table>
     </div>
 
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 mb-12">

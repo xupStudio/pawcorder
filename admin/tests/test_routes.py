@@ -396,8 +396,26 @@ def test_manifest_served(authed_client):
     resp = authed_client.get("/static/manifest.json")
     assert resp.status_code == 200
     body = resp.json()
-    assert body["name"] == "pawcorder admin"
+    assert body["name"] == "Pawcorder"
+    assert body["short_name"] == "Pawcorder"
     assert body["display"] == "standalone"
+    # New PWA hardening — id decouples from start_url, shortcuts give
+    # Android long-press menu, orientation:any unlocks landscape video.
+    assert body["id"]
+    assert body["orientation"] == "any"
+    assert isinstance(body.get("shortcuts"), list) and len(body["shortcuts"]) >= 2
+    purposes = {icon.get("purpose") for icon in body["icons"]}
+    assert "maskable" in purposes
+
+
+def test_pwa_png_icons_served(authed_client):
+    """Without these, iOS home-screen install falls back to a screenshot
+    and Samsung's circular launcher mask clips the SVG corners."""
+    for path in ("/static/icon-192.png", "/static/icon-512.png",
+                 "/static/icon-maskable-512.png", "/static/apple-touch-icon-180.png"):
+        resp = authed_client.get(path)
+        assert resp.status_code == 200, path
+        assert resp.headers["content-type"] == "image/png", path
 
 
 def test_service_worker_served(authed_client):

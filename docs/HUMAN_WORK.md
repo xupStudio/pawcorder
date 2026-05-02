@@ -13,10 +13,15 @@ silently forgotten.
 Format: each section is a category, each item is one row in
 `Status / Item / Why human / Next step`.
 
-Last updated: 2026-05-01 (Batch 4: 13-item polish drop — self-hosted
-fonts, conformal-on-litter, eating/drinking chips, /recognition diag,
-weekly-digest behavior, API docs, playwright screenshots, mobile audit,
-profile script, SECURITY.md, pose scaffold, sensitivity slider).
+Last updated: 2026-05-02 (Batch 7: PWA + Android hardening — manifest
+modernised (id / shortcuts / orientation any / maskable PNGs / proper
+192-512 raster fallbacks), service-worker dvh / bilingual offline,
+Capacitor Pawcorder cap + Android channel config, dashboard three-state
+recording status + diagnostic banner + last-event time + PWA install
++ push pre-prompt, mobile.html shell-command de-jargon + Android battery
+hint, welcome.html 6 next-step cards, errors.py + /api/diagnostics, family
+invite link flow (invites.py + /invite/<token>), marketing free-vs-Pro
+comparison table).
 
 ---
 
@@ -38,6 +43,10 @@ profile script, SECURITY.md, pose scaffold, sensitivity slider).
 | ⏳ Open | **Hailo-8L AI HAT+** integration | Needs Pi 5 + Hailo card on-desk + Hailo SDK licence | Compile ONNX→HEF; add `docker-compose.linux-hailo.yml`; YOLOv11 + MobileNetV3 both need conversion |
 | ⏳ Open | **Coral / Edge TPU** path | Needs Coral USB stick on-desk | Frigate already supports — just needs SKU validation with real cameras |
 | ⏳ Open | **GPU host** for ElevenLabs / Cartesia / XTTS-v2 | XTTS-v2 self-hosted option needs a GPU box reachable from the relay | Stand up a small server (RunPod / Modal / on-prem); set `PAWCORDER_RELAY_XTTS_URL` |
+| ⏳ Open | **Bluetooth adapter** on Pawcorder host | Wireless-onboarding BLE scanner needs a working BLE radio. Most mini-PC / NUC / RPi 5 builds have it built in; some headless servers don't. | Verify `bleak` reports an adapter (`bluetoothctl list` on Linux); add a USB BLE dongle (~US$ 8) if missing |
+| ⏳ Open | **Second Wi-Fi NIC** on Pawcorder host (recommended) | SoftAP-mode camera provisioning hops the host onto the camera's setup AP, then back to home Wi-Fi. With one NIC the admin Wi-Fi session briefly drops; with two it's seamless. | Add a USB Wi-Fi adapter (~US$ 12) if the host is on Wi-Fi; wired-Ethernet hosts don't need this |
+| ⏳ Open | **Real-device validation** of each wireless provisioner | Code for Foscam / Dahua / D-Link HNAP / generic ESP32 SoftAP / Reolink-XML QR / EspTouch v2 / WPS / Matter / HomeKit detection is implemented from public specs and reverse-engineered references; each protocol needs a real camera in pairing mode to confirm end-to-end | One camera per provisioner: Foscam C2 / Dahua IPC-HFW / TL-SC3171 (D-Link HNAP era) / ESP32-CAM dev board / Reolink Argus 3 / any EspTouch-v2 board / Aqara G3 (HomeKit) / Tapo Matter cam |
+| ⏳ Open | **TPM 2.0 master-key path** validation | `master_key.py` falls back to OS keyring then file when TPM isn't available; the TPM branch (Linux + `tpm2-pytss` + `/dev/tpmrm0`) needs a TPM-equipped host to verify seal/unseal round-trips and persistent-handle survival across reboots | Run `pytest -m tpm` on a host with TPM enabled (most modern x86 NUC / Intel mini-PCs); confirm `master_key.describe_active_backend()` reports `"tpm"` |
 
 ## Live-data validation (thresholds, regressions)
 
@@ -87,9 +96,24 @@ profile script, SECURITY.md, pose scaffold, sensitivity slider).
 | ✅ Done | Self-host Fraunces + Geist + JetBrains Mono | Batch 4 mirrored the woff2 files to `admin/app/static/fonts/` + `marketing/fonts/`. ~200 KB total. Templates load `./fonts/fonts.css` instead of the Google Fonts CDN | — |
 | ⏳ Open | Marketing screenshots after Batch 3 polish | Page now uses Fraunces / Geist / paper-warm palette and refers to features by visible UI labels — old screenshots are stale | Designer round captures fresh hero / features / cameras / pricing screens |
 | ⏳ Open | OG / social-share image (og:image) | Marketing index has `og:title` + `og:description` but no preview image; share previews on Twitter / iMessage / Discord look bare | Export a 1200×630 PNG of the new logo + Pawcorder wordmark on warm-paper background; upload to `/marketing/og.png` and add `<meta property="og:image">` |
-| ⏳ Open | Favicon raster fallbacks | The new SVG icon ([admin/app/static/icon.svg](../admin/app/static/icon.svg)) is the canonical mark, but older clients (IE / older Android browsers / iMessage previews) need raster sizes | Generate `favicon-32.png`, `apple-touch-icon-180.png`, `android-chrome-192/512.png` from the SVG; reference them in admin `base.html` and marketing `index.html` |
+| ✅ Done | Favicon raster fallbacks | Batch 7 added [scripts/build-pwa-icons.py](../scripts/build-pwa-icons.py) (qlmanage / rsvg-convert + Pillow). Outputs `icon-192.png`, `icon-512.png`, `icon-maskable-512.png` (40% safe zone for Samsung circular mask), `apple-touch-icon-180.png`. Wired into `base.html` + `manifest.json`. | — |
 | ⏳ Open | Final review of editorial typography on real CJK + EN strings | Marketing & admin upgraded to Fraunces (display) + Geist (body). Need a non-zh-TW reviewer to confirm the warm-paper palette + Fraunces tracking doesn't feel "off" in en / ja / ko | Visit /login, /, /pets after switching language; check letter-spacing isn't too tight on long English/Japanese strings |
-| 📝 Doc | WSL2 mirrored networking note for Windows users | Camera auto-detect (`/api/scan` with empty cidr) calls `network_scan.detect_local_subnet()` which sees the *container* / *WSL2 virtual* subnet, not the user's LAN. In WSL2 default bridged mode this means the auto-scan finds 0 cameras even though manual IP entry works fine. Fix is one-time user setup: `.wslconfig` with `[wsl2]\nnetworkingMode=mirrored` (Windows 11 22H2+ + `wsl --update`) | Add a docs page (or a hint in the wizard's "0 results" toast) explaining mirrored mode for Windows users; meanwhile the manual-IP fallback in setup step 2 is a working escape hatch |
+| ✅ Done | WSL2 mirrored networking note for Windows users | The wizard now detects WSL2 in-app: when `/api/scan` returns 0 cameras, `setup_helpers.detect_environment_quirks()` checks `/proc/version` and surfaces `SCAN_NO_HITS_WSL_HINT` (i18n.py) explaining the `.wslconfig` `networkingMode=mirrored` fix. Manual-IP entry still works as escape hatch. | — |
+
+## Mobile / PWA real-device validation (Batch 7)
+
+| Status | Item | Why human | Next step |
+|---|---|---|---|
+| ⏳ Open | **PWA install banner** on real Android Chrome | `beforeinstallprompt` requires HTTPS, valid manifest, and Chrome's engagement heuristic (visit, scroll, ~30 s). On localhost the event fires; on a real LAN install behind self-signed TLS Chrome may suppress it. | Install Pawcorder on a real Android phone, browse to the admin via Tailscale (HTTPS), confirm the inline install button appears within ~5 minutes of normal use |
+| ⏳ Open | **Maskable icon on Samsung circular launcher** | I sized the safe zone at 40% per W3C spec but Samsung One UI's circular mask sometimes clips a touch more aggressively than vanilla Android | Install on a Samsung A / S phone, screenshot the launcher icon, verify the paw is fully visible. If clipped, rerun `scripts/build-pwa-icons.py` after dropping `inner_size` to 50% |
+| ⏳ Open | **Web Push end-to-end** on Android Chrome | The push-permission pre-prompt code calls `Notification.requestPermission()` after the soft button; FCM delivery to the SW push handler requires VAPID key + correctly registered subscription | Real Android phone: enable push from dashboard banner → trigger a pet event → confirm system notification arrives even when Chrome is backgrounded; check OPPO/Xiaomi/Samsung battery-saver hint actually fires |
+| ⏳ Open | **Capacitor Android push channel** validation | `bootstrap.js` calls `PushNotifications.createChannel({ id: 'pawcorder-events', importance: 4 })` but this only takes effect after `npx cap add android` has been run AND the host has Firebase SDK initialised with `google-services.json` | Run `npx cap add android` in `mobile/`, drop the `google-services.json` from the FCM console into `mobile/android/app/`, build APK, sideload on real Android, send a test push and confirm it lands as a heads-up notification |
+| ⏳ Open | **iOS Capacitor APNs** validation | Same as Android but iOS path: needs Apple Developer team ID + APNs auth key + `npx cap add ios` | Apple Developer Program account ($99/year), APNs auth key, sideload via Xcode, confirm push lands |
+| ⏳ Open | **Apple Developer Program enrolment** | macOS `.pkg` signing + Capacitor iOS app distribution both need an Apple Developer account ($99/year) — without it, end users see "unidentified developer" warnings on macOS and cannot install the iOS app | Enrol at developer.apple.com → request APNs auth key + macOS Developer ID Application certificate |
+| ⏳ Open | **Verified Google OAuth for cloud backup (Drive)** | Pawcorder's rclone path currently asks the user for a `client_id` / `client_secret` they have to mint themselves in Google Cloud Console — non-technical users cannot do this. Verified OAuth gives a one-click "Sign in with Google" flow. | (a) Apply for OAuth verification at console.cloud.google.com (Sensitive scope: drive). (b) Pass CASA Tier 2 audit (US$ 75-2000). (c) Update `cloud.py` to use the Authorization Code Flow instead of expecting client_id/secret from the user. ETA 2-3 months. |
+| ⏳ Open | **LINE Official Account** for in-app LINE notifications | `users.html` invite flow uses `https://line.me/R/share?text=...` for sharing — works fine. But the `NOTIF_LINE` channel currently asks the user to mint their own LINE Messaging API token. A "scan our official account" path needs a verified LINE OA + relay endpoint that fans out per-user notifications. | Register a LINE Official Account, enable Messaging API, build a small relay that registers users by webhook signature, update `line.py` admin path to recognise "official account" mode |
+| ⏳ Open | **Diagnostics threshold tuning** (`/api/diagnostics`) | Disk-full warns at 5% free / errors at 2% free; camera-offline detection currently only flags Frigate-down (per-camera reachability not yet wired). Real-customer data may want different thresholds. | Run for 4 weeks, scan logs for false-positives, consider widening to 8% warn / 3% error. Add per-camera offline detection by tailing Frigate's MQTT or polling each camera's `/onvif/device_service` |
+| ⏳ Open | **Family invite link UX field test** | The flow works end-to-end in tests, but needs a real-world try with the LINE share button — does the LINE preview render the URL? Does iOS Safari trust the URL with no warning? Does the recipient hit the redeem page and complete in < 60 s? | Generate one invite, send to a friend / partner via LINE, time them, fix any UX rough edges they hit |
 
 ## Hosted services (production deploys)
 

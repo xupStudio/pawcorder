@@ -36,6 +36,62 @@
     </div>
   </div>
 
+  <!-- Family invite link generator. Mints a 7-day single-use token —
+       admin shares the link via LINE, recipient picks username/password
+       and lands on a family-roled account. -->
+  <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5 mb-6">
+    <div class="flex items-start justify-between gap-3 flex-wrap">
+      <div class="flex-1 min-w-0">
+        <h2 class="text-lg font-display tracking-tight">{{ t('USERS_INVITE_HEADING') }}</h2>
+        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('USERS_INVITE_HELP') }}</p>
+      </div>
+      <button @click="generateInvite()" :disabled="invite.generating"
+              class="rounded-md bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 text-sm font-medium disabled:opacity-50">
+        {{ t('USERS_INVITE_GENERATE') }}
+      </button>
+    </div>
+
+    <div x-show="invite.fresh" x-cloak class="mt-4 rounded-lg bg-emerald-50 dark:bg-emerald-950 border border-emerald-200 dark:border-emerald-800 p-3">
+      <p class="text-xs font-medium text-emerald-800 dark:text-emerald-200">{{ t('USERS_INVITE_LINK_LABEL') }}</p>
+      <p class="text-xs text-emerald-700 dark:text-emerald-300 mt-1" x-text="invite.expiresLabel"></p>
+      <div class="mt-2 flex items-center gap-2">
+        <input type="text" readonly :value="invite.fresh?.url"
+               class="flex-1 rounded-md border-emerald-300 dark:border-emerald-700 px-2 py-1.5 border text-xs font-mono bg-white dark:bg-slate-900" />
+        <button @click="copyInvite(invite.fresh)"
+                class="rounded-md bg-emerald-700 hover:bg-emerald-800 text-white px-3 py-1.5 text-xs font-medium">
+          <span x-show="invite.justCopied !== invite.fresh?.id">{{ t('USERS_INVITE_COPY') }}</span>
+          <span x-show="invite.justCopied === invite.fresh?.id">{{ t('USERS_INVITE_COPIED') }}</span>
+        </button>
+        <a :href="lineShareUrl(invite.fresh?.url)" target="_blank" rel="noopener"
+           class="rounded-md bg-[#06C755] hover:bg-[#05A647] text-white px-3 py-1.5 text-xs font-medium">
+          {{ t('USERS_INVITE_LINE') }}
+        </a>
+      </div>
+    </div>
+
+    <div x-show="activeInvites.length > 0" x-cloak class="mt-4">
+      <p class="text-xs font-medium text-slate-600 dark:text-slate-300 mb-2">{{ t('USERS_INVITE_LIVE_HEAD') }}</p>
+      <ul class="space-y-1.5">
+        <template x-for="inv in activeInvites" :key="inv.id">
+          <li class="flex items-center justify-between text-xs bg-slate-50 dark:bg-slate-800 rounded px-3 py-2">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="font-mono text-slate-500 dark:text-slate-400" x-text="inv.id"></span>
+              <span class="rounded-full bg-blue-50 dark:bg-blue-900 text-blue-700 dark:text-blue-300 px-2 py-0.5" x-text="inv.role"></span>
+              <span class="text-slate-500 dark:text-slate-400" x-text="formatExpiry(inv.expires_at)"></span>
+            </div>
+            <button @click="revokeInvite(inv.id)"
+                    class="text-rose-600 dark:text-rose-400 hover:underline">
+              {{ t('USERS_INVITE_REVOKE') }}
+            </button>
+          </li>
+        </template>
+      </ul>
+    </div>
+    <p x-show="!invite.fresh && activeInvites.length === 0" x-cloak class="mt-3 text-xs text-slate-400 dark:text-slate-500 italic">
+      {{ t('USERS_INVITE_NO_LIVE') }}
+    </p>
+  </div>
+
   <!-- User list -->
   <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 overflow-hidden"
        x-show="users.length > 0">
@@ -131,6 +187,8 @@
       modal: { open: false, mode: 'new' },
       form: { username: '', role: 'family', password: '' },
       saving: false,
+      invite: { fresh: null, generating: false, justCopied: null, expiresLabel: '' },
+      activeInvites: [],
       labels: {
         new_title:    {{ t('USERS_NEW_TITLE') | tojson }},
         edit_title:   {{ t('USERS_EDIT_TITLE') | tojson }},
@@ -139,9 +197,49 @@
         never:        {{ t('USERS_NEVER') | tojson }},
         confirm_del:  {{ t('USERS_CONFIRM_DELETE') | tojson }},
         password_keep:{{ t('USERS_PASSWORD_KEEP') | tojson }},
+        invite_expires: {{ t('USERS_INVITE_EXPIRES') | tojson }},
       },
       async loadMe() {
         try { this.me = await api('/api/users/me'); } catch (e) {}
+        this.refreshInvites();
+      },
+      async refreshInvites() {
+        try {
+          const r = await api('/api/users/invites');
+          this.activeInvites = (r.invites || []).filter(i => i.active);
+        } catch (e) { /* not admin or offline — silent */ }
+      },
+      async generateInvite() {
+        this.invite.generating = true;
+        try {
+          const r = await api('/api/users/invites', { method: 'POST', body: { role: 'family' } });
+          this.invite.fresh = r;
+          this.invite.expiresLabel = this.labels.invite_expires.replace('{when}',
+            new Date(r.expires_at * 1000).toLocaleString());
+          await this.refreshInvites();
+        } catch (e) { toast(e.message, 'error'); }
+        finally { this.invite.generating = false; }
+      },
+      async copyInvite(inv) {
+        if (!inv) return;
+        try {
+          await navigator.clipboard.writeText(inv.url);
+          this.invite.justCopied = inv.id;
+          setTimeout(() => { this.invite.justCopied = null; }, 2500);
+        } catch (e) { toast(e.message, 'error'); }
+      },
+      lineShareUrl(url) {
+        return url ? ('https://line.me/R/share?text=' + encodeURIComponent(url)) : '#';
+      },
+      async revokeInvite(publicId) {
+        try {
+          await api('/api/users/invites/' + encodeURIComponent(publicId), { method: 'DELETE' });
+          if (this.invite.fresh?.id === publicId) this.invite.fresh = null;
+          await this.refreshInvites();
+        } catch (e) { toast(e.message, 'error'); }
+      },
+      formatExpiry(epoch) {
+        return this.labels.invite_expires.replace('{when}', new Date(epoch * 1000).toLocaleDateString());
       },
       async refresh() {
         try {

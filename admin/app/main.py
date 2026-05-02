@@ -29,7 +29,9 @@ from . import (
     config_store,
     docker_ops,
     embeddings,
+    errors,
     federated,
+    invites,
     health,
     heatmap,
     highlights,
@@ -50,6 +52,8 @@ from . import (
     recognition,
     recognition_backfill,
     reliability,
+    setup_helpers,
+    storage_detect,
     telegram as tg,
     timeline,
     timelapse,
@@ -476,6 +480,19 @@ async def cameras_page(request: Request):
     return _render("cameras.html", request)
 
 
+@app.get("/onboarding/wireless", response_class=HTMLResponse)
+async def onboarding_wireless_page(request: Request):
+    """Add a power-only camera (no Ethernet, not yet on Wi-Fi).
+
+    The page surfaces BLE / SoftAP / QR / EspTouch / WPS provisioning
+    in one flow — see ``app.provisioning.orchestrator`` for the
+    state machine and ``onboarding_wireless.html`` for the UI.
+    """
+    if not auth.is_authenticated(request):
+        return _redirect_login()
+    return _render("onboarding_wireless.html", request)
+
+
 @app.get("/detection", response_class=HTMLResponse)
 async def detection_page(request: Request):
     if not auth.is_authenticated(request):
@@ -702,6 +719,12 @@ async def api_status(request: Request):
     cfg = config_store.load_config()
     cameras = camera_store.load()
     status = docker_ops.get_frigate_status()
+    privacy_paused = privacy.is_paused()
+    try:
+        latest = recognition.read_sightings(limit=1)
+        last_event_at = int(latest[0].get("start_time", 0)) if latest else 0
+    except Exception:
+        last_event_at = 0
     return {
         "setup_complete": config_store.is_setup_complete(cfg, cameras),
         "camera_count": len(cameras),
@@ -716,7 +739,48 @@ async def api_status(request: Request):
             "health": status.health,
             "image": status.image,
         },
+        # Three-state recording: 'paused-privacy' wins over 'running' so
+        # the dashboard can show a calm grey pill instead of a red one
+        # when the user is home and we deliberately stopped recording.
+        "privacy_paused": privacy_paused,
+        "last_event_at": last_event_at,  # epoch seconds; 0 when no events yet
     }
+
+
+@app.get("/api/diagnostics")
+async def api_diagnostics(request: Request):
+    """Aggregate user-friendly issues for the dashboard's banner.
+
+    Each entry is the JSON shape produced by ``errors.UserError.render``.
+    Frontend dedupes by ``code``, lets the user dismiss for 24 h, and
+    surfaces a "Copy diagnostic" button for tech support.
+    """
+    _require_auth(request)
+    lang = i18n.get_lang_from_request(request)
+    issues: list[errors.UserError] = []
+
+    fr = docker_ops.get_frigate_status()
+    if fr.exists and not fr.running:
+        try:
+            log_tail = docker_ops.recent_frigate_logs(tail=30)
+        except Exception:
+            log_tail = ""
+        issues.append(errors.frigate_down(log_excerpt=log_tail))
+
+    try:
+        import shutil as _sh
+        cfg = config_store.load_config()
+        path = cfg.storage_path or "/"
+        usage = _sh.disk_usage(path)
+        if usage.total > 0:
+            free_pct = usage.free / usage.total
+            if free_pct < 0.05:
+                issues.append(errors.disk_full(free_pct=free_pct, free_bytes=usage.free))
+    except Exception:
+        # disk_usage on a missing path is fine — we just skip the check
+        pass
+
+    return {"issues": errors.render_all(issues, lang=lang)}
 
 
 @app.get("/api/onboarding")
@@ -761,6 +825,122 @@ async def api_onboarding_reset(request: Request):
     return {"ok": True}
 
 
+# ---- wireless camera onboarding ----------------------------------------
+# These three routes back the /onboarding/wireless page. Imports are
+# kept inline so headless installs without `bleak` / `cryptography`
+# don't pay the import cost on every admin page load.
+
+@app.get("/api/onboarding/wireless/status")
+async def api_wireless_status(request: Request):
+    """Surface host capabilities + saved Wi-Fi profiles.
+
+    The UI uses the capability flags to decide which scan + manual
+    options to show. Saved SSIDs are returned without their PSKs so
+    the page can populate a datalist for autocomplete without
+    unsealing the master key on every render.
+    """
+    _require_auth(request)
+    from . import master_key, wifi_creds
+    from .provisioning import ble_scanner, softap_scanner, softap_join, wps_pbc
+    saved = [c.to_safe_dict() for c in wifi_creds.list_saved()]
+    backend = master_key.describe_active_backend()
+    return {
+        "capabilities": {
+            "ble": ble_scanner.bleak_available(),
+            "softap_scan": softap_scanner.softap_scanner_available(),
+            "softap_join": softap_join.softap_join_available(),
+            "wps": wps_pbc.wps_available(),
+        },
+        "saved": saved,
+        "last_ssid": saved[-1]["ssid"] if saved else "",
+        "master_key_backend": backend.get("backend", "unconfigured"),
+        "master_key_detail": backend.get("detail", ""),
+    }
+
+
+@app.post("/api/onboarding/wireless/scan")
+async def api_wireless_scan(request: Request, payload: dict):
+    """Run BLE + SoftAP scans in parallel; return the deduped list."""
+    _require_auth(request)
+    from .provisioning import orchestrator
+    do_ble = bool(payload.get("ble", True))
+    do_softap = bool(payload.get("softap", True))
+    devices = await orchestrator.discover(do_ble=do_ble, do_softap=do_softap)
+    return {"devices": [d.to_dict() for d in devices]}
+
+
+@app.post("/api/onboarding/wireless/provision")
+async def api_wireless_provision(request: Request, payload: dict):
+    """Stream provisioning events as newline-delimited JSON.
+
+    We use NDJSON over a streaming response rather than EventSource —
+    the latter would require us to drop the CSRF header (browsers
+    don't let JS set arbitrary headers on EventSource) and would also
+    force the client to use GET, which means leaking the Wi-Fi PSK in
+    the URL. NDJSON keeps POST + JSON body + CSRF header intact.
+    """
+    _require_auth(request)
+    from .provisioning import orchestrator
+    from .provisioning.base import DiscoveredDevice
+    from . import wifi_creds
+
+    raw_device = payload.get("device") or {}
+    if not isinstance(raw_device, dict):
+        raise HTTPException(status_code=400, detail="device payload missing")
+    ssid = (payload.get("ssid") or "").strip()
+    psk = payload.get("psk") or ""
+    auth_kind = (payload.get("auth") or "wpa2-psk").strip()
+    remember = bool(payload.get("remember", True))
+
+    if not ssid:
+        raise HTTPException(status_code=400, detail="ssid is required")
+    if auth_kind != "open" and not psk:
+        raise HTTPException(status_code=400, detail="psk is required for this auth type")
+
+    # Materialise the dict the UI sent into a real DiscoveredDevice.
+    # The user can't fabricate dangerous fields here — the orchestrator
+    # only consumes ``capability`` / ``transport`` / ``fingerprint_id``
+    # to pick a provisioner, all of which are validated by the
+    # provisioner's ``handles()`` predicate.
+    device = DiscoveredDevice(
+        id=str(raw_device.get("id") or "manual"),
+        transport=str(raw_device.get("transport") or "qr"),
+        vendor=str(raw_device.get("vendor") or "other"),
+        model=str(raw_device.get("model") or ""),
+        label=str(raw_device.get("label") or ""),
+        mac=str(raw_device.get("mac") or ""),
+        ssid=str(raw_device.get("ssid") or ""),
+        signal_dbm=int(raw_device.get("signal_dbm") or 0),
+        capability=str(raw_device.get("capability") or "auto"),
+        fingerprint_id=str(raw_device.get("fingerprint_id") or ""),
+    )
+
+    # Optionally save the Wi-Fi profile *before* we kick off provisioning
+    # — that way a successful save survives a half-finished provision and
+    # the user doesn't have to re-type next time.
+    if remember:
+        try:
+            wifi_creds.save(ssid=ssid, psk=psk, auth=auth_kind)
+        except wifi_creds.WifiCredsError:
+            # Don't block provisioning on a save failure — the UI will
+            # surface it via the saved-SSIDs list staying empty.
+            pass
+
+    async def _stream():
+        import json as _json
+        async for evt in orchestrator.provision_stream(
+            device=device, ssid=ssid, psk=psk, auth=auth_kind,
+        ):
+            yield (_json.dumps(evt) + "\n").encode("utf-8")
+
+    from fastapi.responses import StreamingResponse
+    return StreamingResponse(
+        _stream(),
+        media_type="application/x-ndjson",
+        headers={"Cache-Control": "no-cache"},
+    )
+
+
 @app.get("/tutorial", response_class=HTMLResponse)
 async def tutorial_page(request: Request):
     """Always-accessible tutorial — same checklist as the dashboard
@@ -793,7 +973,71 @@ async def api_scan(request: Request, payload: dict):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
-    return {"candidates": [c.__dict__ for c in candidates], "cidr": cidr}
+
+    # Best-effort ONVIF probe so the wizard can pre-fill brand / model /
+    # suggested name. Capped at 12 to bound wall-clock time on networks
+    # where many devices have port 554 open but aren't cameras.
+    probes: list[dict] = []
+    if candidates:
+        probe_targets = [c.ip for c in candidates[:12]]
+        probe_results = await setup_helpers.probe_candidates(probe_targets, concurrency=5)
+        probes = [p.to_dict() for p in probe_results]
+
+    quirks: list[dict] = []
+    if not candidates:
+        quirks = [q.to_dict() for q in setup_helpers.detect_environment_quirks()]
+
+    return {
+        "candidates": [c.__dict__ for c in candidates],
+        "cidr": cidr,
+        "probes": probes,
+        "quirks": quirks,
+    }
+
+
+@app.post("/api/setup/probe-camera")
+async def api_setup_probe_camera(request: Request, payload: dict):
+    """Probe a single IP — used when the user types or pastes one
+    directly instead of running the full nmap scan. Returns the same
+    shape as one entry in /api/scan's `probes` array."""
+    _require_auth(request)
+    ip = (payload.get("ip") or "").strip()
+    if not ip:
+        raise HTTPException(status_code=400, detail="ip is required")
+    probe = await setup_helpers.probe_camera(ip)
+    return {"probe": probe.to_dict()}
+
+
+@app.get("/api/setup/storage-candidates")
+async def api_setup_storage_candidates(request: Request):
+    """List storage targets the wizard can offer as one-click cards."""
+    _require_auth(request)
+    cfg = config_store.load_config()
+    candidates = storage_detect.detect_candidates(current_path=cfg.storage_path)
+    return {
+        "candidates": [c.to_dict() for c in candidates],
+        "default_path": storage_detect.DEFAULT_PATH,
+        "current_path": cfg.storage_path,
+    }
+
+
+@app.post("/api/setup/timezone")
+async def api_setup_timezone(request: Request, payload: dict):
+    """Persist the timezone the browser detected (Intl.DateTimeFormat
+    in the wizard). We don't validate against a TZ database — the
+    string is rendered into .env for Frigate / containers, which fail
+    loudly if it's bogus, and the user always has the System page to
+    correct it."""
+    _require_auth(request)
+    tz = (payload.get("tz") or "").strip()
+    if not tz:
+        raise HTTPException(status_code=400, detail="tz is required")
+    cfg = config_store.load_config()
+    cfg.tz = tz
+    cfg = _ensure_secrets(cfg)
+    config_store.save_config(cfg)
+    config_store.render_and_write_if_complete(cfg)
+    return {"ok": True, "tz": cfg.tz}
 
 
 # ---- cameras CRUD --------------------------------------------------------
@@ -1545,7 +1789,17 @@ async def welcome_page(request: Request):
     next-step cards. Self-dismissing — just navigate away."""
     if not auth.is_authenticated(request):
         return _redirect_login()
-    return _render("welcome.html", request)
+    cfg = config_store.load_config()
+    cameras = camera_store.load()
+    summary = {
+        "camera_count": len(cameras),
+        "storage_path": cfg.storage_path,
+        "tz": cfg.tz,
+    }
+    storage_check = health.check_storage(cfg.storage_path)
+    detail = storage_check.detail or {}
+    summary["storage_free_bytes"] = int(detail.get("free_bytes") or 0)
+    return _render("welcome.html", request, config=cfg, cameras=cameras, summary=summary)
 
 
 @app.get("/pets/health", response_class=HTMLResponse)
@@ -3167,6 +3421,94 @@ async def api_users_me(request: Request):
         "username": payload.get("username") or "(legacy)",
         "role": actual,
     }
+
+
+# ---- Family invite links ------------------------------------------------
+# Admins mint a 7-day single-use token, shareable on LINE. The recipient
+# opens it on their phone, picks a username + password, and lands on a
+# pre-roled account (family by default). See app.invites for details.
+
+@app.get("/api/users/invites")
+async def api_invites_list(request: Request):
+    _require_role(request, min_role="admin")
+    return {"invites": [i.to_public() for i in invites.list_invites()]}
+
+
+@app.post("/api/users/invites")
+async def api_invites_create(request: Request, payload: dict):
+    actual = _require_role(request, min_role="admin")
+    role = str(payload.get("role") or "family")
+    try:
+        token, rec = invites.create(role=role, created_by=actual or "admin")
+    except invites.InviteError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    base = f"{request.url.scheme}://{request.url.netloc}"
+    return {
+        "ok": True,
+        "token": token,                     # plaintext — shown once
+        "url": f"{base}/invite/{token}",
+        "expires_at": rec.expires_at,
+        "role": rec.role,
+        "id": rec.token_hash[:8],
+    }
+
+
+@app.delete("/api/users/invites/{public_id}")
+async def api_invites_revoke(request: Request, public_id: str):
+    _require_role(request, min_role="admin")
+    if not invites.revoke(public_id):
+        raise HTTPException(status_code=404, detail="invite not found")
+    return {"ok": True}
+
+
+@app.get("/invite/{token}", response_class=HTMLResponse)
+async def page_invite_redeem(request: Request, token: str):
+    """Public redemption page — no auth required.
+
+    Shows a username + password form when the token is valid; an error
+    page when it's expired / used / unknown. The form posts to
+    /api/invite/redeem with the token in the body.
+    """
+    inv = invites.find_active(token)
+    return _render(
+        "invite.html",
+        request,
+        invite_role=inv.role if inv else None,
+        invite_expires_at=inv.expires_at if inv else None,
+        invite_token=token if inv else "",
+        invite_valid=bool(inv),
+    )
+
+
+@app.post("/api/invite/redeem")
+async def api_invite_redeem(request: Request, payload: dict):
+    """Public — consume an invite + create the user + log them in.
+
+    No CSRF check (the user has no cookie yet) and no auth (that's the
+    point), but the invite token is itself the secret bearer.
+    """
+    token = str(payload.get("token") or "").strip()
+    username = str(payload.get("username") or "").strip()
+    password = str(payload.get("password") or "")
+
+    inv = invites.find_active(token)
+    if inv is None:
+        raise HTTPException(status_code=400, detail="invite_invalid")
+
+    try:
+        user = users.create_user(username=username, password=password, role=inv.role)
+        invites.consume(token, used_by_username=user.username)
+    except (users.UserError, invites.InviteError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    token = auth.issue_session(username=user.username, role=user.role)
+    response = JSONResponse({"ok": True, "username": user.username, "role": user.role})
+    response.set_cookie(
+        auth.COOKIE_NAME, token,
+        max_age=auth.SESSION_MAX_AGE_SECONDS,
+        httponly=True, samesite="lax", path="/",
+    )
+    return response
 
 
 @app.get("/api/system/api-keys")

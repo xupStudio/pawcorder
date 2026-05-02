@@ -7,13 +7,38 @@
       <h1 class="text-3xl font-display tracking-display">{{ t('DASHBOARD_TITLE') }}</h1>
       <p class="text-sm text-slate-500 dark:text-slate-400 italic">{{ t('DASHBOARD_SUBTITLE') }}</p>
     </div>
-    <div class="flex gap-2">
-      <a href="http://{{ request.url.hostname }}:5000" target="_blank" rel="noopener"
-         class="inline-flex items-center rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800">
-        {{ t('OPEN_FRIGATE_UI') }}
-      </a>
-    </div>
+    {# OPEN_FRIGATE_UI button removed from dashboard:
+       (1) hardcoded http://...:5000 broke for users on Tailscale (https → mixed content);
+       (2) Frigate's UI is English-only and confused non-tech users.
+       Tech users can still access it from /system → "Advanced services". #}
   </div>
+
+  {# Diagnostics banner — surfaces user-friendly errors (camera offline,
+     disk full, frigate down). Polled every 30s. #}
+  <template x-for="issue in issues" :key="issue.code">
+    <div class="rounded-2xl p-4 mb-4 flex items-start gap-3 border"
+         x-bind:class="{
+           'bg-rose-50 dark:bg-rose-950 border-rose-200 dark:border-rose-800': issue.severity === 'error',
+           'bg-amber-50 dark:bg-amber-950 border-amber-200 dark:border-amber-800': issue.severity === 'warn',
+           'bg-sky-50 dark:bg-sky-950 border-sky-200 dark:border-sky-800': issue.severity === 'info',
+         }">
+      <div class="flex-1 min-w-0">
+        <p class="font-semibold text-slate-900 dark:text-slate-100" x-text="issue.title"></p>
+        <p class="text-sm text-slate-700 dark:text-slate-300 mt-1" x-text="issue.body"></p>
+        <p class="text-xs text-slate-600 dark:text-slate-400 mt-2" x-text="issue.fix"></p>
+      </div>
+      <div class="flex flex-col gap-2 shrink-0">
+        <button x-show="issue.fix_action" type="button" @click="runFix(issue)"
+                class="inline-flex items-center rounded-md bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 text-xs font-medium"
+                x-text="issue.fix_label"></button>
+        <button type="button" @click="copyDiagnostic(issue)"
+                class="inline-flex items-center rounded-md border border-slate-300 dark:border-slate-600 px-3 py-1.5 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800">
+          <span x-show="copiedCode !== issue.code">{{ t('ERR_COPY_DIAG') }}</span>
+          <span x-show="copiedCode === issue.code">{{ t('ERR_COPIED') }}</span>
+        </button>
+      </div>
+    </div>
+  </template>
 
   {# OTA update banner — shows whenever a newer Pawcorder release is
      out AND the user hasn't dismissed this specific tag. Background
@@ -88,15 +113,76 @@
     </div>
   </div>
 
+  {# PWA install banner — Android Chrome fires beforeinstallprompt; we
+     stash it and show this banner with an inline install button. iOS
+     Safari has no such API, so we instead show the manual share-sheet
+     hint when the page is opened in Safari (not standalone). Both
+     dismissed for 7 days via localStorage when the user opts out. #}
+  <div x-show="pwaInstall.show" x-cloak
+       class="rounded-2xl bg-brand-50 dark:bg-brand-900/30 border border-brand-200 dark:border-brand-800 p-4 mb-6">
+    <div class="flex items-start justify-between gap-3 flex-wrap">
+      <div class="flex-1 min-w-0">
+        <p class="font-semibold text-brand-900 dark:text-brand-100">{{ t('PWA_INSTALL_TITLE') }}</p>
+        <p class="text-sm text-brand-800 dark:text-brand-200 mt-1">{{ t('PWA_INSTALL_BODY') }}</p>
+        <p x-show="pwaInstall.kind === 'ios'" class="text-xs text-brand-700 dark:text-brand-300 mt-2 italic">
+          {{ t('PWA_INSTALL_IOS_HELP') }}
+        </p>
+      </div>
+      <div class="flex items-center gap-2 shrink-0">
+        <button x-show="pwaInstall.kind === 'native'" type="button" @click="triggerInstall()"
+                class="inline-flex items-center rounded-md bg-brand-600 hover:bg-brand-700 text-white px-3 py-2 text-sm font-medium">
+          {{ t('PWA_INSTALL_BUTTON') }}
+        </button>
+        <button type="button" @click="dismissInstall()"
+                class="text-xs text-brand-700 dark:text-brand-300 hover:underline">
+          {{ t('PWA_INSTALL_LATER') }}
+        </button>
+      </div>
+    </div>
+  </div>
+
+  {# Push notification pre-prompt — soft prompt before the native one,
+     because Chrome's native prompt is single-shot ("Block" = forever
+     blocked). Only shown when permission state is 'default' AND the
+     browser supports Web Push (Android Chrome, desktop Chrome/Firefox).
+     iOS Safari without home-screen-install has no Push, so we hide. #}
+  <div x-show="push.show" x-cloak
+       class="rounded-2xl bg-emerald-50 dark:bg-emerald-950 border border-emerald-200 dark:border-emerald-800 p-4 mb-6">
+    <div class="flex items-start justify-between gap-3 flex-wrap">
+      <div class="flex-1 min-w-0">
+        <p class="font-semibold text-emerald-900 dark:text-emerald-100">{{ t('PUSH_PREPROMPT_TITLE') }}</p>
+        <p class="text-sm text-emerald-800 dark:text-emerald-200 mt-1">{{ t('PUSH_PREPROMPT_BODY') }}</p>
+        <p x-show="push.androidHint" class="text-xs text-emerald-700 dark:text-emerald-300 mt-2 italic">
+          {{ t('NOTIF_ANDROID_BODY') }}
+        </p>
+      </div>
+      <div class="flex items-center gap-2 shrink-0">
+        <button type="button" @click="enablePush()" :disabled="push.busy"
+                class="inline-flex items-center rounded-md bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 text-sm font-medium disabled:opacity-60">
+          {{ t('PUSH_PREPROMPT_ENABLE') }}
+        </button>
+        <button type="button" @click="dismissPush()"
+                class="text-xs text-emerald-700 dark:text-emerald-300 hover:underline">
+          {{ t('PUSH_PREPROMPT_LATER') }}
+        </button>
+      </div>
+    </div>
+  </div>
+
   <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+    {# Three-state recording: privacy-paused (grey, calm) wins over
+       running (green) wins over stopped (red). Without the third
+       state, "you're home so we paused" looked identical to "the
+       service crashed" on the dashboard. #}
     <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5">
       <div class="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">{{ t('TILE_FRIGATE') }}</div>
       <div class="mt-2 flex items-baseline gap-2">
-        <span class="text-3xl font-display tracking-tight text-slate-900 dark:text-slate-100" x-text='status.frigate.running ? {{ t('STATE_RUNNING') | tojson }} : {{ t('STATE_STOPPED') | tojson }}'></span>
-        <span class="inline-flex h-2 w-2 rounded-full"
-              x-bind:class="status.frigate.running ? 'bg-emerald-500' : 'bg-rose-500'"></span>
+        <span class="text-3xl font-display tracking-tight text-slate-900 dark:text-slate-100" x-text="recordingStateLabel()"></span>
+        <span class="inline-flex h-2 w-2 rounded-full" x-bind:class="recordingStateDot()"></span>
       </div>
-      <div class="mt-1 text-sm text-slate-500 dark:text-slate-400" x-text="status.frigate.health || status.frigate.status"></div>
+      <div class="mt-1 text-sm text-slate-500 dark:text-slate-400" x-text="recordingStateHint()"></div>
+      <div class="mt-1 text-xs text-slate-400 dark:text-slate-500"
+           x-show="status.last_event_at" x-text="lastEventLabel()"></div>
     </div>
     <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5">
       <div class="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">{{ t('TILE_CAMERAS') }}</div>
@@ -179,31 +265,65 @@
 </div>
 
 <script>
+  // PWA install prompt (Android Chrome) — captured outside Alpine so the
+  // event fires even before the dashboard component initialises.
+  let _deferredInstallPrompt = null;
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    _deferredInstallPrompt = e;
+    window.dispatchEvent(new CustomEvent('pawcorder:installable'));
+  });
+  window.addEventListener('appinstalled', () => {
+    _deferredInstallPrompt = null;
+    window.dispatchEvent(new CustomEvent('pawcorder:installed'));
+  });
+
   function dashboard() {
     return {
-      status: { frigate: { running: false, status: 'unknown' }, camera_count: 0, cameras: [] },
+      status: { frigate: { running: false, status: 'unknown' }, camera_count: 0, cameras: [], privacy_paused: false, last_event_at: 0 },
       petsToday: { total: 0, byPet: [] },
       onboarding: null,
       updateInfo: null,
       updateApplying: false,
+      issues: [],
+      copiedCode: null,
+      pwaInstall: { show: false, kind: null /* 'native' | 'ios' */ },
+      push: { show: false, busy: false, androidHint: false },
       labels: {
         progress: {{ t('ONBOARDING_PROGRESS') | tojson }},  // "{done}/{total} done"
         update_apply:    {{ t('UPDATE_APPLY') | tojson }},
         update_applying: {{ t('UPDATE_APPLYING') | tojson }},
+        state_running:        {{ t('STATE_RUNNING') | tojson }},
+        state_stopped:        {{ t('STATE_STOPPED') | tojson }},
+        state_privacy:        {{ t('STATE_PRIVACY_PAUSED') | tojson }},
+        state_privacy_hint:   {{ t('STATE_PRIVACY_PAUSED_HINT') | tojson }},
+        last_event_label:     {{ t('DASHBOARD_LAST_EVENT_LABEL') | tojson }},
+        last_event_never:     {{ t('DASHBOARD_LAST_EVENT_NEVER') | tojson }},
+        time_just_now:        {{ t('TIME_AGO_JUST_NOW') | tojson }},
+        time_min:             {{ t('TIME_AGO_MIN') | tojson }},
+        time_hours:           {{ t('TIME_AGO_HOURS') | tojson }},
+        time_days:            {{ t('TIME_AGO_DAYS') | tojson }},
       },
       async init() {
         await this.refresh();
         setInterval(() => this.refresh(), 5000);
+        // Diagnostics polled every 30s — these are heavy-ish (disk usage,
+        // log tail) so don't piggyback on the 5s status loop.
+        this.refreshDiagnostics();
+        setInterval(() => this.refreshDiagnostics(), 30000);
         // Update info polled less aggressively — once the first response
         // lands and updates the cache, we trust it for the next ~hour.
         this.refreshUpdate();
         setInterval(() => this.refreshUpdate(), 3600 * 1000);
+        this.checkInstallable();
+        this.checkPushPermission();
+        window.addEventListener('pawcorder:installable', () => this.checkInstallable());
+        window.addEventListener('pawcorder:installed', () => { this.pwaInstall.show = false; });
       },
       async refresh() {
         try { this.status = await api('/api/status'); } catch (e) {}
         try {
           const summary = await api('/api/pets');
-          // Aggregate today's sightings — total + per-pet counts.
           let total = 0;
           const byPet = [];
           for (const p of (summary.pets || [])) {
@@ -214,11 +334,15 @@
           byPet.sort((a, b) => b.count - a.count);
           this.petsToday = { total, byPet };
         } catch (e) {}
-        // Skip the onboarding fetch once we know everything's done — the
-        // 5s status loop runs forever, and there's no need to keep asking.
         if (!this.onboarding || !this.onboarding.all_done) {
           try { this.onboarding = await api('/api/onboarding'); } catch (e) {}
         }
+      },
+      async refreshDiagnostics() {
+        try {
+          const r = await api('/api/diagnostics');
+          this.issues = r.issues || [];
+        } catch (e) { /* network glitch — keep last value */ }
       },
       async refreshUpdate() {
         try { this.updateInfo = await api('/api/system/update-check'); }
@@ -237,11 +361,8 @@
           await api('/api/system/update-apply', { method: 'POST', body: {} });
           toast({{ t('UPDATE_APPLYING_TOAST') | tojson }}, 'success');
         } catch (e) {
-          // Connection-reset is expected once the new container takes
-          // over — treat it as success and let the user reload.
           toast({{ t('UPDATE_APPLYING_TOAST') | tojson }}, 'success');
         }
-        // Wait ~30s, then start polling /api/status until reachable.
         setTimeout(() => location.reload(), 30000);
       },
       async restart() {
@@ -251,6 +372,150 @@
           this.refresh();
         } catch (e) { toast(e.message, 'error'); }
       },
+      // ---- recording state (three states) ----
+      recordingStateLabel() {
+        if (this.status.privacy_paused) return this.labels.state_privacy;
+        return this.status.frigate.running ? this.labels.state_running : this.labels.state_stopped;
+      },
+      recordingStateDot() {
+        if (this.status.privacy_paused) return 'bg-slate-400';
+        return this.status.frigate.running ? 'bg-emerald-500' : 'bg-rose-500';
+      },
+      recordingStateHint() {
+        if (this.status.privacy_paused) return this.labels.state_privacy_hint;
+        return this.status.frigate.health || this.status.frigate.status || '';
+      },
+      lastEventLabel() {
+        if (!this.status.last_event_at) return this.labels.last_event_never;
+        return this.labels.last_event_label + ': ' + this.relativeTime(this.status.last_event_at);
+      },
+      relativeTime(epochSec) {
+        const sec = Math.max(0, Math.floor(Date.now() / 1000 - epochSec));
+        if (sec < 60) return this.labels.time_just_now;
+        if (sec < 3600) return this.labels.time_min.replace('{n}', Math.floor(sec / 60));
+        if (sec < 86400) return this.labels.time_hours.replace('{n}', Math.floor(sec / 3600));
+        return this.labels.time_days.replace('{n}', Math.floor(sec / 86400));
+      },
+      // ---- diagnostics ----
+      async runFix(issue) {
+        if (!issue.fix_action) return;
+        try {
+          await api(issue.fix_action, { method: 'POST', body: {} });
+          toast({{ t('SAVED') | tojson }}, 'success');
+          this.refreshDiagnostics();
+          this.refresh();
+        } catch (e) { toast(e.message || 'failed', 'error'); }
+      },
+      async copyDiagnostic(issue) {
+        // Bundle the issue + a snapshot of useful context so the user
+        // can paste it into LINE / GitHub. Useful for both end-users
+        // (technical helper can read it) and our future support inbox.
+        const blob = {
+          version: 'pawcorder',
+          generated_at: new Date().toISOString(),
+          issue: issue,
+          context: {
+            user_agent: navigator.userAgent,
+            online: navigator.onLine,
+            cameras: this.status.cameras?.length ?? 0,
+            frigate_running: this.status.frigate.running,
+            privacy_paused: this.status.privacy_paused,
+          },
+        };
+        try {
+          await navigator.clipboard.writeText(JSON.stringify(blob, null, 2));
+          this.copiedCode = issue.code;
+          setTimeout(() => { this.copiedCode = null; }, 2500);
+        } catch (e) { toast(e.message || 'copy failed', 'error'); }
+      },
+      // ---- PWA install ----
+      checkInstallable() {
+        // Already installed (running standalone)? hide.
+        const standalone = window.matchMedia('(display-mode: standalone)').matches
+          || window.navigator.standalone === true;
+        if (standalone) { this.pwaInstall.show = false; return; }
+        // Dismissed within 7 days? hide.
+        const dismissed = parseInt(localStorage.getItem('pawcorder_install_dismissed_at') || '0', 10);
+        if (Date.now() - dismissed < 7 * 86400 * 1000) { this.pwaInstall.show = false; return; }
+        // Native install prompt (Android Chrome): preferred.
+        if (_deferredInstallPrompt) {
+          this.pwaInstall = { show: true, kind: 'native' };
+          return;
+        }
+        // iOS Safari: no API, show manual share-sheet hint instead.
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+        if (isIOS) {
+          this.pwaInstall = { show: true, kind: 'ios' };
+        }
+      },
+      async triggerInstall() {
+        if (!_deferredInstallPrompt) { this.pwaInstall.show = false; return; }
+        _deferredInstallPrompt.prompt();
+        try {
+          const { outcome } = await _deferredInstallPrompt.userChoice;
+          if (outcome !== 'accepted') {
+            // User declined — back off for 7 days.
+            localStorage.setItem('pawcorder_install_dismissed_at', String(Date.now()));
+          }
+        } finally {
+          _deferredInstallPrompt = null;
+          this.pwaInstall.show = false;
+        }
+      },
+      dismissInstall() {
+        localStorage.setItem('pawcorder_install_dismissed_at', String(Date.now()));
+        this.pwaInstall.show = false;
+      },
+      // ---- Push notification permission (double opt-in) ----
+      checkPushPermission() {
+        if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) {
+          this.push.show = false;
+          return;
+        }
+        const dismissed = parseInt(localStorage.getItem('pawcorder_push_dismissed_at') || '0', 10);
+        if (Date.now() - dismissed < 7 * 86400 * 1000) { this.push.show = false; return; }
+        if (Notification.permission === 'granted' || Notification.permission === 'denied') {
+          this.push.show = false;
+          return;
+        }
+        this.push.show = true;
+        this.push.androidHint = /Android/.test(navigator.userAgent);
+      },
+      async enablePush() {
+        if (this.push.busy) return;
+        this.push.busy = true;
+        try {
+          // Trigger the native prompt only after the user clicked our
+          // soft prompt — guarantees the native prompt isn't wasted on
+          // a user who'd dismiss it.
+          const perm = await Notification.requestPermission();
+          if (perm !== 'granted') {
+            this.push.show = false;
+            return;
+          }
+          const reg = await navigator.serviceWorker.ready;
+          const { public_key } = await api('/api/webpush/public-key');
+          if (!public_key) { toast({{ t('PUSH_BLOCKED_BODY') | tojson }}, 'error'); return; }
+          const pad = '='.repeat((4 - public_key.length % 4) % 4);
+          const b64 = (public_key + pad).replace(/-/g, '+').replace(/_/g, '/');
+          const raw = atob(b64);
+          const arr = new Uint8Array(raw.length);
+          for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+          const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: arr });
+          await api('/api/webpush/subscribe', { method: 'POST', body: { subscription: sub.toJSON() } });
+          this.push.show = false;
+          toast({{ t('PUSH_OK_LABEL') | tojson }}, 'success');
+        } catch (e) {
+          toast(e.message || 'subscribe failed', 'error');
+        } finally {
+          this.push.busy = false;
+        }
+      },
+      dismissPush() {
+        localStorage.setItem('pawcorder_push_dismissed_at', String(Date.now()));
+        this.push.show = false;
+      },
+      // ---- onboarding ----
       onboardingProgressLabel() {
         if (!this.onboarding) return '';
         return this.labels.progress
@@ -258,8 +523,6 @@
           .replace('{total}', this.onboarding.total);
       },
       onboardingNextStep() {
-        // Server includes pre-translated title/why on each step; the
-        // widget renders the first non-completed-not-skipped one.
         return this.onboarding?.steps?.find(s => s.key === this.onboarding.next_step_key) || null;
       },
       async skipOnboardingStep(step) {

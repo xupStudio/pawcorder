@@ -13,14 +13,106 @@
   <h1 class="text-4xl font-display tracking-display">{{ t('WELCOME_HEADING') }}</h1>
   <p class="mt-3 text-base text-slate-600 dark:text-slate-300 max-w-xl mx-auto italic">{{ t('WELCOME_BODY') }}</p>
 
-  <div class="mt-10 grid grid-cols-1 sm:grid-cols-3 gap-4 text-left">
+  {% if summary %}
+  <ul class="mt-6 inline-flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-sm text-slate-600 dark:text-slate-300">
+    <li class="inline-flex items-center gap-2">
+      <span class="paw-svg text-brand-500 dark:text-brand-400" style="width:16px;height:16px;" aria-hidden></span>
+      {%- if summary.camera_count == 1 -%}
+        {{ t('WELCOME_SUMMARY_CAMERAS_ONE') }}
+      {%- else -%}
+        {{ t('WELCOME_SUMMARY_CAMERAS_MANY').replace('{count}', summary.camera_count|string) }}
+      {%- endif -%}
+    </li>
+    {% if summary.storage_path %}
+    <li class="inline-flex items-center gap-2 max-w-full">
+      <svg class="h-4 w-4 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/>
+      </svg>
+      <span class="truncate">
+        {%- set free_bytes = summary.storage_free_bytes or 0 -%}
+        {%- if free_bytes >= 1024*1024*1024 -%}
+          {%- set free_str = '%.1f GB' % (free_bytes / 1024 / 1024 / 1024) -%}
+        {%- elif free_bytes > 0 -%}
+          {%- set free_str = '%.0f MB' % (free_bytes / 1024 / 1024) -%}
+        {%- else -%}
+          {%- set free_str = '—' -%}
+        {%- endif -%}
+        {{ t('WELCOME_SUMMARY_STORAGE').replace('{path}', summary.storage_path).replace('{free}', free_str) }}
+      </span>
+      <button type="button" onclick="document.getElementById('welcomePathDialog').showModal()"
+              class="text-slate-400 hover:text-brand-500 dark:hover:text-brand-400 shrink-0"
+              aria-label="{{ t('SETUP_STORAGE_VIEW_FULL_PATH') }}" title="{{ t('SETUP_STORAGE_VIEW_FULL_PATH') }}">
+        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M3.5 12s3-7 8.5-7 8.5 7 8.5 7-3 7-8.5 7S3.5 12 3.5 12z M12 9.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5z"/>
+        </svg>
+      </button>
+    </li>
+    {% endif %}
+    {% if summary.tz %}
+    <li class="inline-flex items-center gap-2">
+      <svg class="h-4 w-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+        <circle cx="12" cy="12" r="9" stroke-width="2"/>
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 7v5l3 2"/>
+      </svg>
+      {{ t('WELCOME_SUMMARY_TIMEZONE').replace('{tz}', summary.tz) }}
+    </li>
+    {% endif %}
+  </ul>
+  {% endif %}
+
+  {% if summary and summary.storage_path %}
+  <dialog id="welcomePathDialog"
+          class="rounded-2xl bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-700 p-5 shadow-xl backdrop:bg-slate-900/60 max-w-lg w-[90vw]">
+    <h3 class="text-lg font-display tracking-tight text-slate-900 dark:text-slate-100">{{ t('SETUP_STORAGE_FULL_PATH_HEAD') }}</h3>
+    <pre id="welcomePathDialogPath" class="mt-3 max-h-72 overflow-auto rounded-md bg-slate-100 dark:bg-slate-800 p-3 text-xs font-mono text-slate-800 dark:text-slate-200 whitespace-pre-wrap break-all text-left">{{ summary.storage_path }}</pre>
+    <div class="mt-4 flex items-center justify-end gap-2">
+      <button type="button" id="welcomePathDialogCopy"
+              class="rounded-md border border-slate-300 dark:border-slate-600 px-3 py-1.5 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800">{{ t('SETUP_FIN_COPY') }}</button>
+      <button type="button" onclick="document.getElementById('welcomePathDialog').close()"
+              class="rounded-md bg-brand-500 hover:bg-brand-600 text-white px-3 py-1.5 text-xs font-medium">{{ t('CLOSE') }}</button>
+    </div>
+  </dialog>
+  <script>
+    document.getElementById('welcomePathDialogCopy')?.addEventListener('click', async (e) => {
+      try {
+        await navigator.clipboard.writeText({{ summary.storage_path | tojson }});
+        e.target.textContent = {{ t('SETUP_FIN_COPIED') | tojson }};
+        setTimeout(() => { e.target.textContent = {{ t('SETUP_FIN_COPY') | tojson }}; }, 2500);
+      } catch (_) { /* no-op */ }
+    });
+  </script>
+  {% endif %}
+
+  {# Reordered next-step cards. The user finished setup five seconds ago —
+     by far the most likely thing they want to do is *see the camera*.
+     Pets / notifications / dashboard come right after. Mobile install
+     and family invite are surfaced because they have peak conversion in
+     the post-setup high — neither gets a banner anywhere else, so this
+     is the only good place to ask. #}
+  <div class="mt-10 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 text-left">
+    <a href="/cameras" class="pc-card block rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5 hover:border-brand-400 dark:hover:border-brand-500">
+      <div class="text-3xl">📹</div>
+      <h3 class="mt-2 font-display text-lg tracking-tight">{{ t('WELCOME_NEXT_LIVE') }}</h3>
+      <p class="mt-1 text-xs text-slate-500 dark:text-slate-400 italic">{{ t('WELCOME_NEXT_LIVE_HELP') }}</p>
+    </a>
     <a href="/pets" class="pc-card block rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5 hover:border-brand-400 dark:hover:border-brand-500">
       <div class="text-3xl">🐱</div>
       <h3 class="mt-2 font-display text-lg tracking-tight">{{ t('WELCOME_NEXT_PETS') }}</h3>
       <p class="mt-1 text-xs text-slate-500 dark:text-slate-400 italic">{{ t('PETS_SUBTITLE') }}</p>
     </a>
-    <a href="/notifications" class="pc-card block rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5 hover:border-brand-400 dark:hover:border-brand-500">
+    <a href="/users" class="pc-card block rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5 hover:border-brand-400 dark:hover:border-brand-500">
+      <div class="text-3xl">👨‍👩‍👧</div>
+      <h3 class="mt-2 font-display text-lg tracking-tight">{{ t('WELCOME_NEXT_INVITE') }}</h3>
+      <p class="mt-1 text-xs text-slate-500 dark:text-slate-400 italic">{{ t('WELCOME_NEXT_INVITE_HELP') }}</p>
+    </a>
+    <a href="/mobile" class="pc-card block rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5 hover:border-brand-400 dark:hover:border-brand-500">
       <div class="text-3xl">📱</div>
+      <h3 class="mt-2 font-display text-lg tracking-tight">{{ t('WELCOME_NEXT_INSTALL') }}</h3>
+      <p class="mt-1 text-xs text-slate-500 dark:text-slate-400 italic">{{ t('WELCOME_NEXT_INSTALL_HELP') }}</p>
+    </a>
+    <a href="/notifications" class="pc-card block rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5 hover:border-brand-400 dark:hover:border-brand-500">
+      <div class="text-3xl">🔔</div>
       <h3 class="mt-2 font-display text-lg tracking-tight">{{ t('WELCOME_NEXT_NOTIF') }}</h3>
       <p class="mt-1 text-xs text-slate-500 dark:text-slate-400 italic">{{ t('NOTIF_SUBTITLE') }}</p>
     </a>

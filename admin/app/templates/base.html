@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="en" class="h-full bg-slate-50 dark:bg-slate-950">
+<html lang="{{ lang or 'zh-TW' }}" class="h-full bg-slate-50 dark:bg-slate-950">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>{% block title %}Pawcorder{% endblock %}</title>
   <script>
     // Apply theme BEFORE Tailwind loads so we don't get a light-mode flash.
@@ -70,12 +70,20 @@
   <link rel="preload" as="font" type="font/woff2" crossorigin
         href="/static/fonts/fraunces-roman.woff2" />
   <link rel="manifest" href="/static/manifest.json" />
+  {# SVG first for crisp render on browsers that support it; PNG fallbacks
+     for iOS Safari (which still ignores SVG home-screen icons in 2026)
+     and for Android launchers that prefer raster sources. #}
   <link rel="icon" type="image/svg+xml" href="/static/icon.svg" />
-  <link rel="apple-touch-icon" href="/static/icon.svg" />
-  <meta name="theme-color" content="#f37416" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/static/icon-192.png" />
+  <link rel="icon" type="image/png" sizes="512x512" href="/static/icon-512.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon-180.png" />
+  <meta name="theme-color" content="#f37416" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#0f172a" media="(prefers-color-scheme: dark)" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="Pawcorder" />
+  <meta name="application-name" content="Pawcorder" />
   <style>
     [x-cloak] { display: none !important; }
     /* Tailwind's class-mode dark variant uses a descendant selector

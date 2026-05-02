@@ -1,14 +1,20 @@
-// pawcorder admin service worker.
+// Pawcorder admin service worker.
 // Strategy:
-//   - Pre-cache the icon + manifest at install
+//   - Pre-cache icon set + manifest at install
 //   - Network-first for navigation requests (HTML) so the admin panel
-//     stays responsive when online; when offline we serve a tiny fallback
+//     stays responsive when online; when offline we serve a small
+//     bilingual fallback (zh-TW + en).
 //   - Cache-first for /static/* (Tailwind/Alpine come from CDN, not us)
 //   - Never cache /api/*, /login, or any POST — those need to be live
 
-const CACHE_VERSION = 'pawcorder-v1';
+// Bump on every static-asset change so old clients pick up new files.
+const CACHE_VERSION = 'pawcorder-v2';
 const PRECACHE = [
   '/static/icon.svg',
+  '/static/icon-192.png',
+  '/static/icon-512.png',
+  '/static/icon-maskable-512.png',
+  '/static/apple-touch-icon-180.png',
   '/static/manifest.json',
 ];
 
@@ -26,7 +32,10 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-const OFFLINE_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Offline — pawcorder</title><style>body{margin:0;height:100vh;display:flex;align-items:center;justify-content:center;font-family:system-ui,sans-serif;background:#f8fafc;color:#475569}main{text-align:center;padding:1.5rem}h1{font-size:1.25rem;margin:0 0 .5rem}p{margin:0;color:#94a3b8}</style></head><body><main><h1>pawcorder</h1><p>You're offline. Reconnect and refresh.</p></main></body></html>`;
+// Bilingual offline fallback. 100dvh (dynamic viewport) so it sits flush
+// even when Android Chrome's URL bar is showing — 100vh on Android leaves
+// a scrollable gap because vh is locked to the largest viewport size.
+const OFFLINE_HTML = `<!doctype html><html lang="zh-TW"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>離線 — Pawcorder</title><style>:root{color-scheme:light dark}body{margin:0;height:100dvh;display:flex;align-items:center;justify-content:center;font-family:system-ui,-apple-system,"Noto Sans CJK TC",sans-serif;background:#FBF8F3;color:#1A1410}@media (prefers-color-scheme:dark){body{background:#0f172a;color:#e2e8f0}}main{text-align:center;padding:1.5rem;max-width:24rem}h1{font-size:1.5rem;margin:0 0 .5rem;font-weight:600}p{margin:.25rem 0;color:#6F665C;line-height:1.5}@media (prefers-color-scheme:dark){p{color:#94a3b8}}</style></head><body><main><h1>Pawcorder</h1><p>目前離線中,請重新連線後重新整理頁面。</p><p style="margin-top:1rem;font-size:.85rem">You're offline. Reconnect and refresh.</p></main></body></html>`;
 
 self.addEventListener('fetch', (event) => {
   const req = event.request;
@@ -64,7 +73,7 @@ self.addEventListener('fetch', (event) => {
 // Web Push — show a notification when the server pushes a payload.
 // Payload shape (JSON): { title, body, url }
 self.addEventListener('push', (event) => {
-  let payload = { title: 'pawcorder', body: '', url: '/' };
+  let payload = { title: 'Pawcorder', body: '', url: '/' };
   try {
     if (event.data) {
       payload = Object.assign(payload, event.data.json());
@@ -75,8 +84,8 @@ self.addEventListener('push', (event) => {
   event.waitUntil(
     self.registration.showNotification(payload.title, {
       body: payload.body,
-      icon: '/static/icon.svg',
-      badge: '/static/icon.svg',
+      icon: '/static/icon-192.png',
+      badge: '/static/icon-192.png',
       data: { url: payload.url || '/' },
     })
   );

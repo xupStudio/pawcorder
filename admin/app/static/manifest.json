@@ -1,21 +1,66 @@
 {
-  "name": "pawcorder admin",
-  "short_name": "pawcorder",
+  "id": "/?source=pwa",
+  "name": "Pawcorder",
+  "short_name": "Pawcorder",
   "description": "Self-hosted pet camera NVR — admin panel",
-  "start_url": "/",
+  "start_url": "/?source=pwa",
   "scope": "/",
   "display": "standalone",
-  "orientation": "portrait",
-  "background_color": "#f8fafc",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#FBF8F3",
   "theme_color": "#f37416",
+  "lang": "zh-TW",
+  "dir": "ltr",
+  "categories": ["lifestyle", "utilities", "photo"],
   "icons": [
+    {
+      "src": "/static/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
     {
       "src": "/static/icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "purpose": "any"
     }
   ],
-  "lang": "zh-TW",
-  "categories": ["utilities", "productivity"]
+  "shortcuts": [
+    {
+      "name": "Live cameras",
+      "short_name": "Live",
+      "description": "Open the live camera grid",
+      "url": "/cameras?source=shortcut",
+      "icons": [{ "src": "/static/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Today's events",
+      "short_name": "Events",
+      "description": "Latest pet detections",
+      "url": "/?source=shortcut&filter=today",
+      "icons": [{ "src": "/static/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Notifications",
+      "short_name": "Notify",
+      "description": "Push notification settings",
+      "url": "/notifications?source=shortcut",
+      "icons": [{ "src": "/static/icon-192.png", "sizes": "192x192" }]
+    }
+  ],
+  "prefer_related_applications": false
 }
