@@ -1,0 +1,23 @@
+{
+  "locale": "zh-TW",
+  "steps": [
+    { "note": "Persona: hostile/destructive — wrong password, fuzz inputs, hit dead URLs, expect graceful errors." },
+    { "goto": "/" },
+    { "fill": "css=input[type=password]", "value": "wrong-password-lol" },
+    { "click": "登入", "role": "button" },
+    { "note": "Empty password" },
+    { "fill": "css=input[type=password]", "value": "" },
+    { "click": "登入", "role": "button" },
+    { "note": "SQL-injection-ish input" },
+    { "fill": "css=input[type=password]", "value": "' OR 1=1 --" },
+    { "click": "登入", "role": "button" },
+    { "note": "Real password, then hit weird URLs." },
+    { "fill": "css=input[type=password]", "value": "demo" },
+    { "click": "登入", "role": "button" },
+    { "goto": "/this-page-does-not-exist" },
+    { "goto": "/cameras/99999" },
+    { "goto": "/onboarding" },
+    { "goto": "/invite" },
+    { "goto": "/setup" }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "locale": "zh-TW",
+  "steps": [
+    { "note": "Edge cases — Batch 8" },
+    { "goto": "/login" },
+    { "note": "Login disclosure now mentions /data/config/.reset-password" },
+    { "click": "我就是安裝者" },
+    { "fill": "css=input[type=password]", "value": "demo" },
+    { "click": "登入", "role": "button" },
+    { "note": "Visit /storage and click NAS scan" },
+    { "goto": "/storage" },
+    { "click": "css=summary" },
+    { "click": "css=button:has-text('掃描網路上的 NAS')" },
+    { "wait": 3000 },
+    { "note": "Visit /home-assistant — auto-detect renders Not running message" },
+    { "goto": "/home-assistant" },
+    { "note": "Visit /cloud — OAuth banner hides for unconfigured providers" },
+    { "goto": "/cloud" },
+    { "note": "Hit hostile path: invalid pair token" },
+    { "goto": "/notifications" },
+    { "fill": "css=input[name=password]", "value": "" }
+  ]
+}

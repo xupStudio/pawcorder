@@ -1,0 +1,23 @@
+{
+  "locale": "zh-TW",
+  "steps": [
+    { "note": "Verify Batch 8 — engineer-work elimination" },
+    { "goto": "/" },
+    { "fill": "css=input[type=password]", "value": "demo" },
+    { "click": "登入", "role": "button" },
+    { "note": "1. /storage — NAS scan button + mDNS list" },
+    { "goto": "/storage" },
+    { "click": "STORAGE_NAS_HOW", "role": "summary" },
+    { "note": "2. /system — Ollama auto-detect + uninstall typed-DELETE" },
+    { "goto": "/system" },
+    { "note": "3. /mobile — Tailscale auto-detect / install button" },
+    { "goto": "/mobile" },
+    { "note": "4. /notifications — ntfy + Telegram pairing" },
+    { "goto": "/notifications" },
+    { "click": "產生", "role": "button" },
+    { "note": "5. /cloud — OAuth one-click banners (likely hidden if env not set)" },
+    { "goto": "/cloud" },
+    { "note": "6. /home-assistant — auto-detect + push button (likely shows 'not running' since no HA)" },
+    { "goto": "/home-assistant" }
+  ]
+}

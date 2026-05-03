@@ -1,0 +1,11 @@
+{
+  "name": "pawcorder-usability",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "install-browsers": "npx playwright install chromium"
+  },
+  "devDependencies": {
+    "playwright": "^1.48.0"
+  }
+}

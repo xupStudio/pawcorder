@@ -1,0 +1,16 @@
+{
+  "locale": "en-US",
+  "steps": [
+    { "note": "Persona: Mark, 32, owns 3 prior pet cams. Skim-reads. Wants live view ASAP." },
+    { "goto": "/" },
+    { "fill": "css=input[type=password]", "value": "demo" },
+    { "click": "css=button[type=submit]" },
+    { "note": "Check the new dashboard tiles. Skim for live preview." },
+    { "click": "css=a[href*='watch=kitchen']" },
+    { "note": "Live modal should open for kitchen. Try heatmap toggle." },
+    { "click": "Heatmap overlay (30 days)" },
+    { "note": "Close, try a quick action that should still work." },
+    { "press": "Escape" },
+    { "click": "Set up phone access" }
+  ]
+}

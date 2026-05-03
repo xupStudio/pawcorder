@@ -1,0 +1,12 @@
+{
+  "locale": "zh-TW",
+  "steps": [
+    { "note": "Verify mobile camera cards have thumbnail + Watch button" },
+    { "goto": "/" },
+    { "fill": "css=input[type=password]", "value": "demo" },
+    { "click": "登入", "role": "button" },
+    { "click": "管理攝影機" },
+    { "note": "Click first thumbnail to verify openLive opens modal" },
+    { "click": "css=button:has(img)" }
+  ]
+}

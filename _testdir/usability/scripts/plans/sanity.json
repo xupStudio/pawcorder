@@ -1,0 +1,20 @@
+{
+  "locale": "zh-TW",
+  "steps": [
+    { "note": "Edge cases: login disclosure expanded, setup wizard, /storage page, 500-style error" },
+    { "goto": "/login" },
+    { "click": "我就是安裝者" },
+    { "note": "Disclosure body should now be visible (.env / install.sh)." },
+    { "fill": "css=input[type=password]", "value": "demo" },
+    { "click": "登入", "role": "button" },
+    { "note": "Click camera-tile that's DISABLED (garage) — link should still work but live modal will get 502." },
+    { "click": "css=a[href*='watch=garage']" },
+    { "note": "Dismiss any modal, navigate to /storage to make sure the storage caption link works." },
+    { "press": "Escape" },
+    { "goto": "/storage" },
+    { "note": "Hit a 502-style URL to verify error page renders for non-404." },
+    { "goto": "/cameras/missing-cam-name" },
+    { "note": "Hit /setup wizard." },
+    { "goto": "/setup" }
+  ]
+}

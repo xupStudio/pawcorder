@@ -37,3 +37,14 @@ __pycache__/
 coverage.xml
 htmlcov/
 admin/.venv/
+
+# Claude Code local working files (auto-memory, skills, todos)
+.claude/
+
+# Usability harness runtime artifacts — see _testdir/usability/README.md.
+# We commit the harness (scripts/, plans/, package.json) so personas can be
+# re-run, but ignore node_modules + per-run screenshots + auto-generated
+# *-trace.md so the repo doesn't grow on every run.
+_testdir/usability/node_modules/
+_testdir/usability/screenshots/
+_testdir/usability/reports/*-trace.md

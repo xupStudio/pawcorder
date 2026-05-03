@@ -1,0 +1,12 @@
+{
+  "locale": "zh-TW",
+  "steps": [
+    { "note": "Persona: 阿嬤, 65歲, 不太懂電腦. 紙條上密碼 demo. 想看狗狗 Coco." },
+    { "goto": "/" },
+    { "fill": "css=input[type=password]", "value": "demo" },
+    { "click": "登入", "role": "button" },
+    { "note": "看到攝影機縮圖,直接點 living_room — 期望直接看到畫面." },
+    { "click": "css=a[href*='watch=living_room']" },
+    { "note": "應該已開啟 living_room 的即時觀看 modal." }
+  ]
+}

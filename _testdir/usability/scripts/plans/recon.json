@@ -1,0 +1,7 @@
+{
+  "locale": "zh-TW",
+  "steps": [
+    { "note": "First contact: just open the site like a brand-new user." },
+    { "goto": "/" }
+  ]
+}
