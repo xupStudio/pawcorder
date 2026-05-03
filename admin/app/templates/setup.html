@@ -30,6 +30,11 @@
       <li>{{ t('SETUP_WELCOME_BULLET_5') }}</li>
     </ul>
     <p class="mt-4 text-sm text-slate-500 dark:text-slate-400">{{ t('SETUP_WELCOME_NOTE') }}</p>
+
+    {% if not request.cookies.get('pawcorder_lang') and lang != 'zh-TW' %}
+    <p class="mt-3 text-xs text-slate-500 dark:text-slate-400 italic">{{ t('SETUP_LANG_AUTO_BANNER') }}</p>
+    {% endif %}
+
     <div class="mt-6 flex justify-end">
       <button @click="next()" class="rounded-md bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 text-sm font-medium">{{ t('SETUP_GET_STARTED') }}</button>
     </div>
@@ -65,8 +70,51 @@
       </ul>
     </div>
 
-    <!-- Auto-detect (primary path) -->
-    <div class="rounded-xl border border-brand-200 dark:border-brand-700 bg-gradient-to-br from-brand-50 to-amber-50 dark:from-slate-800 dark:to-slate-800 p-5">
+    <!-- Connection-mode picker — splits the wired / already-on-Wi-Fi path
+         (subnet scan) from the only-just-plugged-in-power path (which
+         needs the wireless onboarding flow at /onboarding/wireless).
+         A new user with a still-unconfigured wireless camera was
+         previously dead-ended at "scan found nothing" with no hint that
+         a separate flow existed for them. -->
+    <div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 p-4">
+      <p class="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">{{ t('SETUP_CAM_CONN_HEAD') }}</p>
+      <div class="grid sm:grid-cols-2 gap-2">
+        <label class="cursor-pointer">
+          <input type="radio" name="cameraConnMode" value="wired_or_wifi" x-model="cameraConnMode" class="peer sr-only">
+          <div class="rounded-lg border-2 border-slate-200 dark:border-slate-700 peer-checked:border-brand-500 peer-checked:bg-brand-50 dark:peer-checked:bg-slate-800 p-3 text-sm">
+            <div class="font-medium text-slate-900 dark:text-slate-100">{{ t('SETUP_CAM_CONN_WIRED_TITLE') }}</div>
+            <div class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('SETUP_CAM_CONN_WIRED_DESC') }}</div>
+          </div>
+        </label>
+        <label class="cursor-pointer">
+          <input type="radio" name="cameraConnMode" value="powered_only" x-model="cameraConnMode" class="peer sr-only">
+          <div class="rounded-lg border-2 border-slate-200 dark:border-slate-700 peer-checked:border-brand-500 peer-checked:bg-brand-50 dark:peer-checked:bg-slate-800 p-3 text-sm">
+            <div class="font-medium text-slate-900 dark:text-slate-100">{{ t('SETUP_CAM_CONN_POWER_TITLE') }}</div>
+            <div class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('SETUP_CAM_CONN_POWER_DESC') }}</div>
+          </div>
+        </label>
+      </div>
+    </div>
+
+    <!-- Powered-only branch: route to wireless onboarding -->
+    <div x-show="cameraConnMode === 'powered_only'"
+         class="rounded-xl border border-brand-200 dark:border-brand-700 bg-gradient-to-br from-brand-50 to-amber-50 dark:from-slate-800 dark:to-slate-800 p-5">
+      <div class="flex items-start gap-3">
+        <span class="paw-svg text-brand-600 dark:text-brand-400 shrink-0 mt-0.5" style="width:22px;height:22px;" aria-hidden></span>
+        <div class="flex-1">
+          <h3 class="font-display text-lg tracking-tight text-slate-900 dark:text-slate-100">{{ t('SETUP_CAM_WIRELESS_TITLE') }}</h3>
+          <p class="mt-1 text-sm text-slate-700 dark:text-slate-300">{{ t('SETUP_CAM_WIRELESS_DESC') }}</p>
+        </div>
+      </div>
+      <a href="/onboarding/wireless?from=setup"
+         class="mt-4 inline-flex items-center gap-2 rounded-full bg-brand-500 hover:bg-brand-600 text-white px-5 py-2.5 text-sm font-medium shadow-sm">
+        {{ t('SETUP_CAM_WIRELESS_OPEN') }}
+      </a>
+      <p class="mt-3 text-xs text-slate-500 dark:text-slate-400">{{ t('SETUP_CAM_WIRELESS_RETURN') }}</p>
+    </div>
+
+    <!-- Auto-detect (primary path) — wired or already-on-Wi-Fi cameras -->
+    <div x-show="cameraConnMode === 'wired_or_wifi'" class="rounded-xl border border-brand-200 dark:border-brand-700 bg-gradient-to-br from-brand-50 to-amber-50 dark:from-slate-800 dark:to-slate-800 p-5">
       <div class="flex items-start gap-3">
         <span class="paw-svg text-brand-600 dark:text-brand-400 shrink-0 mt-0.5" style="width:22px;height:22px;" aria-hidden></span>
         <div class="flex-1">
@@ -88,22 +136,37 @@
             <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-opacity="0.25" stroke-width="4"></circle>
             <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="4" stroke-linecap="round"></path>
           </svg>
-          <span x-text='scanning ? {{ t("SCANNING") | tojson }} : {{ t("SCAN_PRIMARY_BUTTON") | tojson }}'></span>
+          <span x-text='scanning ? (probing ? {{ t("SCAN_PROBING") | tojson }} : {{ t("SCANNING") | tojson }}) : {{ t("SCAN_PRIMARY_BUTTON") | tojson }}'></span>
         </button>
       </div>
 
       <!-- Candidate list — appears after a successful scan -->
       <div x-show="candidates.length > 0" class="mt-4">
         <p class="text-xs font-medium uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-2">{{ t('SCAN_FOUND_LABEL') }}</p>
-        <ul class="grid grid-cols-2 gap-2">
+        <ul class="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <template x-for="c in candidates" :key="c.ip">
             <li>
-              <button @click="form.ip = c.ip; document.querySelector('#cam-name')?.focus()"
-                      class="w-full text-left text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 hover:border-brand-500 hover:bg-brand-50 dark:hover:bg-slate-800 px-3 py-2 font-mono transition-colors"
-                      x-text="c.ip"></button>
+              <button @click="useCandidate(c)"
+                      class="w-full text-left rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 hover:border-brand-500 hover:bg-brand-50 dark:hover:bg-slate-800 px-3 py-2 transition-colors">
+                <div class="flex items-center justify-between gap-2">
+                  <span class="font-mono text-sm" x-text="c.ip"></span>
+                  <span x-show="c.brand_label"
+                        class="inline-flex rounded-full bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 text-xs font-medium"
+                        x-text="c.brand_label"></span>
+                </div>
+                <div x-show="c.subtitle" class="mt-0.5 text-xs text-slate-500 dark:text-slate-400" x-text="c.subtitle"></div>
+                <div x-show="c.warn" class="mt-1 text-xs text-amber-700 dark:text-amber-300" x-text="c.warn"></div>
+              </button>
             </li>
           </template>
         </ul>
+      </div>
+
+      <!-- WSL2 / no-hits hint -->
+      <div x-show="scanQuirks.length > 0" class="mt-4 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/40 p-3 text-sm">
+        <template x-for="q in scanQuirks" :key="q.kind">
+          <p class="text-amber-800 dark:text-amber-200" x-text="quirkLabels[q.message_key] || q.message_key"></p>
+        </template>
       </div>
 
       <!-- Advanced: manual CIDR override -->
@@ -124,8 +187,10 @@
       </div>
     </div>
 
-    <!-- Manual entry form (fallback) -->
-    <div>
+    <!-- Manual entry form (fallback) — wired / already-on-Wi-Fi only.
+         If the user picked "only powered" we route them to /onboarding/wireless
+         instead of asking them to type the IP of a camera that has no IP yet. -->
+    <div x-show="cameraConnMode === 'wired_or_wifi'">
       <p class="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">{{ t('SCAN_MANUAL_FORM_LABEL') }}</p>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
       <div>
@@ -135,7 +200,7 @@
       </div>
       <div>
         <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('CAM_IP') }}</label>
-        <input type="text" x-model="form.ip" placeholder="192.168.1.100"
+        <input type="text" x-model="form.ip" @blur="probeIfTyped()" placeholder="192.168.1.100"
                class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm font-mono" />
       </div>
       <div>
@@ -160,14 +225,14 @@
       </div>
     </div>
 
-    <div class="flex items-center gap-3 flex-wrap">
+    <div class="mt-5 pt-4 border-t border-slate-200 dark:border-slate-700 flex items-center gap-3 flex-wrap">
       <button @click="testCurrent()" :disabled="testing || !form.ip || !form.password"
-              class="rounded-md bg-slate-900 text-white px-3 py-2 text-sm hover:bg-slate-800 disabled:opacity-50"
+              class="rounded-md bg-slate-900 text-white px-4 py-2 text-sm font-medium hover:bg-slate-800 disabled:opacity-50"
               x-text='testing ? {{ t('TESTING') | tojson }} : {{ t('TEST_CONNECTION') | tojson }}'></button>
       <button @click="addCurrent()" :disabled="adding || !canAdd()"
-              class="rounded-md bg-brand-500 hover:bg-brand-600 text-white px-3 py-2 text-sm hover:opacity-90 disabled:opacity-50"
+              class="rounded-md bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 text-sm font-medium disabled:opacity-50"
               x-text='adding ? {{ t('SAVING') | tojson }} : {{ t('SETUP_CAM_ADD_TO_LIST') | tojson }}'></button>
-      <div x-show="testResult" class="text-sm flex items-center gap-2 flex-wrap">
+      <div x-show="testResult" class="text-sm flex items-center gap-2 flex-wrap ml-auto">
         {# Manual sentinel — see cameras.html for the matching block. #}
         <span x-show="testResult?.reolink_login?.manual"
               class="inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-900 px-2 py-0.5 text-xs font-medium text-amber-800 dark:text-amber-200">
@@ -204,16 +269,71 @@
       <h2 class="text-2xl font-display tracking-display">{{ t('SETUP_STORAGE_HEAD') }}</h2>
       <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{ t('SETUP_STORAGE_HELP') }}</p>
     </div>
+
     <div>
+      <p class="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">{{ t('SETUP_STORAGE_PICK_HEAD') }}</p>
+      <p class="text-xs text-slate-500 dark:text-slate-400 mb-3">{{ t('SETUP_STORAGE_PICK_HELP') }}</p>
+      <ul class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <template x-for="c in storageCandidates" :key="c.path">
+          <li>
+            <div role="button" tabindex="0"
+                 @click="storage_path = c.path; storageManual = false"
+                 @keydown.enter="storage_path = c.path; storageManual = false"
+                 @keydown.space.prevent="storage_path = c.path; storageManual = false"
+                 class="w-full text-left rounded-xl border-2 px-4 py-3 transition-colors cursor-pointer outline-none focus:ring-2 focus:ring-brand-500"
+                 x-bind:class="storage_path === c.path
+                   ? 'border-brand-500 bg-brand-50 dark:bg-brand-900/30 dark:border-brand-400'
+                   : 'border-slate-300 dark:border-slate-600 hover:border-brand-400 dark:hover:border-brand-500 bg-white dark:bg-slate-900'">
+              <div class="flex items-center justify-between gap-2 min-w-0">
+                <span class="font-mono text-sm font-medium truncate min-w-0" x-text="c.path"></span>
+                <div class="flex items-center gap-2 shrink-0">
+                  <span x-show="c.badge"
+                        class="inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium"
+                        x-bind:class="badgeClass(c.badge)"
+                        x-text="c.badge"></span>
+                  <button type="button" @click.stop="pathDialog = c.path"
+                          @keydown.enter.stop @keydown.space.stop
+                          class="text-slate-400 hover:text-brand-500 dark:hover:text-brand-400"
+                          :aria-label="labels.view_full_path" :title="labels.view_full_path">
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M3.5 12s3-7 8.5-7 8.5 7 8.5 7-3 7-8.5 7S3.5 12 3.5 12z M12 9.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5z"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              <div class="mt-1 text-xs" x-bind:class="c.exists ? 'text-slate-500 dark:text-slate-400' : 'text-amber-600 dark:text-amber-400'">
+                <span x-show="c.exists" x-text="c.detail"></span>
+                <span x-show="!c.exists">{{ t('SETUP_STORAGE_NOT_EXIST') }}</span>
+              </div>
+            </div>
+          </li>
+        </template>
+      </ul>
+      <div class="mt-3 flex items-center gap-3 flex-wrap text-xs">
+        <button type="button" @click="storageManual = !storageManual"
+                class="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100">
+          {{ t('SETUP_STORAGE_MANUAL_TOGGLE') }}
+        </button>
+        <button type="button" @click="loadStorageCandidates()" :disabled="storageLoading"
+                class="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 disabled:opacity-50">
+          {{ t('SETUP_STORAGE_REFRESH') }}
+        </button>
+        <a href="/storage" class="text-brand-600 dark:text-brand-400 hover:underline ml-auto">{{ t('SETUP_STORAGE_NAS_LINK') }}</a>
+      </div>
+    </div>
+
+    <div x-show="storageManual" x-cloak>
       <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('SETUP_STORAGE_LABEL') }}</label>
       <input type="text" x-model="storage_path" placeholder="/mnt/pawcorder"
              class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm font-mono" />
       <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('SETUP_STORAGE_NOTE') }}</p>
     </div>
+
     <div class="flex justify-between pt-2">
       <button @click="prev()" class="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200">{{ t('BACK') }}</button>
       <button @click="saveAndNext('storage', { storage_path: storage_path })"
-              :disabled="!storage_path"
+              :disabled="!storage_path || !storage_path.startsWith('/')"
               class="rounded-md bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 text-sm font-medium disabled:opacity-50">
         {{ t('CONTINUE') }}
       </button>
@@ -226,21 +346,36 @@
       <h2 class="text-2xl font-display tracking-display">{{ t('SETUP_DET_HEAD') }}</h2>
       <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{ t('SETUP_DET_HELP') }}</p>
     </div>
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-      <div>
-        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('DET_MIN_LABEL') }}</label>
-        <input type="number" min="0.3" max="0.95" step="0.05" x-model="pet_min_score"
-               class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm" />
+    <div>
+      <p class="text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('SETUP_DET_LEVEL_LABEL') }}</p>
+      <div class="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <template x-for="opt in detectionLevels" :key="opt.id">
+          <button type="button" @click="setDetectionLevel(opt.id)"
+                  class="text-left rounded-xl border-2 px-4 py-3 transition-colors"
+                  x-bind:class="detectionLevel === opt.id
+                    ? 'border-brand-500 bg-brand-50 dark:bg-brand-900/30 dark:border-brand-400'
+                    : 'border-slate-300 dark:border-slate-600 hover:border-brand-400 dark:hover:border-brand-500 bg-white dark:bg-slate-900'">
+            <div class="flex items-center gap-2">
+              <span class="font-medium text-slate-900 dark:text-slate-100" x-text="opt.name"></span>
+              <span x-show="opt.id === 'balanced'"
+                    class="inline-flex rounded-full bg-brand-500 text-white px-2 py-0.5 text-[11px] font-medium">{{ t('SETUP_DET_LEVEL_RECOMMENDED') }}</span>
+            </div>
+            <p class="mt-1 text-xs text-slate-500 dark:text-slate-400" x-text="opt.desc"></p>
+          </button>
+        </template>
       </div>
-      <div>
-        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('DET_EVENT_LABEL') }}</label>
-        <input type="number" min="0.4" max="0.99" step="0.05" x-model="pet_threshold"
-               class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm" />
-      </div>
+      <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">{{ t('SETUP_DET_LEVEL_HINT') }}</p>
     </div>
+
+    <div class="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 p-3">
+      <label class="block text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">{{ t('SETUP_DET_TZ_LABEL') }}</label>
+      <p class="mt-1 text-sm font-mono text-slate-700 dark:text-slate-200" x-text="detected_tz || '—'"></p>
+      <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">{{ t('SETUP_DET_TZ_HELP') }}</p>
+    </div>
+
     <div class="flex justify-between pt-2">
       <button @click="prev()" class="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200">{{ t('BACK') }}</button>
-      <button @click="saveAndNext('detection', { pet_min_score: pet_min_score, pet_threshold: pet_threshold })"
+      <button @click="saveDetectionAndNext()"
               class="rounded-md bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 text-sm font-medium">{{ t('CONTINUE') }}</button>
     </div>
   </div>
@@ -254,16 +389,40 @@
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
       <div>
         <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('SYS_NEW_PASSWORD') }}</label>
-        <input type="password" x-model="newPassword" minlength="8"
-               class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm" />
+        <div class="mt-1 flex gap-2">
+          <input :type="showPassword ? 'text' : 'password'" x-model="newPassword" minlength="8"
+                 class="flex-1 rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm" />
+          <button type="button" @click="showPassword = !showPassword"
+                  class="rounded-md border border-slate-300 dark:border-slate-600 px-3 text-xs hover:bg-slate-50 dark:hover:bg-slate-800"
+                  x-text='showPassword ? {{ t("SETUP_FIN_HIDE") | tojson }} : {{ t("SETUP_FIN_REVEAL") | tojson }}'></button>
+        </div>
       </div>
       <div>
         <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('SYS_CONFIRM') }}</label>
-        <input type="password" x-model="newPasswordConfirm" minlength="8"
+        <input :type="showPassword ? 'text' : 'password'" x-model="newPasswordConfirm" minlength="8"
                class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm" />
       </div>
     </div>
-    <p x-show="newPassword && newPassword !== newPasswordConfirm" class="text-sm text-rose-600 dark:text-rose-400">{{ t('SETUP_FIN_MISMATCH') }}</p>
+
+    <div class="flex items-center gap-3 flex-wrap text-xs">
+      <button type="button" @click="generatePassword()"
+              class="rounded-md border border-brand-300 dark:border-brand-700 bg-brand-50 dark:bg-brand-900/30 px-3 py-1.5 text-brand-700 dark:text-brand-300 hover:bg-brand-100 dark:hover:bg-brand-900/50">
+        {{ t('SETUP_FIN_GENERATE') }}
+      </button>
+      <button type="button" x-show="newPassword" @click="copyPassword()"
+              class="rounded-md border border-slate-300 dark:border-slate-600 px-3 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-800"
+              x-text='copied ? {{ t("SETUP_FIN_COPIED") | tojson }} : {{ t("SETUP_FIN_COPY") | tojson }}'></button>
+      <span x-show="newPassword" class="ml-auto inline-flex items-center gap-2">
+        <span class="text-slate-500 dark:text-slate-400">{{ t('SETUP_FIN_STRENGTH_LABEL') }}:</span>
+        <span class="inline-flex h-1.5 w-24 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+          <span class="h-full transition-all" x-bind:style="`width:${passwordStrength().pct}%`"
+                x-bind:class="passwordStrength().bar"></span>
+        </span>
+        <span class="font-medium" x-bind:class="passwordStrength().text" x-text="passwordStrength().label"></span>
+      </span>
+    </div>
+
+    <p x-show="newPassword && newPasswordConfirm && newPassword !== newPasswordConfirm" class="text-sm text-rose-600 dark:text-rose-400">{{ t('SETUP_FIN_MISMATCH') }}</p>
 
     <div class="rounded-lg bg-emerald-50 dark:bg-emerald-900 border border-emerald-200 dark:border-emerald-800 p-4 text-sm text-emerald-800 dark:text-emerald-200">
       <p class="font-medium">{{ t('SETUP_FIN_READY_HEAD') }}</p>
@@ -276,6 +435,23 @@
               :disabled="finishing || (newPassword && newPassword !== newPasswordConfirm) || (newPassword && newPassword.length < 8)"
               class="rounded-md bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 text-sm font-medium disabled:opacity-50"
               x-text='finishing ? {{ t('SETUP_FIN_STARTING') | tojson }} : {{ t('SETUP_FIN_BUTTON') | tojson }}'></button>
+    </div>
+  </div>
+
+  <!-- Full-path dialog (storage step). Plain Alpine modal — no portal. -->
+  <div x-show="pathDialog" x-cloak @keydown.escape.window="pathDialog = null"
+       class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4"
+       @click.self="pathDialog = null">
+    <div class="w-full max-w-lg rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5 shadow-xl">
+      <h3 class="text-lg font-display tracking-tight text-slate-900 dark:text-slate-100">{{ t('SETUP_STORAGE_FULL_PATH_HEAD') }}</h3>
+      <pre class="mt-3 max-h-72 overflow-auto rounded-md bg-slate-100 dark:bg-slate-800 p-3 text-xs font-mono text-slate-800 dark:text-slate-200 whitespace-pre-wrap break-all" x-text="pathDialog"></pre>
+      <div class="mt-4 flex items-center justify-end gap-2">
+        <button type="button" @click="copyPathDialog()"
+                class="rounded-md border border-slate-300 dark:border-slate-600 px-3 py-1.5 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
+                x-text='pathCopied ? {{ t("SETUP_FIN_COPIED") | tojson }} : {{ t("SETUP_FIN_COPY") | tojson }}'></button>
+        <button type="button" @click="pathDialog = null"
+                class="rounded-md bg-brand-500 hover:bg-brand-600 text-white px-3 py-1.5 text-xs font-medium">{{ t('CLOSE') }}</button>
+      </div>
     </div>
   </div>
 </div>
@@ -291,9 +467,13 @@
         {{ t('STEP_DETECTION') | tojson }},
         {{ t('STEP_FINISH') | tojson }},
       ],
-      cidr: '192.168.1.0/24',
-      candidates: [],
+      // Empty by default → backend auto-detects this server's LAN /24.
+      // Power users can override via the "advanced" toggle in step 2.
+      cidr: '',
+      candidates: [],     // enriched: {ip, brand_label, subtitle, warn, probe}
+      scanQuirks: [],     // [{kind, message_key, detail}]
       scanning: false,
+      probing: false,
       testing: false,
       adding: false,
       testResult: null,
@@ -301,9 +481,29 @@
       addedCameras: [],
       newPassword: '',
       newPasswordConfirm: '',
+      showPassword: false,
+      copied: false,
       storage_path: {{ config.storage_path | tojson }},
+      storageCandidates: [],
+      storageManual: false,
+      storageLoading: false,
+      pathDialog: null,
+      pathCopied: false,
       pet_min_score: {{ config.pet_min_score | tojson }},
       pet_threshold: {{ config.pet_threshold | tojson }},
+      detectionLevel: 'balanced',
+      detectionLevels: [
+        { id: 'loose',    name: {{ t('SETUP_DET_LEVEL_LOOSE_NAME')    | tojson }}, desc: {{ t('SETUP_DET_LEVEL_LOOSE_DESC')    | tojson }}, min: 0.55, ev: 0.60 },
+        { id: 'balanced', name: {{ t('SETUP_DET_LEVEL_BALANCED_NAME') | tojson }}, desc: {{ t('SETUP_DET_LEVEL_BALANCED_DESC') | tojson }}, min: 0.65, ev: 0.70 },
+        { id: 'strict',   name: {{ t('SETUP_DET_LEVEL_STRICT_NAME')   | tojson }}, desc: {{ t('SETUP_DET_LEVEL_STRICT_DESC')   | tojson }}, min: 0.75, ev: 0.85 },
+      ],
+      detected_tz: '',
+      // Step 2 connection-mode picker: 'wired_or_wifi' shows the existing
+      // subnet-scan + manual entry path; 'powered_only' routes the user
+      // out to /onboarding/wireless. Defaults to wired/Wi-Fi because
+      // that's the supported-from-day-one path; people who landed here
+      // with a brand-new wireless camera can still flip the choice.
+      cameraConnMode: 'wired_or_wifi',
       form: emptyCameraForm(),
       labels: {
         cam_login_fail:    {{ t('SETUP_CAM_LOGIN_FAIL') | tojson }},
@@ -317,7 +517,22 @@
         cam_conn_failed:   {{ t('TOAST_CAM_CONN_FAILED') | tojson }},
         cam_added:         {{ t('TOAST_CAM_ADDED') | tojson }},
         cam_removed:       {{ t('TOAST_CAM_REMOVED') | tojson }},
+        brand_detected:    {{ t('SCAN_BRAND_DETECTED') | tojson }},
+        default_creds:     {{ t('SCAN_DEFAULT_CREDS_HIT') | tojson }},
+        badge_recommended: {{ t('SETUP_STORAGE_BADGE_RECOMMENDED') | tojson }},
+        badge_current:     {{ t('SETUP_STORAGE_BADGE_CURRENT') | tojson }},
+        badge_usb:         {{ t('SETUP_STORAGE_BADGE_USB') | tojson }},
+        badge_nas:         {{ t('SETUP_STORAGE_BADGE_NAS') | tojson }},
+        badge_local:       {{ t('SETUP_STORAGE_BADGE_LOCAL') | tojson }},
+        free_label:        {{ t('SETUP_STORAGE_FREE') | tojson }},
+        of_label:          {{ t('SETUP_STORAGE_OF') | tojson }},
+        view_full_path:    {{ t('SETUP_STORAGE_VIEW_FULL_PATH') | tojson }},
       },
+      quirkLabels: {
+        SCAN_NO_HITS: {{ t('SCAN_NO_HITS') | tojson }},
+        SCAN_NO_HITS_WSL_HINT: {{ t('SCAN_NO_HITS_WSL_HINT') | tojson }},
+      },
+      _lastProbedIp: '',
       async init() {
         // Pick up where the user left off if some sections are already configured.
         try {
@@ -326,9 +541,34 @@
         } catch (e) {}
         if (this.addedCameras.length > 0 && this.storage_path) this.step = 3;
         else if (this.addedCameras.length > 0) this.step = 2;
+
+        // Fire-and-forget timezone detection — sent to backend on
+        // detection-step submit so the wizard never blocks on it.
+        try {
+          this.detected_tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+        } catch (_) { this.detected_tz = ''; }
+
+        // Lazy-load storage candidates the first time the user lands
+        // on step 3, watched via $watch below.
+        this.$watch('step', (s) => { if (s === 2 && this.storageCandidates.length === 0) this.loadStorageCandidates(); });
+        if (this.step === 2) this.loadStorageCandidates();
+
+        // Map persisted thresholds back to the closest preset so re-entering
+        // the wizard highlights the right card.
+        const min = Number(this.pet_min_score);
+        if (min <= 0.6) this.detectionLevel = 'loose';
+        else if (min >= 0.72) this.detectionLevel = 'strict';
+        else this.detectionLevel = 'balanced';
       },
       next() { if (this.step < this.steps.length - 1) this.step++; },
       prev() { if (this.step > 0) this.step--; },
+      setDetectionLevel(id) {
+        const opt = this.detectionLevels.find(o => o.id === id);
+        if (!opt) return;
+        this.detectionLevel = id;
+        this.pet_min_score = opt.min;
+        this.pet_threshold = opt.ev;
+      },
       canAdd() {
         return this.form.name && this.form.ip && this.form.password
           && /^[a-z][a-z0-9_]{0,30}$/.test(this.form.name);
@@ -345,10 +585,6 @@
         if (r.rtsp_sub && !r.rtsp_sub.ok) return this.labels.cam_sub_fail + ': ' + r.rtsp_sub.error;
         return this.labels.cam_test_fail;
       },
-      // Surface a translated message — backend HTTPException details are
-      // English-only, so prefer the page-level fallback and keep raw detail
-      // as supplementary context only when it's likely meaningful (e.g. a
-      // user-input validation message rather than "Internal Server Error").
       _toastError(e, fallback) {
         const raw = e && e.message ? String(e.message) : '';
         const looksGeneric = !raw
@@ -359,12 +595,61 @@
       },
       async scan() {
         this.scanning = true;
+        this.probing = false;
+        this.scanQuirks = [];
         try {
           const data = await api('/api/scan', { method: 'POST', body: { cidr: this.cidr } });
-          this.candidates = data.candidates || [];
-          if (this.candidates.length === 0) toast(this.labels.scan_no_hits, 'info');
+          // Backend probed each candidate inline — splice probe data
+          // into the candidate row so the card can show brand + name.
+          const probesByIp = {};
+          for (const p of (data.probes || [])) probesByIp[p.ip] = p;
+          this.candidates = (data.candidates || []).map(c => this._enrichCandidate(c, probesByIp[c.ip]));
+          this.scanQuirks = data.quirks || [];
+          if (this.candidates.length === 0 && this.scanQuirks.length === 0) {
+            // Generic 'no hits' nudge — quirk hint takes precedence
+            // when present (WSL2 case).
+            this.scanQuirks = [{ kind: 'no_hits', message_key: 'SCAN_NO_HITS' }];
+          }
         } catch (e) { this._toastError(e, this.labels.scan_failed); }
-        finally { this.scanning = false; }
+        finally { this.scanning = false; this.probing = false; }
+      },
+      _enrichCandidate(c, probe) {
+        const out = { ip: c.ip, probe: probe || null, brand_label: '', subtitle: '', warn: '' };
+        if (probe && probe.manufacturer) {
+          out.brand_label = `${this.labels.brand_detected}: ${probe.manufacturer}`;
+          out.subtitle = probe.model || '';
+        }
+        if (probe && probe.auth_succeeded) {
+          out.warn = this.labels.default_creds;
+        }
+        return out;
+      },
+      useCandidate(c) {
+        // Click → pre-fill the manual form with everything we know.
+        const p = c.probe || {};
+        this.form.ip = c.ip;
+        if (p.suggested_name) this.form.name = p.suggested_name;
+        if (p.suggested_user) this.form.user = p.suggested_user;
+        if (p.onvif_port) this.form.onvif_port = p.onvif_port;
+        if (p.rtsp_port) this.form.rtsp_port = p.rtsp_port;
+        // Focus the next thing the user has to type — usually the password.
+        const target = this.form.password ? '#cam-name' : 'input[type=password]';
+        setTimeout(() => document.querySelector(target)?.focus(), 50);
+      },
+      async probeIfTyped() {
+        // Background probe on blur — pastes / re-tabbing into the same
+        // field shouldn't repeat the round-trip. Silent failure.
+        const ip = (this.form.ip || '').trim();
+        if (!/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(ip)) return;
+        if (ip === this._lastProbedIp) return;
+        this._lastProbedIp = ip;
+        try {
+          const data = await api('/api/setup/probe-camera', { method: 'POST', body: { ip } });
+          const p = data.probe || {};
+          if (p.suggested_name && !this.form.name) this.form.name = p.suggested_name;
+          if (p.suggested_user && (!this.form.user || this.form.user === 'admin')) this.form.user = p.suggested_user;
+          if (p.onvif_port) this.form.onvif_port = p.onvif_port;
+        } catch (_) { /* silent */ }
       },
       async testCurrent() {
         this.testing = true; this.testResult = null;
@@ -403,10 +688,102 @@
           this.next();
         } catch (e) { this._toastError(e, this.labels.generic_error); }
       },
+      async saveDetectionAndNext() {
+        // Persist the browser-detected tz alongside detection thresholds
+        // so the user lands on step 5 with the correct local time.
+        const data = { pet_min_score: this.pet_min_score, pet_threshold: this.pet_threshold };
+        try {
+          await api('/api/config/save', { method: 'POST', body: { section: 'detection', data } });
+          if (this.detected_tz) {
+            try { await api('/api/setup/timezone', { method: 'POST', body: { tz: this.detected_tz } }); }
+            catch (_) { /* tz save is best-effort */ }
+          }
+          this.next();
+        } catch (e) { this._toastError(e, this.labels.generic_error); }
+      },
+      async loadStorageCandidates() {
+        this.storageLoading = true;
+        try {
+          const data = await api('/api/setup/storage-candidates');
+          this.storageCandidates = (data.candidates || []).map(c => this._buildStorageRow(c));
+        } catch (_) { this.storageCandidates = []; }
+        finally { this.storageLoading = false; }
+      },
+      _buildStorageRow(c) {
+        const badgeMap = {
+          'Recommended': this.labels.badge_recommended,
+          'Current':     this.labels.badge_current,
+          'USB':         this.labels.badge_usb,
+          'NAS':         this.labels.badge_nas,
+          'Local disk':  this.labels.badge_local,
+        };
+        const badge = badgeMap[c.label] || c.label || '';
+        const detail = c.exists && c.total_bytes
+          ? `${humanBytes(c.free_bytes)} ${this.labels.free_label} ${this.labels.of_label} ${humanBytes(c.total_bytes)}`
+          : '';
+        return { path: c.path, badge, detail, exists: c.exists };
+      },
+      badgeClass(label) {
+        const map = {
+          [this.labels.badge_recommended]: 'bg-brand-100 dark:bg-brand-900 text-brand-700 dark:text-brand-300',
+          [this.labels.badge_current]:     'bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300',
+          [this.labels.badge_usb]:         'bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300',
+          [this.labels.badge_nas]:         'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300',
+          [this.labels.badge_local]:       'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300',
+        };
+        return map[label] || 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300';
+      },
+      generatePassword() {
+        // 16 chars from a friendly alphabet — no I, l, O, 0 to keep it
+        // copy-paste-friendly but still well over the 8-char floor.
+        const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%';
+        const len = 16;
+        const buf = new Uint32Array(len);
+        crypto.getRandomValues(buf);
+        let out = '';
+        for (let i = 0; i < len; i++) out += alphabet[buf[i] % alphabet.length];
+        this.newPassword = out;
+        this.newPasswordConfirm = out;
+        this.showPassword = true;
+        this.copied = false;
+      },
+      async copyPassword() {
+        try {
+          await navigator.clipboard.writeText(this.newPassword);
+          this.copied = true;
+          setTimeout(() => { this.copied = false; }, 2500);
+        } catch (_) { /* fall back to user copying manually */ }
+      },
+      async copyPathDialog() {
+        if (!this.pathDialog) return;
+        try {
+          await navigator.clipboard.writeText(this.pathDialog);
+          this.pathCopied = true;
+          setTimeout(() => { this.pathCopied = false; }, 2500);
+        } catch (_) { /* clipboard API unavailable — let the user select manually */ }
+      },
+      passwordStrength() {
+        const pw = this.newPassword || '';
+        let score = 0;
+        if (pw.length >= 8)  score += 1;
+        if (pw.length >= 12) score += 1;
+        if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) score += 1;
+        if (/\d/.test(pw)) score += 1;
+        if (/[^A-Za-z0-9]/.test(pw)) score += 1;
+        const out = [
+          { label: {{ t('SETUP_FIN_STRENGTH_WEAK') | tojson }},   pct: 25,  bar: 'bg-rose-500',    text: 'text-rose-600 dark:text-rose-400' },
+          { label: {{ t('SETUP_FIN_STRENGTH_WEAK') | tojson }},   pct: 35,  bar: 'bg-rose-500',    text: 'text-rose-600 dark:text-rose-400' },
+          { label: {{ t('SETUP_FIN_STRENGTH_OK') | tojson }},     pct: 55,  bar: 'bg-amber-500',   text: 'text-amber-600 dark:text-amber-400' },
+          { label: {{ t('SETUP_FIN_STRENGTH_GOOD') | tojson }},   pct: 75,  bar: 'bg-yellow-500',  text: 'text-yellow-600 dark:text-yellow-400' },
+          { label: {{ t('SETUP_FIN_STRENGTH_STRONG') | tojson }}, pct: 90,  bar: 'bg-emerald-500', text: 'text-emerald-600 dark:text-emerald-400' },
+          { label: {{ t('SETUP_FIN_STRENGTH_STRONG') | tojson }}, pct: 100, bar: 'bg-emerald-600', text: 'text-emerald-700 dark:text-emerald-300' },
+        ];
+        return out[Math.min(score, out.length - 1)];
+      },
       async finish() {
         this.finishing = true;
         try {
-          await api('/api/config/save', { method: 'POST', body: { section: 'detection', data: { pet_min_score: this.pet_min_score, pet_threshold: this.pet_threshold } } });
+          // Detection thresholds were already saved by saveDetectionAndNext().
           if (this.newPassword && this.newPassword === this.newPasswordConfirm && this.newPassword.length >= 8) {
             await api('/api/admin/password', { method: 'POST', body: { new_password: this.newPassword } });
           }
@@ -427,6 +804,13 @@
       detect_width: 640, detect_height: 480, enabled: true,
       connection_type: 'unknown',
     };
+  }
+  function humanBytes(n) {
+    if (!n || n <= 0) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let i = 0;
+    while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
+    return `${n >= 10 ? n.toFixed(0) : n.toFixed(1)} ${units[i]}`;
   }
 </script>
 {% endblock %}

@@ -1,0 +1,14 @@
+[Unit]
+Description=Pawcorder host-side Wi-Fi scanner
+# Wi-Fi tooling needs the network stack online; on a wired-only box this
+# unit still completes (it writes an empty result with a "no_wifi_iface"
+# reason so the admin can explain it to the user).
+After=network-online.target
+
+[Service]
+Type=oneshot
+Environment=PAWCORDER_DIR=__PAWCORDER_DIR__
+ExecStart=/bin/bash __PAWCORDER_DIR__/scripts/wifi-scan.sh
+# nmcli usually works as the invoking user; iw needs root for active
+# scans on most distros. install.sh runs the unit as root so both work.
+User=root

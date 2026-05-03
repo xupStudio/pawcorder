@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  launchd agent that runs Pawcorder's host-side BLE scanner every
+  __INTERVAL__ seconds. Bleak inside the admin Docker container fails
+  on macOS because Docker Desktop hides CoreBluetooth from the Linux
+  VM, so we run it on the host (in a dedicated venv at
+  $PAWCORDER_DIR/.host-helpers-venv) and bind-mount the JSON snapshot
+  into the container at /data/.ble_scan.json.
+
+  Note: the first scan after install will trigger macOS's Bluetooth
+  permission prompt for /usr/bin/python3. install.sh prints a hint
+  about this so the user knows to click "Allow".
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.pawcorder.ble-scan</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>__PAWCORDER_DIR__/scripts/ble-scan.sh</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PAWCORDER_DIR</key>
+    <string>__PAWCORDER_DIR__</string>
+    <key>PATH</key>
+    <string>/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin</string>
+  </dict>
+
+  <key>StartInterval</key>
+  <integer>__INTERVAL__</integer>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>__PAWCORDER_DIR__/storage/ble-scan.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>__PAWCORDER_DIR__/storage/ble-scan.log</string>
+</dict>
+</plist>

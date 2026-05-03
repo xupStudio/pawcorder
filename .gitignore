@@ -8,6 +8,34 @@ config/config.yml
 # Camera list — contains plaintext passwords, managed by admin panel
 config/cameras.yml
 
+# Other Frigate / admin runtime config (re-rendered or migrated on boot)
+config/config.yaml
+config/privacy.json
+config/reliability.ndjson
+config/go2rtc_homekit.yml
+config/.exports
+config/.jwt_secret
+config/.timeline
+config/.vacuum
+
+# Master encryption key + metadata — managed by admin/master_key.py
+master.key
+master_key.meta.json
+
+# Host-side scanner snapshots written by scripts/wifi-scan.sh +
+# scripts/ble-scan.sh. Refreshed every 30s by launchd / systemd; the
+# admin reads them via the bind-mounted /data volume.
+.wifi_scan.json
+.arp_scan.json
+.ble_scan.json
+
+# Host helpers virtualenv (bleak for BLE host scanner). Recreated by
+# install.sh's _ensure_host_helpers_venv_macos.
+.host-helpers-venv/
+
+# Auto-generated docs (regenerated from sources at runtime).
+INTEGRATIONS.md
+
 # Frigate runtime data (if stored locally)
 storage/
 media/

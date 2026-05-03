@@ -78,6 +78,26 @@ class MasterKeyInfo:
 # ---------------------------------------------------------------------------
 
 
+def _has_encrypted_data() -> bool:
+    """True iff this admin has ever written an encrypted blob.
+
+    We check the wifi-creds directory because that's the only consumer
+    of the master key today; if it's missing or empty, swapping backends
+    can't lose user data. The check tolerates the cred-store root
+    moving (e.g. a different STORAGE_PATH) by reading its actual path
+    from wifi_creds at call time.
+    """
+    try:
+        from . import wifi_creds  # local import — circular at module top
+    except ImportError:
+        return False
+    wifi_dir = getattr(wifi_creds, "WIFI_DIR", None)
+    if wifi_dir is None or not wifi_dir.exists():
+        return False
+    # Any *.json record means we've successfully encrypted at least once.
+    return any(wifi_dir.glob("*.json"))
+
+
 def _meta_path() -> Path:
     return DATA_DIR / _META_FILENAME
 
@@ -243,12 +263,17 @@ def _keyring_available() -> bool:
         backend = keyring.get_keyring()
     except Exception:  # noqa: BLE001
         return False
-    name = type(backend).__name__
-    # ``Null`` / ``fail`` keyring is what the library returns when no
-    # real backend is available — treat it as unavailable so we can fall
-    # through to file storage rather than hand the user a confusing
-    # "keyring backend installed but rejecting all writes" failure later.
-    if "fail" in name.lower() or "null" in name.lower():
+    # ``keyring.backends.fail.Keyring`` and ``keyring.backends.null.Keyring``
+    # are what the library returns when no real backend is available.
+    # The class itself is just ``Keyring`` so checking ``__name__`` alone
+    # always missed the fail backend — we have to look at the module path
+    # too. Without this, a containerised admin with no Secret Service /
+    # Keychain access lands on the no-op backend and every save() raises
+    # ``NoKeyringError`` instead of falling through to the file backend.
+    cls = type(backend)
+    name = cls.__name__.lower()
+    module = (cls.__module__ or "").lower()
+    if "fail" in name or "null" in name or "fail" in module or "null" in module:
         return False
     return True
 
@@ -397,11 +422,28 @@ def get_master_key(*, force_backend: BackendName | None = None) -> MasterKeyInfo
                     "delete master_key.meta.json to reset"
                 )
             if not spec.available():
-                raise RuntimeError(
-                    f"persisted master_key backend {chosen!r} is no longer "
-                    "available on this host — restoring a backup or migrating "
-                    "by hand is required to keep saved Wi-Fi creds readable"
-                )
+                # Self-heal when nothing has ever been encrypted with the
+                # persisted backend — that's the post-bug state where an
+                # earlier install incorrectly picked "keyring" inside a
+                # Docker container (the no-op backend), every save crashed,
+                # and no real ciphertexts exist to invalidate. Quietly
+                # re-pick rather than wedge the user. We DON'T self-heal
+                # when ciphertexts exist — that would silently destroy
+                # the user's saved Wi-Fi credentials.
+                if not _has_encrypted_data():
+                    logger.warning(
+                        "persisted master_key backend %r unavailable; "
+                        "no encrypted data found, re-picking backend",
+                        chosen,
+                    )
+                    spec = _pick_backend()
+                    _write_meta({"backend": spec.name, "detail": spec.detail})
+                else:
+                    raise RuntimeError(
+                        f"persisted master_key backend {chosen!r} is no longer "
+                        "available on this host — restoring a backup or migrating "
+                        "by hand is required to keep saved Wi-Fi creds readable"
+                    )
         else:
             spec = _pick_backend()
             _write_meta({"backend": spec.name, "detail": spec.detail})

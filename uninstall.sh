@@ -57,6 +57,35 @@ stop_containers() {
   fi
 }
 
+# Tear down the host-side Wi-Fi scanner that install.sh installed under
+# launchd (Mac) or systemd (Linux). Safe to call when nothing was ever
+# installed — `|| true` keeps a clean uninstall idempotent.
+remove_wifi_scan_helper() {
+  case "$(uname -s)" in
+    Darwin)
+      local plist="$HOME/Library/LaunchAgents/com.pawcorder.wifi-scan.plist"
+      if [ -f "$plist" ]; then
+        info "Unloading Wi-Fi scanner LaunchAgent…"
+        launchctl bootout "gui/$(id -u)" "$plist" 2>/dev/null || true
+        rm -f "$plist"
+      fi
+      ;;
+    Linux)
+      if command -v systemctl >/dev/null 2>&1; then
+        if systemctl list-unit-files 2>/dev/null | grep -q '^pawcorder-wifi-scan\.timer'; then
+          info "Removing Wi-Fi scanner systemd timer…"
+          local sudo_cmd=""
+          [ "$(id -u)" -ne 0 ] && command -v sudo >/dev/null 2>&1 && sudo_cmd="sudo"
+          $sudo_cmd systemctl disable --now pawcorder-wifi-scan.timer 2>/dev/null || true
+          $sudo_cmd rm -f /etc/systemd/system/pawcorder-wifi-scan.timer \
+                          /etc/systemd/system/pawcorder-wifi-scan.service
+          $sudo_cmd systemctl daemon-reload 2>/dev/null || true
+        fi
+      fi
+      ;;
+  esac
+}
+
 remove_images() {
   if command -v docker >/dev/null 2>&1; then
     info "Removing pawcorder Docker images…"
@@ -99,6 +128,7 @@ mode_soft() {
   confirm "Proceed?" || { log "Aborted."; exit 1; }
   stop_containers
   remove_images
+  remove_wifi_scan_helper
   log
   info "Done. Your settings and recordings are intact."
   log "To bring pawcorder back: cd $PAWCORDER_DIR && ./install.sh"
@@ -119,6 +149,7 @@ mode_full() {
   confirm "Proceed with full uninstall?" || { log "Aborted."; exit 1; }
   stop_containers -v
   remove_images
+  remove_wifi_scan_helper
   remove_project_dir
   log
   info "pawcorder removed. Your recordings are still at $(read_storage_path)."
@@ -144,6 +175,7 @@ mode_nuke() {
   confirm "Are you absolutely sure?" || { log "Aborted."; exit 1; }
   stop_containers -v
   remove_images
+  remove_wifi_scan_helper
   remove_project_dir
   remove_recordings
   log

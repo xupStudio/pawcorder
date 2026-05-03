@@ -40,8 +40,15 @@ services:
       FRIGATE_CONTAINER: pawcorder-frigate
       COMPOSE_PROJECT_NAME: pawcorder
       TZ: "${TZ:-Asia/Taipei}"
+      # Host-side ports the user actually browses to. Defaults match the
+      # internal container ports so Linux installs without a port probe
+      # behave like before. install.sh writes the picked values into .env
+      # when something on the host already owns the standard port (e.g.
+      # macOS AirPlay Receiver squats on 5000).
+      ADMIN_HOST_PORT: "${ADMIN_HOST_PORT:-8080}"
+      FRIGATE_HOST_PORT: "${FRIGATE_HOST_PORT:-5000}"
     ports:
-      - "8080:8080"
+      - "${ADMIN_HOST_PORT:-8080}:8080"
     # Joins the same default network as Frigate so api calls can resolve it
     # by container name if needed.
     healthcheck:
@@ -70,10 +77,10 @@ services:
         tmpfs:
           size: 1g
     ports:
-      - "5000:5000"      # Frigate Web UI (HTTP)
-      - "8554:8554"      # go2rtc RTSP restream
-      - "8555:8555/tcp"  # WebRTC (TCP)
-      - "8555:8555/udp"  # WebRTC (UDP)
+      - "${FRIGATE_HOST_PORT:-5000}:5000"      # Frigate Web UI (HTTP)
+      - "${RTSP_HOST_PORT:-8554}:8554"         # go2rtc RTSP restream
+      - "${WEBRTC_HOST_PORT:-8555}:8555/tcp"   # WebRTC (TCP)
+      - "${WEBRTC_HOST_PORT:-8555}:8555/udp"   # WebRTC (UDP)
     environment:
       FRIGATE_RTSP_PASSWORD: "${FRIGATE_RTSP_PASSWORD:-changeme}"
       TZ: "${TZ:-Asia/Taipei}"

@@ -13,16 +13,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # rclone (MIT) — multi-cloud uploader, ~50 MB single Go binary.
-ARG RCLONE_VERSION=1.68.2
+ARG RCLONE_REL=1.68.2
 RUN ARCH="$(dpkg --print-architecture)" && \
     case "$ARCH" in \
       amd64) URL_ARCH=amd64 ;; \
       arm64) URL_ARCH=arm64 ;; \
       *) echo "unsupported arch: $ARCH" && exit 1 ;; \
     esac && \
-    curl -fsSL -o /tmp/rclone.zip "https://downloads.rclone.org/v${RCLONE_VERSION}/rclone-v${RCLONE_VERSION}-linux-${URL_ARCH}.zip" && \
+    curl -fsSL -o /tmp/rclone.zip "https://downloads.rclone.org/v${RCLONE_REL}/rclone-v${RCLONE_REL}-linux-${URL_ARCH}.zip" && \
     unzip -q /tmp/rclone.zip -d /tmp && \
-    install -m 0755 /tmp/rclone-v${RCLONE_VERSION}-linux-${URL_ARCH}/rclone /usr/local/bin/rclone && \
+    install -m 0755 /tmp/rclone-v${RCLONE_REL}-linux-${URL_ARCH}/rclone /usr/local/bin/rclone && \
     rm -rf /tmp/rclone* && \
     rclone version
 

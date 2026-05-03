@@ -1,0 +1,571 @@
+{% extends "_layout.html" %}
+{% block title %}{{ t('WIRELESS_ONBOARDING_TITLE') }} · Pawcorder{% endblock %}
+{% block main %}
+<div x-data="wirelessOnboarding()" x-init="init()">
+  <div class="mb-6">
+    <h1 class="text-3xl font-display tracking-display">{{ t('WIRELESS_ONBOARDING_TITLE') }}</h1>
+    <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">{{ t('WIRELESS_ONBOARDING_SUBTITLE') }}</p>
+  </div>
+
+  {# ---- Step explainer ---- #}
+  <div class="grid sm:grid-cols-3 gap-4 mb-6">
+    {% for key in ['1', '2', '3'] %}
+      <div class="rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-4">
+        <div class="text-xs font-medium uppercase tracking-eyebrow text-brand-600 mb-1">
+          {{ t('WIRELESS_STEP_' ~ key ~ '_TITLE') }}
+        </div>
+        <p class="text-sm text-slate-600 dark:text-slate-300">{{ t('WIRELESS_STEP_' ~ key ~ '_BODY') }}</p>
+      </div>
+    {% endfor %}
+  </div>
+
+  {# ---- Capability hints ---- #}
+  <template x-if="!capabilities.ble">
+    <div class="rounded-lg bg-amber-50 dark:bg-amber-900 border border-amber-200 dark:border-amber-800 px-4 py-3 text-sm text-amber-800 dark:text-amber-200 mb-3">
+      {{ t('WIRELESS_NO_BLE_HINT') }}
+    </div>
+  </template>
+  <template x-if="!capabilities.softap_scan && capabilities.softap_scan_reason === 'no_wifi_iface'">
+    <div class="rounded-lg bg-amber-50 dark:bg-amber-900 border border-amber-200 dark:border-amber-800 px-4 py-3 text-sm text-amber-800 dark:text-amber-200 mb-3">
+      {{ t('WIRELESS_NO_WIFI_IFACE_HINT') }}
+    </div>
+  </template>
+  <template x-if="!capabilities.softap_scan && capabilities.softap_scan_reason === 'stale'">
+    <div class="rounded-lg bg-amber-50 dark:bg-amber-900 border border-amber-200 dark:border-amber-800 px-4 py-3 text-sm text-amber-800 dark:text-amber-200 mb-3">
+      {{ t('WIRELESS_SCAN_PENDING_HINT') }}
+    </div>
+  </template>
+  <template x-if="!capabilities.softap_scan && capabilities.softap_scan_reason !== 'no_wifi_iface' && capabilities.softap_scan_reason !== 'stale'">
+    <div class="rounded-lg bg-amber-50 dark:bg-amber-900 border border-amber-200 dark:border-amber-800 px-4 py-3 text-sm text-amber-800 dark:text-amber-200 mb-3">
+      {{ t('WIRELESS_NO_WIFI_SCAN_HINT') }}
+    </div>
+  </template>
+
+  {# ---- Scan controls ---- #}
+  <div class="flex items-center gap-3 mb-6">
+    <button @click="scan()" :disabled="scanning"
+            class="rounded-md bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 text-sm font-medium disabled:opacity-50">
+      <span x-show="!scanning && devices.length === 0">{{ t('WIRELESS_SCAN_BUTTON') }}</span>
+      <span x-show="!scanning && devices.length > 0">{{ t('WIRELESS_SCAN_AGAIN') }}</span>
+      <span x-show="scanning">{{ t('WIRELESS_SCAN_RUNNING') }}</span>
+    </button>
+    <span class="text-sm text-slate-500 dark:text-slate-400" x-show="protectionLabel" x-text="protectionLabel"></span>
+  </div>
+
+  {# ---- Device list ---- #}
+  <div class="space-y-3 mb-6" x-show="!scanning && devices.length > 0">
+    <h2 class="text-sm font-medium text-slate-600 dark:text-slate-300">{{ t('WIRELESS_PICK_DEVICE') }}</h2>
+    <template x-for="d in devices" :key="d.id">
+      <button @click="pick(d)"
+              class="w-full text-left rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-brand-400 px-4 py-3 flex items-start justify-between gap-3"
+              :class="selected?.id === d.id ? 'ring-2 ring-brand-500 border-brand-500' : ''">
+        <div class="min-w-0">
+          <div class="font-medium" x-text="d.label || d.model"></div>
+          <div class="text-xs text-slate-500 dark:text-slate-400" x-text="d.vendor"></div>
+          <div class="text-xs text-slate-400 dark:text-slate-500 font-mono mt-1"
+               x-show="d.mac" x-text="d.mac"></div>
+        </div>
+        <div class="text-right shrink-0">
+          <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
+                :class="transportColor(d.transport)"
+                x-text="transportLabel(d.transport)"></span>
+          <div class="text-xs text-slate-400 dark:text-slate-500 mt-1" x-show="d.signal_dbm">
+            <span x-text="d.signal_dbm + ' dBm'"></span>
+          </div>
+        </div>
+      </button>
+    </template>
+  </div>
+
+  {# ---- 0-results state: troubleshooting checklist + raw SSIDs ----
+       The previous "no cameras in pairing mode" message was a dead end
+       for anyone whose camera (a) wasn't actually pressed into pairing
+       mode yet, or (b) has an SSID we don't fingerprint. The checklist
+       below walks the user through the universal "did you press reset"
+       step and an expandable section lists every visible Wi-Fi network
+       so a no-name camera can still be identified by eye. -#}
+  <div class="rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5 mb-6"
+       x-show="!scanning && devices.length === 0 && scannedAtLeastOnce" x-cloak>
+    <p class="text-sm text-slate-700 dark:text-slate-200 font-medium mb-3">{{ t('WIRELESS_SCAN_NONE') }}</p>
+    <ol class="list-decimal pl-5 space-y-1.5 text-sm text-slate-600 dark:text-slate-300">
+      <li>{{ t('WIRELESS_TROUBLE_RESET') }}</li>
+      <li>{{ t('WIRELESS_TROUBLE_LED') }}</li>
+      <li>{{ t('WIRELESS_TROUBLE_RANGE') }}</li>
+      <li>{{ t('WIRELESS_TROUBLE_VENDOR_APP') }}</li>
+    </ol>
+
+    <details class="mt-4 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700"
+             @toggle="if ($event.target.open) loadVisibleSsids()">
+      <summary class="cursor-pointer px-4 py-2 text-sm font-medium select-none">
+        {{ t('WIRELESS_SHOW_ALL_SSIDS') }}
+      </summary>
+      <div class="px-4 pb-4">
+        <p class="text-xs text-slate-500 dark:text-slate-400 mb-3 mt-1">{{ t('WIRELESS_SHOW_ALL_SSIDS_HINT') }}</p>
+        <div x-show="visibleSsidsLoading" class="text-xs text-slate-500 dark:text-slate-400">{{ t('WIRELESS_SCAN_RUNNING') }}</div>
+        <div x-show="!visibleSsidsLoading && visibleSsids.length === 0" class="text-xs text-slate-500 dark:text-slate-400">{{ t('WIRELESS_SHOW_ALL_SSIDS_EMPTY') }}</div>
+        <ul x-show="!visibleSsidsLoading && visibleSsids.length > 0" class="space-y-1">
+          <template x-for="n in visibleSsids" :key="n.ssid">
+            <li class="flex items-center justify-between gap-2 rounded px-2 py-1.5 hover:bg-white dark:hover:bg-slate-900">
+              <div class="min-w-0 flex items-center gap-2">
+                <span class="font-mono text-sm truncate" x-text="n.ssid"></span>
+                <span x-show="n.looks_like_camera"
+                      class="inline-flex rounded-full bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300 px-2 py-0.5 text-[11px] font-medium">
+                  {{ t('WIRELESS_LOOKS_LIKE_CAMERA') }}
+                </span>
+              </div>
+              <span class="text-[11px] text-slate-400 dark:text-slate-500 font-mono"
+                    x-show="n.signal_dbm" x-text="n.signal_dbm + ' dBm'"></span>
+            </li>
+          </template>
+        </ul>
+      </div>
+    </details>
+
+    {# All visible BLE — same shape as visible-ssids. We split BLE into
+       its own disclosure because the audiences are different: a SoftAP
+       SSID is something the user picks; a BLE advertisement is mostly
+       diagnostic ("yes the camera IS broadcasting, you do need its app"). #}
+    <details class="mt-2 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700"
+             @toggle="if ($event.target.open) loadVisibleBle()">
+      <summary class="cursor-pointer px-4 py-2 text-sm font-medium select-none">
+        {{ t('WIRELESS_SHOW_ALL_BLE') }}
+      </summary>
+      <div class="px-4 pb-4">
+        <p class="text-xs text-slate-500 dark:text-slate-400 mb-3 mt-1">{{ t('WIRELESS_SHOW_ALL_BLE_HINT') }}</p>
+        <div x-show="visibleBleLoading" class="text-xs text-slate-500 dark:text-slate-400">{{ t('WIRELESS_SCAN_RUNNING') }}</div>
+        <div x-show="!visibleBleLoading && visibleBle.length === 0" class="text-xs text-slate-500 dark:text-slate-400">{{ t('WIRELESS_SHOW_ALL_BLE_EMPTY') }}</div>
+        <ul x-show="!visibleBleLoading && visibleBle.length > 0" class="space-y-1">
+          <template x-for="b in visibleBle" :key="b.address">
+            <li class="flex items-center justify-between gap-2 rounded px-2 py-1.5 hover:bg-white dark:hover:bg-slate-900">
+              <div class="min-w-0">
+                <div class="flex items-center gap-2">
+                  <span class="font-mono text-xs truncate" x-text="b.name || '(unnamed)'"></span>
+                  <span x-show="b.looks_like_camera"
+                        class="inline-flex rounded-full bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300 px-2 py-0.5 text-[11px] font-medium">
+                    {{ t('WIRELESS_LOOKS_LIKE_CAMERA') }}
+                  </span>
+                  <span x-show="b.is_apple"
+                        class="inline-flex rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-2 py-0.5 text-[11px]">
+                    Apple
+                  </span>
+                </div>
+                <div class="text-[11px] text-slate-400 dark:text-slate-500 font-mono mt-0.5" x-text="b.address"></div>
+                <div class="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5"
+                     x-show="b.service_uuids && b.service_uuids.length > 0"
+                     x-text="'svc: ' + b.service_uuids.join(', ')"></div>
+              </div>
+              <span class="text-[11px] text-slate-400 dark:text-slate-500 font-mono"
+                    x-show="b.rssi" x-text="b.rssi + ' dBm'"></span>
+            </li>
+          </template>
+        </ul>
+      </div>
+    </details>
+  </div>
+
+  {# ---- "Or" manual entry points ---- #}
+  <div class="rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 p-4 mb-6">
+    <div class="text-xs font-medium uppercase tracking-eyebrow text-slate-500 dark:text-slate-400 mb-2">{{ t('WIRELESS_OR') }}</div>
+    <div class="grid sm:grid-cols-2 gap-3">
+      <button @click="pickManual('qr')"
+              class="text-left rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-brand-400 p-3">
+        <div class="font-medium text-sm">{{ t('WIRELESS_MANUAL_QR_BUTTON') }}</div>
+        <div class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('WIRELESS_MANUAL_QR_HINT') }}</div>
+      </button>
+      <button @click="pickManual('esptouch')"
+              class="text-left rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-brand-400 p-3">
+        <div class="font-medium text-sm">{{ t('WIRELESS_MANUAL_BROADCAST_BUTTON') }}</div>
+        <div class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('WIRELESS_MANUAL_BROADCAST_HINT') }}</div>
+      </button>
+    </div>
+  </div>
+
+  {# ---- Vendor-app handoff (shown when the picked device is cloud-locked).
+       Cred push for Tapo / Tuya / SmartLife / Wyze / Eufy / Ring / Nest is
+       proprietary and not OSS-replicable. Showing the cred-push form for
+       these would only let the user fill it in and then crash with a
+       backend error (which is exactly what happened to the SmartLife-0000
+       test before this card existed). Route them straight to the vendor's
+       free app instead — the ARP arrival watcher catches the camera
+       automatically once it joins the LAN. #}
+  <div class="rounded-2xl bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 p-5 mb-6"
+       x-show="selected && selected.capability === 'vendor'" x-cloak>
+    <h2 class="text-base font-medium mb-2 text-amber-900 dark:text-amber-100">
+      {{ t('WIRELESS_VENDOR_HANDOFF_HEAD') }}
+      <span class="text-sm text-amber-700 dark:text-amber-300" x-text="' — ' + (selected?.label || '')"></span>
+    </h2>
+    <p class="text-sm text-amber-800 dark:text-amber-200 mb-3">{{ t('WIRELESS_VENDOR_HANDOFF_BODY') }}</p>
+    <ol class="list-decimal pl-5 space-y-1.5 text-sm text-amber-800 dark:text-amber-200 mb-4">
+      <li>{{ t('WIRELESS_VENDOR_STEP_1') }}</li>
+      <li>{{ t('WIRELESS_VENDOR_STEP_2') }}</li>
+      <li>{{ t('WIRELESS_VENDOR_STEP_3') }}</li>
+    </ol>
+    <div class="flex flex-wrap gap-2">
+      <a x-show="vendorAppLinks.ios" :href="vendorAppLinks.ios" target="_blank" rel="noopener"
+         class="inline-flex items-center rounded-md bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 text-xs font-medium">
+        App Store →
+      </a>
+      <a x-show="vendorAppLinks.android" :href="vendorAppLinks.android" target="_blank" rel="noopener"
+         class="inline-flex items-center rounded-md bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 text-xs font-medium">
+        Google Play →
+      </a>
+      <button @click="selected = null"
+              class="inline-flex items-center rounded-md bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 px-3 py-1.5 text-xs">
+        {{ t('WIRELESS_VENDOR_PICK_ANOTHER') }}
+      </button>
+    </div>
+  </div>
+
+  {# ---- Wi-Fi credentials form (shown after pick, for OSS-drivable devices) ---- #}
+  <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5 mb-6"
+       x-show="selected && selected.capability !== 'vendor'" x-cloak>
+    <h2 class="text-base font-medium mb-3">
+      {{ t('WIRELESS_STEP_3_TITLE') }}
+      <span class="text-sm text-slate-500" x-text="' — ' + (selected?.label || '')"></span>
+    </h2>
+
+    <div class="grid sm:grid-cols-2 gap-3 mb-3">
+      <div>
+        <label class="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">{{ t('WIRELESS_HOME_SSID_LABEL') }}</label>
+        <input type="text" x-model="form.ssid" autocomplete="off"
+               list="wireless-saved-ssids"
+               class="w-full rounded-md border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-3 py-2 text-sm"/>
+        <datalist id="wireless-saved-ssids">
+          <template x-for="c in saved" :key="c.ssid">
+            <option :value="c.ssid"></option>
+          </template>
+        </datalist>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">{{ t('WIRELESS_HOME_AUTH_LABEL') }}</label>
+        <select x-model="form.auth"
+                class="w-full rounded-md border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-3 py-2 text-sm">
+          <option value="wpa2-psk">WPA2-PSK</option>
+          <option value="wpa3-sae">WPA3-SAE</option>
+          <option value="open">Open (no password)</option>
+        </select>
+      </div>
+      <div class="sm:col-span-2">
+        <label class="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">{{ t('WIRELESS_HOME_PSK_LABEL') }}</label>
+        <input type="password" x-model="form.psk" autocomplete="off"
+               class="w-full rounded-md border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-3 py-2 text-sm"/>
+      </div>
+    </div>
+
+    <label class="inline-flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300 mb-3">
+      <input type="checkbox" x-model="form.remember" class="rounded text-brand-500" />
+      {{ t('WIRELESS_REMEMBER_LABEL') }}
+    </label>
+
+    <div class="flex justify-end">
+      <button @click="provision()" :disabled="!canProvision || provisioning"
+              class="rounded-md bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 text-sm font-medium disabled:opacity-50">
+        <span x-show="!provisioning">{{ t('WIRELESS_GO_BUTTON') }}</span>
+        <span x-show="provisioning">{{ t('WIRELESS_PROVISION_RUNNING') }}</span>
+      </button>
+    </div>
+  </div>
+
+  {# ---- Live progress ---- #}
+  <div class="rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5"
+       x-show="provisioning || progress.length > 0" x-cloak>
+    <h2 class="text-base font-medium mb-3">Progress</h2>
+    <ol class="text-sm space-y-2">
+      <template x-for="(step, idx) in progress" :key="idx">
+        <li class="flex items-start gap-2">
+          <span class="inline-flex h-5 w-5 rounded-full items-center justify-center text-xs shrink-0 mt-0.5"
+                :class="stepKindClasses(step.kind)"
+                x-text="stepKindIcon(step.kind)"></span>
+          <span class="text-slate-700 dark:text-slate-300" x-text="step.message"></span>
+        </li>
+      </template>
+    </ol>
+    <template x-if="qrSvg">
+      <div class="mt-4 p-4 bg-slate-50 dark:bg-slate-800 rounded-lg flex flex-col items-center gap-2">
+        <div class="w-64 h-64" x-html="qrSvg"></div>
+        <p class="text-xs text-slate-500 dark:text-slate-400 text-center max-w-md">{{ t('WIRELESS_QR_HOLD_HINT') }}</p>
+      </div>
+    </template>
+    <template x-if="vendorAppUrl">
+      <div class="mt-4 flex items-center gap-3">
+        <a :href="vendorAppUrl" target="_blank" rel="noopener noreferrer"
+           class="rounded-md bg-slate-200 dark:bg-slate-700 px-3 py-2 text-sm font-medium">{{ t('WIRELESS_OPEN_VENDOR_APP') }}</a>
+      </div>
+    </template>
+  </div>
+</div>
+
+<script>
+  function wirelessOnboarding() {
+    return {
+      capabilities: { ble: false, softap_scan: false, softap_scan_reason: '', softap_join: false, wps: false },
+      protectionLabel: '',
+      saved: [],
+      devices: [],
+      scanning: false,
+      scannedAtLeastOnce: false,
+      // Lazily filled when the user expands "show all visible Wi-Fi"
+      // — we don't load on init because the helper file may already be
+      // visualised via the fingerprinted device list and there's no
+      // point hitting the API every page load.
+      visibleSsids: [],
+      visibleSsidsLoading: false,
+      visibleBle: [],
+      visibleBleLoading: false,
+      selected: null,
+      form: { ssid: '', psk: '', auth: 'wpa2-psk', remember: true },
+      provisioning: false,
+      progress: [],
+      qrSvg: '',
+      vendorAppUrl: '',
+      // Computed from selected.extra in the pick() handler so the
+      // vendor-app handoff card can render iOS + Play store buttons
+      // without a second API call. Empty strings render as no-button.
+      vendorAppLinks: { ios: '', android: '' },
+
+      async init() {
+        try {
+          const status = await api('/api/onboarding/wireless/status');
+          this.capabilities = status.capabilities || this.capabilities;
+          this.saved = status.saved || [];
+          this.protectionLabel = this.formatProtectionLabel(status.master_key_backend);
+          if (status.last_ssid && !this.form.ssid) this.form.ssid = status.last_ssid;
+        } catch (e) {
+          toast(e.message, 'error');
+        }
+      },
+
+      formatProtectionLabel(backend) {
+        const map = {
+          'tpm':     '{{ t("WIRELESS_KEY_PROTECTION_TPM") }}',
+          'keyring': '{{ t("WIRELESS_KEY_PROTECTION_KEYRING") }}',
+          'file':    '{{ t("WIRELESS_KEY_PROTECTION_FILE") }}',
+        };
+        if (!backend) return '';
+        return '{{ t("WIRELESS_KEY_PROTECTION_LABEL") }}: ' + (map[backend] || backend);
+      },
+
+      get canProvision() {
+        if (!this.selected) return false;
+        if (!this.form.ssid) return false;
+        if (this.form.auth !== 'open' && !this.form.psk) return false;
+        return true;
+      },
+
+      async scan() {
+        this.scanning = true;
+        this.devices = [];
+        try {
+          const data = await api('/api/onboarding/wireless/scan', { method: 'POST', body: {} });
+          this.devices = data.devices || [];
+        } catch (e) {
+          toast(e.message, 'error');
+        } finally {
+          this.scanning = false;
+          this.scannedAtLeastOnce = true;
+        }
+      },
+
+      // Pulled lazily when the user opens the "show all visible Wi-Fi"
+      // disclosure under the troubleshooting checklist. Returns every
+      // SSID the host scanner can see, ranked by camera-likelihood
+      // first and signal strength second, so a no-name camera SSID
+      // we don't fingerprint is still findable.
+      async loadVisibleSsids() {
+        this.visibleSsidsLoading = true;
+        try {
+          const data = await api('/api/onboarding/wireless/visible-ssids');
+          this.visibleSsids = data.networks || [];
+        } catch (e) {
+          toast(e.message, 'error');
+        } finally {
+          this.visibleSsidsLoading = false;
+        }
+      },
+
+      // Same lazy-load shape as visible-ssids but for BLE advertisements
+      // — surfaces every device the host scanner sees so a no-name
+      // camera with an unrecognised service UUID isn't invisible.
+      async loadVisibleBle() {
+        this.visibleBleLoading = true;
+        try {
+          const data = await api('/api/onboarding/wireless/visible-ble');
+          this.visibleBle = data.devices || [];
+        } catch (e) {
+          toast(e.message, 'error');
+        } finally {
+          this.visibleBleLoading = false;
+        }
+      },
+
+      pick(d) {
+        this.selected = d;
+        this.progress = [];
+        this.qrSvg = '';
+        this.vendorAppUrl = '';
+        this.vendorAppLinks = {
+          ios: (d?.extra?.vendor_app_ios) || '',
+          android: (d?.extra?.vendor_app_android) || '',
+        };
+      },
+
+      pickManual(kind) {
+        this.selected = {
+          id: 'manual-' + kind,
+          transport: kind,
+          vendor: 'other',
+          label: kind === 'qr' ? '{{ t("WIRELESS_MANUAL_QR_BUTTON") }}' : '{{ t("WIRELESS_MANUAL_BROADCAST_BUTTON") }}',
+          mac: '',
+          capability: kind === 'qr' ? 'qr' : 'broadcast',
+          fingerprint_id: kind === 'qr' ? 'generic-qr' : '',
+          model: '',
+          ssid: '',
+          signal_dbm: 0,
+          manual: true,
+          manual_kind: kind,
+        };
+        this.progress = [];
+        this.qrSvg = '';
+      },
+
+      transportLabel(transport) {
+        return ({
+          ble:        '{{ t("WIRELESS_TRANSPORT_BLE") }}',
+          softap:     '{{ t("WIRELESS_TRANSPORT_SOFTAP") }}',
+          qr:         '{{ t("WIRELESS_TRANSPORT_QR") }}',
+          esptouch:   '{{ t("WIRELESS_TRANSPORT_ESPTOUCH") }}',
+          wps:        '{{ t("WIRELESS_TRANSPORT_WPS") }}',
+          homekit:    '{{ t("WIRELESS_TRANSPORT_HOMEKIT") }}',
+          matter:     '{{ t("WIRELESS_TRANSPORT_MATTER") }}',
+          vendor_app: '{{ t("WIRELESS_TRANSPORT_VENDOR") }}',
+        })[transport] || transport;
+      },
+
+      transportColor(transport) {
+        return ({
+          ble:        'bg-indigo-50 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 ring-1 ring-indigo-200 dark:ring-indigo-800',
+          softap:     'bg-emerald-50 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-200 dark:ring-emerald-800',
+          qr:         'bg-amber-50 dark:bg-amber-900 text-amber-700 dark:text-amber-300 ring-1 ring-amber-200 dark:ring-amber-800',
+          esptouch:   'bg-purple-50 dark:bg-purple-900 text-purple-700 dark:text-purple-300 ring-1 ring-purple-200 dark:ring-purple-800',
+          vendor_app: 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 ring-1 ring-slate-200 dark:ring-slate-700',
+        })[transport] || 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 ring-1 ring-slate-200 dark:ring-slate-700';
+      },
+
+      stepKindClasses(kind) {
+        return ({
+          info:    'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200',
+          progress:'bg-brand-500 text-white',
+          ok:      'bg-emerald-500 text-white',
+          error:   'bg-rose-500 text-white',
+        })[kind] || 'bg-slate-200 text-slate-700';
+      },
+      stepKindIcon(kind) {
+        return ({ info: 'i', progress: '·', ok: '✓', error: '!' })[kind] || '·';
+      },
+
+      async provision() {
+        if (!this.selected) return;
+        this.provisioning = true;
+        this.progress = [{ kind: 'progress', message: '{{ t("WIRELESS_PROVISION_RUNNING") }}' }];
+        this.qrSvg = '';
+        this.vendorAppUrl = '';
+
+        // Save the SSID for next time if requested.
+        const remember = this.form.remember;
+
+        // Use POST + streaming text instead of EventSource so we can
+        // include CSRF + JSON body. The server emits one JSON object
+        // per line.
+        const body = {
+          device: this.selected,
+          ssid: this.form.ssid,
+          psk: this.form.psk,
+          auth: this.form.auth,
+          remember,
+        };
+        try {
+          const resp = await fetch('/api/onboarding/wireless/provision', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Requested-With': 'pawcorder',
+            },
+            body: JSON.stringify(body),
+          });
+          if (!resp.ok) {
+            const err = await resp.text();
+            throw new Error(err || resp.statusText);
+          }
+          const reader = resp.body.getReader();
+          const decoder = new TextDecoder('utf-8');
+          let buffer = '';
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            let idx;
+            while ((idx = buffer.indexOf('\n')) >= 0) {
+              const line = buffer.slice(0, idx).trim();
+              buffer = buffer.slice(idx + 1);
+              if (!line) continue;
+              try {
+                const evt = JSON.parse(line);
+                this.handleEvent(evt);
+              } catch (_) { /* ignore malformed line */ }
+            }
+          }
+        } catch (e) {
+          this.progress.push({ kind: 'error', message: e.message });
+        } finally {
+          this.provisioning = false;
+        }
+      },
+
+      handleEvent(evt) {
+        const data = evt.data || {};
+        switch (evt.event) {
+          case 'selected':
+            return;
+          case 'provisioning':
+            this.progress.push({ kind: 'progress', message: 'Sending Wi-Fi over ' + this.transportLabel(data.transport) });
+            return;
+          case 'result':
+            if (data.image_svg) this.qrSvg = data.image_svg;
+            if (data.transport === 'vendor_app' && data.image_payload) {
+              this.vendorAppUrl = data.image_payload;
+            }
+            this.progress.push({
+              kind: data.ok ? 'ok' : 'error',
+              message: data.message,
+            });
+            return;
+          case 'waiting_for_arrival':
+            this.progress.push({ kind: 'progress', message: '{{ t("WIRELESS_WAITING_ARRIVAL") }}' });
+            return;
+          case 'arrived':
+            this.progress.push({ kind: 'ok', message: '{{ t("WIRELESS_ARRIVED") }} (' + data.ip + ')' });
+            return;
+          case 'configured':
+            this.progress.push({ kind: 'ok', message: '{{ t("WIRELESS_CONFIGURED") }}' });
+            toast('{{ t("WIRELESS_CONFIGURED") }}', 'success');
+            return;
+          case 'configured_partial':
+            this.progress.push({ kind: 'ok', message: data.message });
+            return;
+          case 'timed_out':
+            this.progress.push({ kind: 'error', message: '{{ t("WIRELESS_TIMED_OUT") }}' });
+            return;
+          case 'error':
+            this.progress.push({ kind: 'error', message: data.message });
+            return;
+          case 'done':
+            return;
+          default:
+            return;
+        }
+      },
+    };
+  }
+</script>
+{% endblock %}

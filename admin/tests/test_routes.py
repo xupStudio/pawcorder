@@ -61,6 +61,442 @@ def test_authed_pages_200(authed_client, path):
     assert "pawcorder" in resp.text
 
 
+def test_mobile_page_uses_host_ports_from_env(authed_client, monkeypatch):
+    # When install.sh has to relocate ports (e.g. macOS AirPlay holding
+    # 5000), it writes the picked values into the admin container's env.
+    # The /mobile page must use those, not the hardcoded defaults — the
+    # QR codes printed to the user's phone need the *actual* URL.
+    monkeypatch.setenv("ADMIN_HOST_PORT", "8090")
+    monkeypatch.setenv("FRIGATE_HOST_PORT", "5050")
+    resp = authed_client.get("/mobile")
+    assert resp.status_code == 200
+    assert ":8090" in resp.text
+    assert ":5050" in resp.text
+    assert ":8080" not in resp.text  # no leftover hardcoded admin port
+    assert ":5000" not in resp.text  # no leftover hardcoded frigate port
+
+
+def test_mobile_page_defaults_to_standard_ports(authed_client, monkeypatch):
+    # When ADMIN_HOST_PORT / FRIGATE_HOST_PORT aren't set (e.g. someone
+    # running the admin container outside install.sh) the page still
+    # renders with sensible defaults so it doesn't break Linux installs.
+    monkeypatch.delenv("ADMIN_HOST_PORT", raising=False)
+    monkeypatch.delenv("FRIGATE_HOST_PORT", raising=False)
+    resp = authed_client.get("/mobile")
+    assert resp.status_code == 200
+    assert ":8080" in resp.text
+    assert ":5000" in resp.text
+
+
+def test_setup_wizard_offers_wireless_onboarding_branch(authed_client):
+    # The cameras step (step 1 in the wizard) must let a brand-new user
+    # whose camera is only plugged into power get to /onboarding/wireless
+    # without dead-ending on a 0-result subnet scan.
+    resp = authed_client.get("/setup")
+    assert resp.status_code == 200
+    assert "/onboarding/wireless" in resp.text
+    # The connection-mode picker must be wired in — the i18n key for
+    # "only plugged into power" appears as rendered copy when the page
+    # is in Chinese (default test fixture is en, but the picker title
+    # is always present).
+    assert "powered_only" in resp.text
+
+
+def test_cameras_page_links_to_wireless_onboarding(authed_client):
+    # The /cameras page is the post-setup landing for adding more
+    # cameras. Same wireless-only-camera escape hatch needs to be
+    # reachable here, otherwise a user adding a second wireless camera
+    # six months later hits the same dead end as the wizard used to.
+    resp = authed_client.get("/cameras")
+    assert resp.status_code == 200
+    assert "/onboarding/wireless" in resp.text
+
+
+def test_wireless_visible_ssids_returns_ranked_list(authed_client, tmp_path, monkeypatch):
+    # Pretend the host helper file at /data/.wifi_scan.json exists with a
+    # mix of camera-shaped and home-router SSIDs. The endpoint should
+    # return ALL of them (no fingerprint gate), with camera-shaped SSIDs
+    # ranked first so a no-name dropship cam is findable when the
+    # fingerprint-only scan returns nothing.
+    snap = tmp_path / "wifi_scan.json"
+    import json
+    snap.write_text(json.dumps({
+        "schema": 1,
+        "generated_at": int(__import__("time").time()),
+        "platform": "macos", "tool": "system_profiler",
+        "networks": [
+            {"ssid": "MyHomeWifi",       "bssid": "", "signal_dbm": -45, "channel": 6},
+            {"ssid": "ANRAN-IPC-A1B2",   "bssid": "", "signal_dbm": -68, "channel": 1},
+            {"ssid": "neighbor-5G",      "bssid": "", "signal_dbm": -75, "channel": 36},
+            {"ssid": "MV-AABBCC",        "bssid": "", "signal_dbm": -60, "channel": 11},
+        ],
+        "error": None,
+    }))
+    monkeypatch.setenv("WIFI_SCAN_FILE", str(snap))
+    import importlib
+    import app.provisioning.softap_scanner as ss
+    importlib.reload(ss)
+
+    resp = authed_client.get("/api/onboarding/wireless/visible-ssids")
+    assert resp.status_code == 200
+    body = resp.json()
+    nets = body["networks"]
+    assert len(nets) == 4
+    # camera-shaped SSIDs come first
+    assert nets[0]["ssid"] in {"ANRAN-IPC-A1B2", "MV-AABBCC"}
+    assert nets[1]["ssid"] in {"ANRAN-IPC-A1B2", "MV-AABBCC"}
+    # And both are flagged as looking like cameras
+    assert all(n["looks_like_camera"] for n in nets[:2])
+    # The home / neighbour SSIDs aren't flagged
+    home = next(n for n in nets if n["ssid"] == "MyHomeWifi")
+    assert home["looks_like_camera"] is False
+
+
+def test_wireless_visible_ble_returns_ranked_list(authed_client, tmp_path, monkeypatch):
+    # Same shape as visible-ssids but for BLE: feed the host helper file
+    # with a mix of Apple noise, an unnamed non-Apple device with a
+    # service UUID (the OTS-0x1827 case our beeping no-name camera
+    # actually exhibits), and verify the camera-shaped one ranks first.
+    snap = tmp_path / "ble_scan.json"
+    import json
+    snap.write_text(json.dumps({
+        "schema": 1,
+        "generated_at": int(__import__("time").time()),
+        "platform": "macos", "tool": "bleak",
+        "devices": [
+            {"address": "AAA", "rssi": -50, "name": "iPhoneOfXup", "service_uuids": [], "manufacturer_ids": [76]},
+            {"address": "BBB", "rssi": -60, "name": "", "service_uuids": ["00001827-0000-1000-8000-00805f9b34fb"], "manufacturer_ids": []},
+            {"address": "CCC", "rssi": -90, "name": "", "service_uuids": [], "manufacturer_ids": [76]},
+        ],
+        "error": None,
+    }))
+    monkeypatch.setenv("BLE_SCAN_FILE", str(snap))
+    import importlib
+    import app.provisioning.ble_scanner as bs
+    importlib.reload(bs)
+
+    resp = authed_client.get("/api/onboarding/wireless/visible-ble")
+    assert resp.status_code == 200
+    body = resp.json()
+    devs = body["devices"]
+    assert len(devs) == 3
+    # The non-Apple OTS device wins the sort.
+    assert devs[0]["address"] == "BBB"
+    assert devs[0]["looks_like_camera"] is True
+    assert devs[0]["is_apple"] is False
+    # The named iPhone is Apple but not flagged as a camera.
+    iphone = next(d for d in devs if d["address"] == "AAA")
+    assert iphone["is_apple"] is True
+    assert iphone["looks_like_camera"] is False
+
+
+def test_wireless_visible_ble_empty_when_helper_missing(authed_client, tmp_path, monkeypatch):
+    monkeypatch.setenv("BLE_SCAN_FILE", str(tmp_path / "missing.json"))
+    import importlib
+    import app.provisioning.ble_scanner as bs
+    importlib.reload(bs)
+    resp = authed_client.get("/api/onboarding/wireless/visible-ble")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["devices"] == []
+    assert body["error"] == "stale"
+
+
+def test_ble_host_helper_promotes_fingerprinted_devices(tmp_path, monkeypatch):
+    # When the host snapshot contains a Tapo BLE advertisement (service
+    # UUID 0xFFF0), scan_once should return a DiscoveredDevice tagged
+    # with the Tapo fingerprint — same as the in-container path used to
+    # do, just sourced from the snapshot file.
+    snap = tmp_path / "ble_scan.json"
+    import json
+    snap.write_text(json.dumps({
+        "schema": 1, "generated_at": int(__import__("time").time()),
+        "platform": "macos", "tool": "bleak",
+        "devices": [
+            {"address": "AA:BB:CC:DD:EE:FF", "rssi": -55, "name": "Tapo_C200_X1",
+             "service_uuids": ["0000fff0-0000-1000-8000-00805f9b34fb"],
+             "manufacturer_ids": []},
+        ],
+        "error": None,
+    }))
+    monkeypatch.setenv("BLE_SCAN_FILE", str(snap))
+    import importlib, asyncio
+    import app.provisioning.ble_scanner as bs
+    importlib.reload(bs)
+    devices = asyncio.run(bs.scan_once())
+    assert len(devices) == 1
+    assert devices[0].vendor == "tapo"
+
+
+def test_wireless_visible_ssids_empty_when_helper_missing(authed_client, tmp_path, monkeypatch):
+    monkeypatch.setenv("WIFI_SCAN_FILE", str(tmp_path / "definitely-missing.json"))
+    import importlib
+    import app.provisioning.softap_scanner as ss
+    importlib.reload(ss)
+    resp = authed_client.get("/api/onboarding/wireless/visible-ssids")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["networks"] == []
+    assert body["error"] == "stale"
+
+
+def test_tuya_smartlife_softap_ssid_is_fingerprinted():
+    # The "SmartLife-0000" SSID is the white-label default a fresh
+    # Tuya/Smart Life camera broadcasts before it's been claimed by
+    # any account — the most common no-name camera the user will
+    # encounter on Shopee / Amazon / AliExpress. Was previously
+    # invisible because no fingerprint covered the prefix.
+    from app.provisioning.fingerprints import match_softap
+    for ssid in ("SmartLife-0000", "SmartLife_AABBCC", "SL-A1B2C3D4",
+                 "Tuya_AP-1234", "Tuya-CamX"):
+        fp = match_softap(ssid)
+        assert fp is not None, f"{ssid!r} should match Tuya/SmartLife fingerprint"
+        assert "tuya" in fp.id or "smart" in fp.label.lower(), \
+            f"{ssid!r} matched unexpected fingerprint {fp.id}"
+
+
+def test_every_vendor_handoff_fingerprint_carries_verified_app_links():
+    # All Class-B (cloud-locked) fingerprints have to point at a real
+    # App Store / Play Store listing, otherwise the wireless-onboarding
+    # vendor-handoff card opens a 404 in the user's browser. We can't
+    # actually ping the stores from CI (network egress + rate limits),
+    # so we shape-check: HTTPS apple/google-play URL with a non-empty
+    # ID/package segment. The IDs themselves were verified by hand on
+    # 2026-05-03 (see commit; future drift needs human re-verification —
+    # noted in HUMAN_WORK.md).
+    import re as _re
+    from app.provisioning.fingerprints import FINGERPRINTS
+    apple_re = _re.compile(r"^https://apps\.apple\.com/(?:[a-z]{2}/)?app/(?:[^/]+/)?id\d{6,}$")
+    play_re = _re.compile(r"^https://play\.google\.com/store/apps/details\?id=[a-z0-9_.]+$",
+                           _re.IGNORECASE)
+    seen = 0
+    for fp in FINGERPRINTS:
+        if fp.capability != "vendor":
+            continue
+        ios = fp.metadata.get("vendor_app_ios", "")
+        android = fp.metadata.get("vendor_app_android", "")
+        # Either both must be provided, or neither (so the UI hides
+        # the App Store / Play row entirely rather than showing one
+        # broken half).
+        assert bool(ios) == bool(android), \
+            f"{fp.id}: must specify both iOS and Android or neither"
+        if ios:
+            assert apple_re.match(ios), f"{fp.id}: bad iOS link {ios!r}"
+            assert play_re.match(android), f"{fp.id}: bad Android link {android!r}"
+            seen += 1
+    # Sanity: at least the original vendor list has handoff links.
+    assert seen >= 7, f"only {seen} vendor fingerprints carry app links"
+
+
+def test_discovered_device_to_dict_forwards_vendor_app_links_only():
+    # DiscoveredDevice.extra carries both UI-safe keys (vendor_app_*)
+    # and noisy keys (raw manufacturer_data, service_uuids). The
+    # to_dict allow-list must forward the URLs the handoff card
+    # needs and drop the protocol-internal stuff.
+    from app.provisioning.base import DiscoveredDevice
+    d = DiscoveredDevice(
+        id="x", transport="softap", vendor="other", capability="vendor",
+        extra={
+            "vendor_app_ios": "https://apps.apple.com/app/idABC",
+            "vendor_app_android": "https://play.google.com/store/apps/details?id=Y",
+            "softap_ip": "192.168.4.1",
+            "manufacturer_data": b"\x00\x01\x02",
+            "service_uuids": ["unrelated-uuid"],
+            "internal_token": "should-not-leak",
+        },
+    )
+    body = d.to_dict()
+    assert body["extra"]["vendor_app_ios"].endswith("idABC")
+    assert "play.google" in body["extra"]["vendor_app_android"]
+    assert body["extra"]["softap_ip"] == "192.168.4.1"
+    # Noisy / internal keys must not survive serialisation.
+    assert "manufacturer_data" not in body["extra"]
+    assert "service_uuids" not in body["extra"]
+    assert "internal_token" not in body["extra"]
+
+
+def test_master_key_treats_fail_keyring_module_as_unavailable(monkeypatch):
+    # Regression: ``keyring.backends.fail.Keyring`` returns a class
+    # whose ``__name__`` is just ``Keyring`` — the old "fail" / "null"
+    # substring check on the bare class name missed it, the master_key
+    # module picked the no-op backend, and every wifi_creds.save() in
+    # the admin container crashed with NoKeyringError. With the fix in
+    # place we look at __module__ too and fall through to file backend.
+    import importlib
+    import app.master_key as mk
+    importlib.reload(mk)
+
+    class _FailingKeyring:
+        pass
+    _FailingKeyring.__module__ = "keyring.backends.fail"
+    _FailingKeyring.__qualname__ = "Keyring"
+    _FailingKeyring.__name__ = "Keyring"
+
+    class _FakeKeyring:
+        def get_keyring(self):
+            return _FailingKeyring()
+
+    monkeypatch.setitem(__import__("sys").modules, "keyring", _FakeKeyring())
+    monkeypatch.setitem(__import__("sys").modules, "keyring.errors",
+                        type("M", (), {"KeyringError": Exception}))
+    assert mk._keyring_available() is False
+
+
+def _stub_keyring_unavailable(mk_module, monkeypatch):
+    """Replace the _BACKENDS tuple so keyring + tpm report unavailable.
+
+    ``_BACKENDS`` captures function references at module-import time, so
+    monkeypatching the module-level ``_keyring_available`` doesn't
+    propagate into the tuple — we have to swap the whole tuple entries.
+    """
+    new_specs = []
+    for spec in mk_module._BACKENDS:
+        if spec.name in ("keyring", "tpm"):
+            new_specs.append(mk_module._BackendSpec(
+                name=spec.name, detail=spec.detail,
+                available=lambda: False, get_or_create=spec.get_or_create,
+            ))
+        else:
+            new_specs.append(spec)
+    monkeypatch.setattr(mk_module, "_BACKENDS", tuple(new_specs))
+
+
+def test_master_key_self_heals_when_persisted_backend_unavailable_and_no_data(
+    tmp_path, monkeypatch,
+):
+    # Simulates the exact post-bug state on a Mac admin: an earlier
+    # version picked "keyring" but no save() ever succeeded so no
+    # ciphertexts exist. The fix must silently re-pick to "file"
+    # rather than raise, otherwise the user is stuck.
+    import importlib
+    monkeypatch.setenv("PAWCORDER_DATA_DIR", str(tmp_path))
+    import app.master_key as mk
+    importlib.reload(mk)
+    (tmp_path / "master_key.meta.json").write_text(
+        '{"backend":"keyring","detail":"OS keyring (Keychain / DPAPI / Secret Service)"}'
+    )
+    _stub_keyring_unavailable(mk, monkeypatch)
+    info = mk.get_master_key()
+    assert info.backend == "file"
+    # And the meta gets rewritten so subsequent calls go straight there.
+    import json as _j
+    new_meta = _j.loads((tmp_path / "master_key.meta.json").read_text())
+    assert new_meta["backend"] == "file"
+
+
+def test_master_key_refuses_to_self_heal_when_data_exists(tmp_path, monkeypatch):
+    # Inverse: if cipher blobs exist, swapping backends would break
+    # them, so we MUST raise and let the human investigate.
+    import importlib
+    monkeypatch.setenv("PAWCORDER_DATA_DIR", str(tmp_path))
+    import app.master_key as mk
+    import app.wifi_creds as wc
+    importlib.reload(mk)
+    importlib.reload(wc)
+    (tmp_path / "master_key.meta.json").write_text(
+        '{"backend":"keyring","detail":"..."}'
+    )
+    wc.WIFI_DIR.mkdir(parents=True, exist_ok=True)
+    (wc.WIFI_DIR / "fake.json").write_text("{}")
+    _stub_keyring_unavailable(mk, monkeypatch)
+    import pytest as _pt
+    with _pt.raises(RuntimeError, match="no longer available"):
+        mk.get_master_key()
+
+
+def test_provision_endpoint_does_not_crash_when_keyring_unavailable(
+    authed_client, monkeypatch,
+):
+    # The /provision endpoint would 500 with "internal error" when
+    # remember=True and the keyring backend was the no-op (e.g. inside
+    # a Docker container with no Secret Service). The save is best-
+    # effort; the provision call must still proceed.
+    import app.wifi_creds as wifi_creds
+
+    def _explode(*_a, **_k):
+        raise wifi_creds.WifiCredsError("(simulated) no keyring")
+
+    monkeypatch.setattr(wifi_creds, "save", _explode)
+    resp = authed_client.post("/api/onboarding/wireless/provision", json={
+        "device": {
+            "id": "fake", "transport": "softap", "vendor": "other",
+            "label": "Fake Cam", "capability": "vendor",
+            "fingerprint_id": "tuya-softap",
+        },
+        "ssid": "lin999sir",
+        "psk": "supersecret",
+        "auth": "wpa2-psk",
+        "remember": True,
+    })
+    # We should get a 200 with an NDJSON body — the orchestrator's
+    # vendor-handoff path takes over even though save() exploded.
+    assert resp.status_code == 200, f"got {resp.status_code}: {resp.text[:200]}"
+    assert "selected" in resp.text  # first SSE event is "selected"
+
+
+def test_smartlife_ssid_ranks_as_camera_in_visible_ssids(authed_client, tmp_path, monkeypatch):
+    # End-to-end: SmartLife-0000 has to surface AND get the
+    # looks_like_camera badge so the user spots it among home routers.
+    snap = tmp_path / "wifi_scan.json"
+    import json
+    snap.write_text(json.dumps({
+        "schema": 1, "generated_at": int(__import__("time").time()),
+        "platform": "macos", "tool": "system_profiler",
+        "networks": [
+            {"ssid": "lin999sir",        "bssid": "", "signal_dbm": -45, "channel": 6},
+            {"ssid": "SmartLife-0000",   "bssid": "", "signal_dbm": -65, "channel": 1},
+            {"ssid": "BB29N1F-5G",       "bssid": "", "signal_dbm": -70, "channel": 149},
+        ],
+        "error": None,
+    }))
+    monkeypatch.setenv("WIFI_SCAN_FILE", str(snap))
+    import importlib
+    import app.provisioning.softap_scanner as ss
+    importlib.reload(ss)
+    resp = authed_client.get("/api/onboarding/wireless/visible-ssids")
+    body = resp.json()
+    sl = next((n for n in body["networks"] if n["ssid"] == "SmartLife-0000"), None)
+    assert sl is not None
+    assert sl["looks_like_camera"] is True
+    # And it ranks before the home routers.
+    assert body["networks"][0]["ssid"] == "SmartLife-0000"
+
+
+def test_no_name_camera_softap_ssid_is_fingerprinted():
+    # Worst-case-user safety net: dropship cameras with iCSee / CamHi /
+    # V380 Pro / MIPC SSIDs need to show up in the wireless onboarding
+    # device list, otherwise the user sees "no cameras found" and dead-
+    # ends. These prefixes were chosen from the most common no-name
+    # camera apps on Shopee / Lazada / Amazon.
+    from app.provisioning.fingerprints import match_softap
+    for ssid in ("iCSee_AABBCC", "MV+1234567", "V380-AB12CD", "MIPC_xyz",
+                 "JXLCAM-ABCDEF", "ICAM-12345", "ATOM_AABBCC", "EYE4-99887766",
+                 "IPC365_AB12", "IP-CAMERA-XX", "IPCAM_aabbcc"):
+        fp = match_softap(ssid)
+        assert fp is not None, f"{ssid!r} should match no-name fingerprint"
+        assert fp.id in {"no-name-camera-softap", "foscam-softap", "espressif-softap"}, \
+            f"{ssid!r} matched unexpected fingerprint {fp.id}"
+
+
+def test_wireless_status_reports_scan_reason(authed_client, tmp_path, monkeypatch):
+    # The status route surfaces softap_scan_reason so the page can swap
+    # banner copy ("no Wi-Fi card" vs "scanner not yet running" vs the
+    # generic fallback). Without a fresh helper file and no in-container
+    # scan tools, the reason should be "stale" or "no_scan_tool".
+    monkeypatch.setenv("WIFI_SCAN_FILE", str(tmp_path / "missing.json"))
+    import importlib
+    import app.provisioning.softap_scanner as ss
+    importlib.reload(ss)
+    resp = authed_client.get("/api/onboarding/wireless/status")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "softap_scan" in body["capabilities"]
+    assert "softap_scan_reason" in body["capabilities"]
+    # We don't pin the exact reason — it depends on whether the test
+    # host has nmcli/iw/airport on PATH — but it has to be a string.
+    assert isinstance(body["capabilities"]["softap_scan_reason"], str)
+
+
 # ---- cameras CRUD -------------------------------------------------------
 
 def test_cameras_crud_full_flow(authed_client):

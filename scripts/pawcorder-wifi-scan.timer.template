@@ -1,0 +1,13 @@
+[Unit]
+Description=Run Pawcorder Wi-Fi scanner every __INTERVAL__ seconds
+
+[Timer]
+# OnBootSec gives the network stack a moment to come up before the first
+# scan; OnUnitActiveSec is the steady-state period.
+OnBootSec=15s
+OnUnitActiveSec=__INTERVAL__s
+AccuracySec=1s
+Unit=pawcorder-wifi-scan.service
+
+[Install]
+WantedBy=timers.target

@@ -30,6 +30,7 @@ main() {
   ensure_storage_dir
   ensure_env_file
   ensure_frigate_config
+  ensure_wifi_scan_helper
 
   log_section "Starting services"
   $DOCKER_COMPOSE up -d --build --pull missing
