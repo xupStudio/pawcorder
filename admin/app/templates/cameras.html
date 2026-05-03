@@ -2,12 +2,12 @@
 {% block title %}{{ t('CAMERAS_TITLE') }} · Pawcorder{% endblock %}
 {% block main %}
 <div x-data='camerasPage({{ cameras | map(attribute="name") | list | tojson }})' x-init="refresh(); loadBrands()">
-  <div class="flex items-center justify-between mb-6">
-    <div>
+  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+    <div class="min-w-0">
       <h1 class="text-3xl font-display tracking-display">{{ t('CAMERAS_TITLE') }}</h1>
       <p class="text-sm text-slate-500 dark:text-slate-400 italic">{{ t('CAMERAS_SUBTITLE') }}</p>
     </div>
-    <button @click="openNew()" class="rounded-md bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 text-sm font-medium">
+    <button @click="openNew()" class="self-start sm:self-auto shrink-0 rounded-md bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 text-sm font-medium">
       {{ t('ADD_CAMERA') }}
     </button>
   </div>
@@ -70,29 +70,42 @@
   <!-- Mobile: card stack -->
   <div class="sm:hidden space-y-3 mb-6" x-show="cameras.length > 0">
     <template x-for="c in cameras" :key="c.name">
-      <div class="rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-4">
-        <div class="flex items-start justify-between gap-2 mb-3">
-          <div class="min-w-0 flex-1">
-            <div class="font-medium truncate" x-text="c.name"></div>
-            <div class="text-xs font-mono text-slate-500 dark:text-slate-400 truncate" x-text="c.ip + ':' + c.rtsp_port"></div>
+      <div class="rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 overflow-hidden">
+        <button type="button" @click="openLive(c)" class="block w-full text-left">
+          <div class="relative aspect-video bg-slate-200 dark:bg-slate-800">
+            <img :src="`/api/cameras/${encodeURIComponent(c.name)}/thumbnail?t=${tickKey}`"
+                 class="absolute inset-0 w-full h-full object-cover"
+                 loading="lazy"
+                 onerror="this.style.visibility='hidden'" alt="" />
+            <span class="absolute top-2 right-2 inline-flex h-2 w-2 rounded-full ring-2 ring-white dark:ring-slate-900"
+                  x-bind:class="c.enabled ? 'bg-emerald-500' : 'bg-slate-400'"></span>
           </div>
-          <span class="inline-flex h-2 w-2 rounded-full mt-2 shrink-0"
-                x-bind:class="c.enabled ? 'bg-emerald-500' : 'bg-slate-300'"></span>
-        </div>
-        <div class="flex flex-wrap gap-1.5 mb-3 text-xs">
-          <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium"
-                x-bind:class="{
-                  'bg-blue-50 dark:bg-blue-900 text-blue-700 dark:text-blue-300 ring-1 ring-blue-200 dark:ring-blue-800': c.connection_type === 'wifi',
-                  'bg-emerald-50 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-200 dark:ring-emerald-800': c.connection_type === 'wired',
-                  'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 ring-1 ring-slate-200 dark:ring-slate-700': c.connection_type === 'unknown' || !c.connection_type,
-                }"
-                x-text="(c.connection_type === 'wifi' ? labels.wifi : c.connection_type === 'wired' ? labels.wired : labels.unknown)"></span>
-          <span class="inline-flex items-center gap-1 rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 font-mono"
-                x-text="c.detect_width + '×' + c.detect_height"></span>
-        </div>
-        <div class="flex justify-end gap-3 text-sm border-t border-slate-100 dark:border-slate-700 pt-3">
-          <button @click="openEdit(c)" class="text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100">{{ t('EDIT') }}</button>
-          <button @click="remove(c.name)" class="text-rose-600 dark:text-rose-400 hover:text-rose-700">{{ t('REMOVE') }}</button>
+        </button>
+        <div class="p-4">
+          <div class="flex items-start justify-between gap-2 mb-3">
+            <div class="min-w-0 flex-1">
+              <div class="font-medium truncate" x-text="c.name"></div>
+              <div class="text-xs font-mono text-slate-500 dark:text-slate-400 truncate" x-text="c.ip + ':' + c.rtsp_port"></div>
+            </div>
+          </div>
+          <div class="flex flex-wrap gap-1.5 mb-3 text-xs">
+            <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium"
+                  x-bind:class="{
+                    'bg-blue-50 dark:bg-blue-900 text-blue-700 dark:text-blue-300 ring-1 ring-blue-200 dark:ring-blue-800': c.connection_type === 'wifi',
+                    'bg-emerald-50 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-200 dark:ring-emerald-800': c.connection_type === 'wired',
+                    'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 ring-1 ring-slate-200 dark:ring-slate-700': c.connection_type === 'unknown' || !c.connection_type,
+                  }"
+                  x-text="(c.connection_type === 'wifi' ? labels.wifi : c.connection_type === 'wired' ? labels.wired : labels.unknown)"></span>
+            <span class="inline-flex items-center gap-1 rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 font-mono"
+                  x-text="c.detect_width + '×' + c.detect_height"></span>
+          </div>
+          <div class="flex justify-between items-center gap-3 text-sm border-t border-slate-100 dark:border-slate-700 pt-3">
+            <button @click="openLive(c)" class="text-brand-600 dark:text-brand-400 font-medium hover:text-brand-700 dark:hover:text-brand-300">{{ t('CAM_WATCH') }}</button>
+            <div class="flex gap-3">
+              <button @click="openEdit(c)" class="text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100">{{ t('EDIT') }}</button>
+              <button @click="remove(c.name)" class="text-rose-600 dark:text-rose-400 hover:text-rose-700">{{ t('REMOVE') }}</button>
+            </div>
+          </div>
         </div>
       </div>
     </template>
@@ -198,6 +211,15 @@
               </li>
             </template>
           </ul>
+          <!-- Always-visible escape hatch for wireless-only cameras. Subnet
+               scan can't see a camera that isn't on the network yet, so a
+               brand-new wireless camera that's only got power needs a
+               separate flow. We surface it inline rather than after a
+               failed scan so users don't waste a 60s scan to discover it. -->
+          <p class="mt-3 text-xs text-slate-500 dark:text-slate-400">
+            {{ t('CAMS_SCAN_WIRELESS_INLINE') }}
+            <a href="/onboarding/wireless" class="text-brand-600 dark:text-brand-400 underline hover:text-brand-700">{{ t('CAMS_SCAN_WIRELESS_LINK') }}</a>
+          </p>
         </div>
 
         <div>
@@ -420,6 +442,19 @@
         if (this._tickInterval == null) {
           this._tickInterval = setInterval(() => { this.tickKey = Date.now(); }, 30000);
         }
+        // Auto-open live modal when arriving from a dashboard tile
+        // (`/cameras?watch=<name>`). Done after refresh so the camera
+        // object is in `this.cameras` and we can reuse its ptz_presets.
+        try {
+          const params = new URLSearchParams(window.location.search);
+          const want = params.get('watch');
+          if (want && !this.liveModal.open) {
+            const cam = this.cameras.find(c => c.name === want);
+            if (cam) this.openLive(cam);
+            // Clean the URL so back-navigation doesn't re-open the modal.
+            history.replaceState({}, '', window.location.pathname);
+          }
+        } catch (e) { /* feature-detect: URLSearchParams missing → skip */ }
       },
       openNew() {
         this.modal = { open: true, mode: 'new', original: null };

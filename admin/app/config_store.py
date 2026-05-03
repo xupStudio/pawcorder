@@ -115,6 +115,14 @@ class Config:
     line_enabled: bool = False
     line_channel_token: str = ""
     line_target_id: str = ""
+    # ntfy.sh — zero-token push notifications. The user picks a random
+    # topic, subscribes from the ntfy mobile app, and Pawcorder posts to
+    # https://ntfy.sh/<topic>. No bot, no chat ID, no per-user account.
+    # Default points at the public ntfy.sh; users can self-host (set
+    # NTFY_SERVER to their own URL) for full data sovereignty.
+    ntfy_enabled: bool = False
+    ntfy_server: str = "https://ntfy.sh"
+    ntfy_topic: str = ""
     admin_lang: str = "zh-TW"
     track_cat: bool = True
     track_dog: bool = True
@@ -199,6 +207,9 @@ class Config:
             line_enabled=env.get("LINE_ENABLED", "0") in ("1", "true", "True"),
             line_channel_token=env.get("LINE_CHANNEL_TOKEN", ""),
             line_target_id=env.get("LINE_TARGET_ID", ""),
+            ntfy_enabled=env.get("NTFY_ENABLED", "0") in ("1", "true", "True"),
+            ntfy_server=env.get("NTFY_SERVER", "https://ntfy.sh"),
+            ntfy_topic=env.get("NTFY_TOPIC", ""),
             admin_lang=env.get("ADMIN_LANG", "zh-TW"),
             track_cat=env.get("TRACK_CAT", "1") in ("1", "true", "True"),
             track_dog=env.get("TRACK_DOG", "1") in ("1", "true", "True"),
@@ -246,6 +257,9 @@ class Config:
             "LINE_ENABLED": "1" if self.line_enabled else "0",
             "LINE_CHANNEL_TOKEN": self.line_channel_token,
             "LINE_TARGET_ID": self.line_target_id,
+            "NTFY_ENABLED": "1" if self.ntfy_enabled else "0",
+            "NTFY_SERVER": self.ntfy_server,
+            "NTFY_TOPIC": self.ntfy_topic,
             "ADMIN_LANG": self.admin_lang,
             "TRACK_CAT": "1" if self.track_cat else "0",
             "TRACK_DOG": "1" if self.track_dog else "0",

@@ -21,11 +21,86 @@
     <p class="mt-1 text-blue-800 dark:text-blue-200">{{ t('NOTIF_IOS_BODY') }}</p>
   </div>
 
+  <!-- ntfy.sh section — zero-token push; promoted to primary path. -->
+  <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-6 mb-6">
+    <div class="flex items-center justify-between mb-1">
+      <h2 class="text-lg font-display tracking-tight">{{ t('NOTIF_NTFY_HEADING') }}</h2>
+      <span class="inline-flex rounded-full px-2 py-0.5 text-xs font-medium bg-emerald-50 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-200 dark:ring-emerald-800">{{ t('RECOMMENDED') }}</span>
+    </div>
+    <p class="text-sm text-slate-500 dark:text-slate-400 mb-4">{{ t('NOTIF_NTFY_NOTE') }}</p>
+
+    <ol class="list-decimal pl-5 space-y-2 text-sm text-slate-600 dark:text-slate-300 mb-4">
+      <li>
+        {{ t('NOTIF_NTFY_STEP_INSTALL') }}
+        <a href="https://apps.apple.com/app/ntfy/id1625396347" target="_blank" rel="noopener" class="text-brand-600 underline">iOS</a>
+        ·
+        <a href="https://play.google.com/store/apps/details?id=io.heckel.ntfy" target="_blank" rel="noopener" class="text-brand-600 underline">Android</a>
+        ·
+        <a href="https://f-droid.org/packages/io.heckel.ntfy/" target="_blank" rel="noopener" class="text-brand-600 underline">F-Droid</a>
+      </li>
+      <li>{{ t('NOTIF_NTFY_STEP_GENERATE') }}</li>
+      <li>{{ t('NOTIF_NTFY_STEP_SUBSCRIBE') }}</li>
+    </ol>
+
+    <div class="space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('NOTIF_NTFY_TOPIC_LABEL') }}</label>
+        <div class="mt-1 flex gap-2">
+          <input type="text" x-model="ntfy.ntfy_topic" :placeholder="labels.ntfy_placeholder"
+                 class="flex-1 rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm font-mono" />
+          <button @click="generateNtfyTopic()" :disabled="ntfyBusy"
+                  class="rounded-md bg-slate-900 hover:bg-slate-800 text-white px-3 py-2 text-sm font-medium disabled:opacity-50"
+                  x-text="ntfyBusy ? labels.ntfy_generating : labels.ntfy_generate"></button>
+        </div>
+        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('NOTIF_NTFY_TOPIC_HELP') }}</p>
+      </div>
+
+      <details>
+        <summary class="cursor-pointer text-xs text-slate-500 dark:text-slate-400 font-medium">{{ t('NOTIF_NTFY_SERVER_TOGGLE') }}</summary>
+        <div class="mt-2">
+          <label class="block text-xs font-medium text-slate-700 dark:text-slate-300">{{ t('NOTIF_NTFY_SERVER_LABEL') }}</label>
+          <input type="text" x-model="ntfy.ntfy_server" placeholder="https://ntfy.sh"
+                 class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm font-mono" />
+          <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('NOTIF_NTFY_SERVER_HELP') }}</p>
+        </div>
+      </details>
+
+      <div x-show="ntfy.ntfy_topic" class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
+        <div class="text-center">
+          <p class="text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">{{ t('NOTIF_NTFY_QR_LABEL') }}</p>
+          <div class="inline-block rounded-lg border border-slate-200 dark:border-slate-700 p-3 bg-white dark:bg-slate-900">
+            <img :src="qrSrc(ntfyTopicUrl())" alt="QR" class="w-40 h-40 bg-white p-2 rounded" />
+          </div>
+        </div>
+        <div class="text-xs text-slate-600 dark:text-slate-300 break-all">
+          <p class="font-medium mb-1">{{ t('NOTIF_NTFY_URL') }}</p>
+          <code class="font-mono" x-text="ntfyTopicUrl()"></code>
+        </div>
+      </div>
+
+      <label class="inline-flex items-center gap-2 text-sm">
+        <input type="checkbox" x-model="ntfy.ntfy_enabled"
+               class="rounded border-slate-300 dark:border-slate-600 text-brand-500 focus:ring-brand-500" />
+        <span>{{ t('NOTIF_NTFY_FORWARD') }}</span>
+      </label>
+
+      <div class="flex items-center gap-3 flex-wrap">
+        <button @click="save('ntfy')" class="rounded-md bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 text-sm font-medium">{{ t('SAVE') }}</button>
+        <button @click="testNtfy()" :disabled="testing.ntfy || !ntfy.ntfy_topic"
+                class="rounded-md bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 text-sm font-medium disabled:opacity-50"
+                x-text="testing.ntfy ? labels.sending : labels.send_test"></button>
+        <span x-show="result.ntfy" class="text-sm" x-bind:class="result.ntfy?.ok ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'">
+          <span x-show="result.ntfy?.ok" x-text="labels.sent"></span>
+          <span x-show="!result.ntfy?.ok" x-text="labels.failed_prefix + ' ' + (result.ntfy?.error || '?')"></span>
+        </span>
+      </div>
+    </div>
+  </div>
+
   <!-- Telegram section -->
   <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-6 mb-6">
     <div class="flex items-center justify-between mb-1">
       <h2 class="text-lg font-display tracking-tight">{{ t('NOTIF_TG_HEADING') }}</h2>
-      <span class="inline-flex rounded-full px-2 py-0.5 text-xs font-medium bg-emerald-50 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-200 dark:ring-emerald-800">{{ t('RECOMMENDED') }}</span>
     </div>
     <p class="text-sm text-slate-500 dark:text-slate-400 mb-5">{{ t('NOTIF_TG_NOTE') }}</p>
 
@@ -67,10 +142,45 @@
         <input type="text" x-model="tg.telegram_bot_token" placeholder="123456789:ABCdef..."
                class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm font-mono" />
       </div>
+
+      {# Bot deep-link pairing replaces the manual chat-ID lookup. User
+         clicks "Connect", we mint a pairing code, show a QR + link;
+         when the user taps Start in Telegram, the bot captures the
+         chat_id automatically and we save it. #}
+      <div x-show="!tg.telegram_chat_id || tgPairing.deep_link"
+           class="rounded-lg bg-emerald-50 dark:bg-emerald-950 border border-emerald-200 dark:border-emerald-800 p-4 space-y-3">
+        <p class="text-sm font-medium text-emerald-900 dark:text-emerald-100">{{ t('NOTIF_TG_PAIR_HEADING') }}</p>
+        <p class="text-xs text-emerald-800 dark:text-emerald-200">{{ t('NOTIF_TG_PAIR_BODY') }}</p>
+        <div x-show="!tgPairing.deep_link">
+          <button @click="startTgPairing()" :disabled="tgPairing.busy || !tg.telegram_bot_token"
+                  class="rounded-md bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 text-sm font-medium disabled:opacity-50"
+                  x-text="tgPairing.busy ? labels.tg_pairing : labels.tg_pair_start"></button>
+        </div>
+        <div x-show="tgPairing.deep_link" class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
+          <div class="text-center">
+            <div class="inline-block rounded-lg border border-emerald-200 dark:border-emerald-800 p-3 bg-white dark:bg-slate-900">
+              <img :src="qrSrc(tgPairing.deep_link)" alt="QR" class="w-40 h-40 bg-white p-2 rounded" />
+            </div>
+            <a :href="tgPairing.deep_link" target="_blank" rel="noopener"
+               class="mt-2 inline-block text-xs text-emerald-700 dark:text-emerald-300 underline">
+              {{ t('NOTIF_TG_PAIR_OPEN') }}
+            </a>
+          </div>
+          <div class="text-xs text-emerald-800 dark:text-emerald-200">
+            <p class="font-mono break-all" x-text="tgPairing.deep_link"></p>
+            <p class="mt-3" x-show="tgPairing.matched" class="font-medium">
+              ✓ <span x-text="labels.tg_pair_done + ' (' + (tg.telegram_chat_id || '') + ')'"></span>
+            </p>
+            <p class="mt-3" x-show="!tgPairing.matched && tgPairing.deep_link" x-text="labels.tg_pair_waiting"></p>
+          </div>
+        </div>
+      </div>
+
       <div>
         <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('NOTIF_TG_CHAT_ID') }}</label>
         <input type="text" x-model="tg.telegram_chat_id" placeholder="123456789"
                class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm font-mono" />
+        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('NOTIF_TG_CHAT_ID_AUTO') }}</p>
       </div>
       <label class="inline-flex items-center gap-2 text-sm">
         <input type="checkbox" x-model="tg.telegram_enabled"
@@ -164,28 +274,96 @@
 <script>
   function notificationsPage() {
     return {
-      testing: { telegram: false, line: false },
-      result: { telegram: null, line: null },
+      testing: { telegram: false, line: false, ntfy: false },
+      result: { telegram: null, line: null, ntfy: null },
+      ntfyBusy: false,
       labels: {
         send_test:     {{ t('NOTIF_SEND_TEST') | tojson }},
         sending:       {{ t('NOTIF_SENDING') | tojson }},
         sent:          {{ t('NOTIF_SENT') | tojson }},
         failed_prefix: {{ t('NOTIF_FAILED') | tojson }},
         saved:         {{ t('SAVED') | tojson }},
+        ntfy_generate:   {{ t('NOTIF_NTFY_GENERATE') | tojson }},
+        ntfy_generating: {{ t('NOTIF_NTFY_GENERATING') | tojson }},
+        ntfy_placeholder:{{ t('NOTIF_NTFY_PLACEHOLDER') | tojson }},
+        tg_pair_start:   {{ t('NOTIF_TG_PAIR_START') | tojson }},
+        tg_pairing:      {{ t('NOTIF_TG_PAIR_PAIRING') | tojson }},
+        tg_pair_done:    {{ t('NOTIF_TG_PAIR_DONE') | tojson }},
+        tg_pair_waiting: {{ t('NOTIF_TG_PAIR_WAITING') | tojson }},
       },
       tg: {
         telegram_bot_token: {{ config.telegram_bot_token | tojson }},
         telegram_chat_id:   {{ config.telegram_chat_id | tojson }},
         telegram_enabled:   {{ config.telegram_enabled | tojson }},
       },
+      tgPairing: { busy: false, deep_link: '', matched: false, _poll: null },
+      async startTgPairing() {
+        this.tgPairing.busy = true;
+        this.tgPairing.matched = false;
+        this.tgPairing.deep_link = '';
+        try {
+          const r = await api('/api/telegram/pair-start', {
+            method: 'POST', body: { token: this.tg.telegram_bot_token },
+          });
+          this.tgPairing.deep_link = r.deep_link;
+          // Poll for the /start handshake every 4 s for up to ~5 min.
+          if (this.tgPairing._poll) clearInterval(this.tgPairing._poll);
+          let ticks = 0;
+          this.tgPairing._poll = setInterval(async () => {
+            ticks++;
+            if (ticks > 75) { clearInterval(this.tgPairing._poll); return; }
+            try {
+              const cr = await api('/api/telegram/pair-check', {
+                method: 'POST', body: { token: this.tg.telegram_bot_token },
+              });
+              if (cr.matched) {
+                this.tg.telegram_chat_id = cr.chat_id;
+                this.tgPairing.matched = true;
+                clearInterval(this.tgPairing._poll);
+              }
+            } catch (e) { /* transient — keep polling */ }
+          }, 4000);
+        } catch (e) { toast(e.message, 'error'); }
+        finally { this.tgPairing.busy = false; }
+      },
       line: {
         line_channel_token: {{ config.line_channel_token | tojson }},
         line_target_id:     {{ config.line_target_id | tojson }},
         line_enabled:       {{ config.line_enabled | tojson }},
       },
+      ntfy: {
+        ntfy_server:  {{ (config.ntfy_server or 'https://ntfy.sh') | tojson }},
+        ntfy_topic:   {{ config.ntfy_topic | tojson }},
+        ntfy_enabled: {{ config.ntfy_enabled | tojson }},
+      },
+      qrSrc(url) { return '/api/qrcode?url=' + encodeURIComponent(url); },
+      ntfyTopicUrl() {
+        const s = (this.ntfy.ntfy_server || 'https://ntfy.sh').replace(/\/+$/, '');
+        const t = (this.ntfy.ntfy_topic || '').trim();
+        return t ? `${s}/${t}` : '';
+      },
+      async generateNtfyTopic() {
+        this.ntfyBusy = true;
+        try {
+          const r = await api('/api/ntfy/generate-topic', { method: 'POST', body: {} });
+          this.ntfy.ntfy_topic = r.topic;
+        } catch (e) { toast(e.message, 'error'); }
+        finally { this.ntfyBusy = false; }
+      },
+      async testNtfy() {
+        this.testing.ntfy = true;
+        this.result.ntfy = null;
+        try {
+          this.result.ntfy = await api('/api/ntfy/test', { method: 'POST', body: this.ntfy });
+        } catch (e) { this.result.ntfy = { ok: false, error: e.message }; }
+        finally { this.testing.ntfy = false; }
+      },
       async save(channel) {
         try {
-          const data = channel === 'telegram' ? this.tg : this.line;
+          const data = channel === 'telegram' ? this.tg :
+                       channel === 'line' ? this.line :
+                       channel === 'ntfy' ? this.ntfy : null;
+          if (!data) throw new Error('unknown channel');
           await api('/api/config/save', {
             method: 'POST',
             body: { section: channel, data },

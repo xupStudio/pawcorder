@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import io
 import os
+import re
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -15,6 +16,7 @@ from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import (
     api_keys,
@@ -26,11 +28,13 @@ from . import (
     camera_setup,
     onboarding,
     cloud,
+    cloud_oauth,
     config_store,
     docker_ops,
     embeddings,
     errors,
     federated,
+    ha_integration,
     invites,
     health,
     heatmap,
@@ -38,10 +42,14 @@ from . import (
     i18n,
     insights,
     line as line_api,
+    local_ai,
+    login_recovery,
     marketing,
     migrations,
+    nas_discover,
     nas_mount,
     network_scan,
+    ntfy,
     perf,
     pet_diary,
     pet_query,
@@ -54,7 +62,9 @@ from . import (
     reliability,
     setup_helpers,
     storage_detect,
+    tailscale_helper,
     telegram as tg,
+    telegram_pairing,
     timeline,
     timelapse,
     vet_pack,
@@ -192,6 +202,49 @@ if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 camera_store = CameraStore()
+
+
+@app.exception_handler(StarletteHTTPException)
+async def _http_exception_handler(request: Request, exc: StarletteHTTPException):
+    """Render a styled error page for HTML navigation, plain JSON for API.
+
+    Browsers send `Accept: text/html`; XHR/fetch from our own JS sends
+    `Accept: application/json`. The default FastAPI handler returns
+    `{"detail": "..."}` for everything, which lands a raw-JSON page on
+    a regular user who mis-typed a URL.
+
+    Registered on Starlette's HTTPException (the parent of FastAPI's) so
+    404s from non-matching routes are caught alongside explicitly-raised
+    ones.
+    """
+    accept = request.headers.get("accept", "")
+    wants_html = "text/html" in accept and "application/json" not in accept
+    if not wants_html:
+        return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+
+    lang = i18n.get_lang_from_request(request)
+    t = i18n.make_translator(lang)
+    if exc.status_code == 404:
+        heading_key, body_key = "ERR_PAGE_NOT_FOUND", "ERR_PAGE_NOT_FOUND_BODY"
+    elif exc.status_code in (502, 503, 504):
+        heading_key, body_key = "ERR_UPSTREAM_DOWN", "ERR_UPSTREAM_DOWN_BODY"
+    elif exc.status_code >= 500:
+        heading_key, body_key = "ERR_SERVER_BROKE", "ERR_SERVER_BROKE_BODY"
+    else:
+        heading_key, body_key = "ERR_GENERIC", "ERR_GENERIC_BODY"
+    return templates.TemplateResponse(
+        "_error.html",
+        {
+            "request": request,
+            "lang": lang,
+            "t": t,
+            "status_code": exc.status_code,
+            "heading": t(heading_key),
+            "body": t(body_key),
+            "home_label": t("ERR_BACK_HOME"),
+        },
+        status_code=exc.status_code,
+    )
 
 
 # ---- helpers -------------------------------------------------------------
@@ -386,7 +439,8 @@ def _rerender_and_restart(silent: bool = True) -> None:
 # ---- auth ----------------------------------------------------------------
 
 @app.get("/login", response_class=HTMLResponse)
-async def login_page(request: Request, error: str | None = None):
+async def login_page(request: Request, error: str | None = None,
+                      reset: str | None = None):
     if auth.is_authenticated(request):
         return _redirect_to("/")
     lang = i18n.get_lang_from_request(request)
@@ -395,12 +449,29 @@ async def login_page(request: Request, error: str | None = None):
         {
             "request": request,
             "error": error,
+            "reset_armed": login_recovery.is_armed(),
+            "reset_status": reset,  # "ok" / "tooshort" / None
             "multi_user": users.has_users(),
             "lang": lang,
             "supported_langs": i18n.SUPPORTED,
             "t": i18n.make_translator(lang),
         },
     )
+
+
+@app.post("/login/recover")
+async def login_recover(password: str = Form(...)):
+    """File-flag password reset. Only accepts the new password if the
+    .reset-password marker file is present in the data dir — anyone
+    who can drop that file already has full host access."""
+    if not login_recovery.is_armed():
+        return _redirect_to("/login?error=invalid")
+    try:
+        login_recovery.reset_password(password)
+    except ValueError:
+        return _redirect_to("/login?reset=tooshort")
+    login_recovery.disarm()
+    return _redirect_to("/login?reset=ok")
 
 
 @app.post("/api/lang")
@@ -574,12 +645,16 @@ async def mobile_page(request: Request):
     if not auth.is_authenticated(request):
         return _redirect_login()
     host = request.url.hostname or "localhost"
+    admin_port = os.environ.get("ADMIN_HOST_PORT", "8080")
+    frigate_port = os.environ.get("FRIGATE_HOST_PORT", "5000")
     return _render(
         "mobile.html",
         request,
         lan_host=host,
-        lan_admin_url=f"http://{host}:8080",
-        lan_frigate_url=f"http://{host}:5000",
+        lan_admin_url=f"http://{host}:{admin_port}",
+        lan_frigate_url=f"http://{host}:{frigate_port}",
+        admin_host_port=admin_port,
+        frigate_host_port=frigate_port,
     )
 
 
@@ -848,6 +923,11 @@ async def api_wireless_status(request: Request):
         "capabilities": {
             "ble": ble_scanner.bleak_available(),
             "softap_scan": softap_scanner.softap_scanner_available(),
+            # Empty string when scanning works; otherwise a short reason
+            # code the UI uses to swap the banner copy ("no_wifi_iface"
+            # → "this host has no Wi-Fi card"; "stale" → "scanner not
+            # yet running" etc).
+            "softap_scan_reason": softap_scanner.softap_scanner_unavailable_reason(),
             "softap_join": softap_join.softap_join_available(),
             "wps": wps_pbc.wps_available(),
         },
@@ -867,6 +947,127 @@ async def api_wireless_scan(request: Request, payload: dict):
     do_softap = bool(payload.get("softap", True))
     devices = await orchestrator.discover(do_ble=do_ble, do_softap=do_softap)
     return {"devices": [d.to_dict() for d in devices]}
+
+
+@app.get("/api/onboarding/wireless/visible-ble")
+async def api_wireless_visible_ble(request: Request):
+    """All BLE devices the host scanner can currently see.
+
+    Same job as visible-ssids but for Bluetooth: the fingerprinted
+    pipeline drops anything we don't recognise, which means a no-name
+    camera advertising a service UUID we haven't catalogued (e.g. the
+    OTS-0x1827 Object Transfer Service common to firmware-OTA-capable
+    cams) shows up as "no devices found". Surfacing the raw list lets
+    the user identify their camera by RSSI / non-Apple manufacturer ID.
+    """
+    _require_auth(request)
+    from .provisioning import ble_scanner
+    payload = ble_scanner._host_ble_payload()  # noqa: SLF001
+    if payload is None:
+        return {"devices": [], "error": "stale", "tool": "", "generated_at": 0}
+    devices = []
+    for d in payload.get("devices") or []:
+        if not isinstance(d, dict):
+            continue
+        addr = (d.get("address") or "").strip()
+        if not addr:
+            continue
+        try:
+            rssi = int(d.get("rssi") or 0)
+        except (TypeError, ValueError):
+            rssi = 0
+        services = list(d.get("service_uuids") or [])
+        manuf_ids = list(d.get("manufacturer_ids") or [])
+        # Apple manufacturer ID (0x004C / 76) accounts for ~80% of the
+        # BLE noise on a typical home: iPhones, AirPods, Watches, other
+        # Macs. We flag non-Apple advertisers + named devices + devices
+        # carrying any service UUID as "more likely to be a camera"
+        # for the UI sort. Heuristic only — never used to drop entries.
+        looks_camera = (
+            76 not in manuf_ids
+            and (bool(services) or bool((d.get("name") or "").strip()))
+        )
+        devices.append({
+            "address": addr,
+            "rssi": rssi,
+            "name": (d.get("name") or "").strip(),
+            "service_uuids": services,
+            "manufacturer_ids": manuf_ids,
+            "is_apple": 76 in manuf_ids,
+            "looks_like_camera": looks_camera,
+        })
+    devices.sort(key=lambda d: (not d["looks_like_camera"], d["is_apple"], -d["rssi"]))
+    return {
+        "devices": devices,
+        "error": payload.get("error"),
+        "tool": payload.get("tool", ""),
+        "generated_at": payload.get("generated_at", 0),
+    }
+
+
+@app.get("/api/onboarding/wireless/visible-ssids")
+async def api_wireless_visible_ssids(request: Request):
+    """All Wi-Fi SSIDs currently visible to the host scanner.
+
+    The fingerprinted scan only returns SSIDs that match a known camera
+    prefix. That works for mainstream brands but a no-name camera with
+    an SSID we don't recognise would show "no cameras found" with no
+    way for the user to make progress. This endpoint exposes the raw
+    list so the UI can offer "is one of these your camera?" — and rank
+    the camera-shaped names higher.
+    """
+    _require_auth(request)
+    from .provisioning import softap_scanner
+    payload = softap_scanner._host_helper_payload()  # noqa: SLF001
+    if payload is None:
+        return {"networks": [], "error": "stale", "tool": "", "generated_at": 0}
+    seen: dict[str, dict] = {}
+    for n in payload.get("networks") or []:
+        if not isinstance(n, dict):
+            continue
+        ssid = (n.get("ssid") or "").strip()
+        if not ssid:
+            continue
+        # Strongest dBm wins for repeated SSIDs (different bands of the
+        # same network show up twice from system_profiler / nmcli).
+        try:
+            sig = int(n.get("signal_dbm") or 0)
+        except (TypeError, ValueError):
+            sig = 0
+        prev = seen.get(ssid)
+        if prev is None or sig > prev["signal_dbm"]:
+            seen[ssid] = {
+                "ssid": ssid,
+                "signal_dbm": sig,
+                "channel": int(n.get("channel") or 0) if str(n.get("channel") or "").isdigit() else 0,
+                "looks_like_camera": _ssid_looks_like_camera(ssid),
+            }
+    networks = sorted(seen.values(),
+                      key=lambda n: (not n["looks_like_camera"], -n["signal_dbm"]))
+    return {
+        "networks": networks,
+        "error": payload.get("error"),
+        "tool": payload.get("tool", ""),
+        "generated_at": payload.get("generated_at", 0),
+    }
+
+
+# Loose heuristic for "this SSID smells like a camera in pairing mode."
+# Used only to RANK the all-networks list, never to drop entries. False
+# positives are fine (we surface them and the user picks); false
+# negatives are also fine (we just don't bold the row).
+_CAMERA_HINTS = re.compile(
+    r"(?ix)"
+    r"\b(cam|ipc|nvr|cctv|camera|ipcam|webcam|prov|esp[-_]?\w+|"
+    r"foscam|reolink|tapo|wyze|amcrest|dahua|imou|hikvision|"
+    r"icsee|v380|mipc|jxlcam|atom|eye4|smartcam|goodcam|"
+    r"mv[+\-_]\w+|ipc365|anran|sannce|jooan|vstarcam|"
+    r"smartlife|tuya|sl[-_][a-z0-9]{4})\b"
+)
+
+
+def _ssid_looks_like_camera(ssid: str) -> bool:
+    return bool(_CAMERA_HINTS.search(ssid))
 
 
 @app.post("/api/onboarding/wireless/provision")
@@ -921,10 +1122,17 @@ async def api_wireless_provision(request: Request, payload: dict):
     if remember:
         try:
             wifi_creds.save(ssid=ssid, psk=psk, auth=auth_kind)
-        except wifi_creds.WifiCredsError:
-            # Don't block provisioning on a save failure — the UI will
-            # surface it via the saved-SSIDs list staying empty.
-            pass
+        except Exception:  # noqa: BLE001
+            # Best-effort: a save failure (no keyring, file IO error,
+            # anything below the AESGCM layer) must NOT block the user
+            # from actually setting up the camera. The original code
+            # only caught WifiCredsError, which let raw NoKeyringError
+            # bubble up and fail the whole /provision call with a
+            # generic 500 — we'd rather log it and proceed.
+            import logging as _log
+            _log.getLogger("pawcorder.main").exception(
+                "wifi_creds.save failed; continuing without remembering",
+            )
 
     async def _stream():
         import json as _json
@@ -1220,6 +1428,250 @@ async def _run_camera_test(
     return response
 
 
+# ---- Local AI (Ollama) auto-detect + install + pull --------------------
+
+@app.get("/api/local-ai/status")
+async def api_local_ai_status(request: Request, base_url: str | None = None):
+    """Probe Ollama. UI calls this on /system mount + after install."""
+    _require_auth(request)
+    s = await local_ai.status(base_url)
+    return {**vars(s), "recommended_model": local_ai.recommend_model()}
+
+
+@app.post("/api/local-ai/install")
+async def api_local_ai_install(request: Request):
+    """Run the official Ollama install script."""
+    _require_role(request, min_role="admin")
+    ok, output = local_ai.install()
+    after = await local_ai.status()
+    return {"ok": ok, "output": output, "status": vars(after)}
+
+
+@app.post("/api/local-ai/pull")
+async def api_local_ai_pull(request: Request, payload: dict):
+    """Pull a model (e.g. ``qwen2.5:3b``). Returns when the pull
+    completes; a long-running call. UI shows a spinner."""
+    _require_role(request, min_role="admin")
+    model = (payload.get("model") or local_ai.recommend_model()).strip()
+    base = (payload.get("base_url") or "").strip() or None
+    ok, last = await local_ai.pull_model(model, base)
+    return {"ok": ok, "last": last, "model": model}
+
+
+# ---- Home Assistant integration (auto-detect + push automation) -------
+
+@app.get("/api/ha/detect")
+async def api_ha_detect(request: Request):
+    """Probe common HA URLs. Returns the first one that responds."""
+    _require_auth(request)
+    return vars(await ha_integration.detect())
+
+
+@app.post("/api/ha/verify-token")
+async def api_ha_verify_token(request: Request, payload: dict):
+    """Check that the supplied token authenticates against HA. Lets the
+    UI confirm the token before showing the "push automation" button."""
+    _require_auth(request)
+    base = (payload.get("base_url") or "").rstrip("/")
+    token = (payload.get("token") or "").strip()
+    if not base or not token:
+        raise HTTPException(status_code=400, detail="base_url + token required")
+    ok, detail = await ha_integration.verify_token(base, token)
+    services = await ha_integration.list_notify_services(base, token) if ok else []
+    return {"ok": ok, "detail": detail, "notify_services": services}
+
+
+@app.post("/api/ha/push-automation")
+async def api_ha_push_automation(request: Request, payload: dict):
+    """POST the Pawcorder automation to HA. Replaces the existing one if
+    present (id is stable). Returns ok/error."""
+    _require_role(request, min_role="admin")
+    base = (payload.get("base_url") or "").rstrip("/")
+    token = (payload.get("token") or "").strip()
+    notify_target = (payload.get("notify_service") or "notify.mobile_app_phone").strip()
+    if not base or not token:
+        raise HTTPException(status_code=400, detail="base_url + token required")
+    ok, detail = await ha_integration.push_automation(base, token, notify_target)
+    return {"ok": ok, "detail": detail}
+
+
+# ---- Cloud OAuth (device code + Nextcloud Login Flow v2) ---------------
+
+@app.get("/api/cloud/oauth/status")
+async def api_cloud_oauth_status(request: Request):
+    """Which providers have OAuth client_id wired in env. UI hides the
+    button for unconfigured providers."""
+    _require_auth(request)
+    return {"providers": cloud_oauth.configured_providers()}
+
+
+@app.post("/api/cloud/oauth/{provider}/start")
+async def api_cloud_oauth_start(request: Request, provider: str, payload: dict):
+    """Begin a flow. Returns the user-facing code/URL. Provider must be
+    one of: drive, onedrive, dropbox, nextcloud."""
+    _require_role(request, min_role="admin")
+    if provider in ("drive", "onedrive"):
+        try:
+            r = await cloud_oauth.device_code_start(provider)
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=400, detail=str(exc)[:200])
+        return {"flow": "device_code", **vars(r)}
+    if provider == "nextcloud":
+        server = (payload.get("server_url") or "").strip()
+        if not server.startswith(("http://", "https://")):
+            raise HTTPException(status_code=400, detail="server_url must start with http(s)://")
+        try:
+            r = await cloud_oauth.nextcloud_start(server)
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=400, detail=str(exc)[:200])
+        return {"flow": "nextcloud", **r}
+    raise HTTPException(status_code=400, detail=f"unsupported provider: {provider!r}")
+
+
+@app.post("/api/cloud/oauth/{provider}/poll")
+async def api_cloud_oauth_poll(request: Request, provider: str, payload: dict):
+    """Poll until the user completes the auth dance on their phone /
+    laptop. UI calls this every few seconds after start."""
+    _require_role(request, min_role="admin")
+    try:
+        if provider in ("drive", "onedrive"):
+            user_code = (payload.get("user_code") or "").strip()
+            if not user_code:
+                raise HTTPException(status_code=400, detail="user_code required")
+            data = await cloud_oauth.device_code_poll(user_code)
+            if data is None:
+                return {"matched": False}
+            cfg = config_store.load_config()
+            cfg.cloud_enabled = True
+            cfg.cloud_backend = provider
+            config_store.save_config(cfg)
+            return {"matched": True, "backend": provider}
+        if provider == "nextcloud":
+            sid = (payload.get("sid") or "").strip()
+            if not sid:
+                raise HTTPException(status_code=400, detail="sid required")
+            r = await cloud_oauth.nextcloud_poll(sid)
+            if r is None:
+                return {"matched": False}
+            cfg = config_store.load_config()
+            cfg.cloud_enabled = True
+            cfg.cloud_backend = "webdav"
+            config_store.save_config(cfg)
+            return {"matched": True, "backend": "webdav", **r}
+        raise HTTPException(status_code=400, detail=f"unsupported provider: {provider!r}")
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)[:200])
+
+
+# ---- Telegram bot pairing (chat_id auto-discovery) ---------------------
+
+_TG_PAIRING_LAST_UPDATE: dict[str, int] = {}
+
+
+@app.post("/api/telegram/pair-start")
+async def api_telegram_pair_start(request: Request, payload: dict):
+    """Mint a pairing code + deep link for the supplied bot token. The
+    UI shows the QR/link so the user can tap → /start → bot captures
+    chat_id automatically."""
+    _require_auth(request)
+    token = (payload.get("token") or "").strip()
+    if not token:
+        raise HTTPException(status_code=400, detail="token required")
+    try:
+        start = await telegram_pairing.start_pairing(token)
+    except Exception as exc:  # noqa: BLE001 — network errors + invalid token
+        raise HTTPException(status_code=400, detail=str(exc)[:200])
+    return vars(start)
+
+
+@app.post("/api/telegram/pair-check")
+async def api_telegram_pair_check(request: Request, payload: dict):
+    """Poll the bot's getUpdates for a matching ``/start <code>``. UI
+    calls this every few seconds after start. When a match arrives we
+    save the captured chat_id to config and return it."""
+    _require_auth(request)
+    token = (payload.get("token") or "").strip()
+    if not token:
+        raise HTTPException(status_code=400, detail="token required")
+    last = _TG_PAIRING_LAST_UPDATE.get(token)
+    result, new_last = await telegram_pairing.check_pairing(token, last_update_id=last)
+    _TG_PAIRING_LAST_UPDATE[token] = new_last
+    if not result:
+        return {"matched": False}
+    cfg = config_store.load_config()
+    cfg.telegram_bot_token = token
+    cfg.telegram_chat_id = result.chat_id
+    config_store.save_config(cfg)
+    return {"matched": True, "chat_id": result.chat_id}
+
+
+# ---- ntfy.sh notifications ---------------------------------------------
+
+@app.post("/api/ntfy/generate-topic")
+async def api_ntfy_generate_topic(request: Request):
+    """Mint a fresh random topic. Caller saves via /api/config/save."""
+    _require_auth(request)
+    return {"topic": ntfy.generate_topic()}
+
+
+@app.post("/api/ntfy/test")
+async def api_ntfy_test(request: Request, payload: dict):
+    """Push a test notification to the given (server, topic). Used by
+    the "Send test" button on /notifications."""
+    _require_auth(request)
+    server = (payload.get("ntfy_server") or "https://ntfy.sh").strip()
+    topic = (payload.get("ntfy_topic") or "").strip()
+    if not topic:
+        raise HTTPException(status_code=400, detail="topic required")
+    result = await ntfy.send_test(server, topic)
+    return {"ok": result.ok, "status_code": result.status_code, "error": result.error}
+
+
+# ---- NAS discovery (mDNS / DNS-SD scan) ---------------------------------
+
+@app.get("/api/nas/discover")
+async def api_nas_discover(request: Request):
+    """List NAS devices advertising SMB/NFS/AFP on the LAN."""
+    _require_auth(request)
+    cands = nas_discover.discover()
+    return {"candidates": [vars(c) for c in cands]}
+
+
+# ---- tailscale (auto-detect, install, sign-in) ---------------------------
+
+@app.get("/api/tailscale/status")
+async def api_tailscale_status(request: Request):
+    """Probe local Tailscale state. Returns hostname when already running
+    so the UI can auto-fill instead of asking the user to paste it."""
+    _require_auth(request)
+    return vars(tailscale_helper.status())
+
+
+@app.post("/api/tailscale/install")
+async def api_tailscale_install(request: Request):
+    """Run scripts/install-tailscale.sh. Returns combined log output."""
+    _require_role(request, min_role="admin")
+    ok, output = tailscale_helper.install()
+    after = tailscale_helper.status()
+    return {"ok": ok, "output": output, "status": vars(after)}
+
+
+@app.post("/api/tailscale/up")
+async def api_tailscale_up(request: Request):
+    """Run ``tailscale up`` and capture the SSO URL the user must visit
+    to authenticate. The caller polls ``/api/tailscale/status`` afterwards
+    to detect a successful sign-in."""
+    _require_role(request, min_role="admin")
+    ok, auth_url, output = tailscale_helper.up_capture_auth_url()
+    after = tailscale_helper.status()
+    if after.hostname:
+        cfg = config_store.load_config()
+        if cfg.tailscale_hostname != after.hostname:
+            cfg.tailscale_hostname = after.hostname
+            config_store.save_config(cfg)
+    return {"ok": ok, "auth_url": auth_url, "output": output, "status": vars(after)}
+
+
 # ---- host config ---------------------------------------------------------
 
 @app.post("/api/config/save")
@@ -1258,6 +1710,13 @@ async def api_config_save(request: Request, payload: dict):
             cfg.line_channel_token = (data.get("line_channel_token") or "").strip()
         if "line_target_id" in data:
             cfg.line_target_id = (data.get("line_target_id") or "").strip()
+    elif section == "ntfy":
+        if "ntfy_server" in data:
+            cfg.ntfy_server = (data.get("ntfy_server") or "https://ntfy.sh").strip()
+        if "ntfy_topic" in data:
+            cfg.ntfy_topic = (data.get("ntfy_topic") or "").strip()
+        if "ntfy_enabled" in data:
+            cfg.ntfy_enabled = bool(data.get("ntfy_enabled"))
         if "line_enabled" in data:
             cfg.line_enabled = bool(data.get("line_enabled"))
     elif section == "hardware":

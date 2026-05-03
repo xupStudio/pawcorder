@@ -1,7 +1,7 @@
 {% extends "_layout.html" %}
 {% block title %}{{ t('HA_TITLE') }} · Pawcorder{% endblock %}
 {% block main %}
-<div x-data="haPage()" class="max-w-3xl">
+<div x-data="haPage()" x-init="init()" class="max-w-3xl">
   <h1 class="text-3xl font-display tracking-display">{{ t('HA_TITLE') }}</h1>
   <p class="text-sm text-slate-500 dark:text-slate-400 mb-6 italic">{{ t('HA_SUBTITLE') }}</p>
 
@@ -10,11 +10,22 @@
     <p class="mt-1">{{ t('HA_HEADS_UP_BODY') }} <a href="/notifications" class="underline">{{ t('HA_TG_LINK') }}</a></p>
   </div>
 
-  <!-- Step 1 -->
+  <!-- One-click connection -->
   <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-6 mb-6">
-    <h2 class="text-lg font-display tracking-tight mb-3">{{ t('HA_STEP1_HEAD') }}</h2>
-    <p class="text-sm text-slate-600 dark:text-slate-300 mb-3">{{ t('HA_STEP1_INTRO') }}</p>
-    <pre class="bg-slate-900 text-slate-100 rounded-lg p-4 text-xs overflow-x-auto"><code>  homeassistant:
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-lg font-display tracking-tight">{{ t('HA_CONNECT_HEADING') }}</h2>
+      <span x-show="status.reachable"
+            class="inline-flex rounded-full px-2 py-0.5 text-xs font-medium bg-emerald-50 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300">
+        ✓ <span x-text="status.base_url"></span>
+      </span>
+    </div>
+
+    <div x-show="!status.reachable" class="rounded-lg bg-amber-50 dark:bg-amber-900 border border-amber-200 dark:border-amber-800 p-4 text-sm text-amber-800 dark:text-amber-200 mb-4">
+      <p class="font-medium">{{ t('HA_NOT_RUNNING') }}</p>
+      <p class="mt-1 text-xs">{{ t('HA_NOT_RUNNING_BODY') }}</p>
+      <details class="mt-2 text-xs">
+        <summary class="cursor-pointer font-medium">{{ t('HA_MANUAL_DOCKER_TOGGLE') }}</summary>
+        <pre class="mt-2 bg-slate-900 text-slate-100 rounded-lg p-3 text-[11px] overflow-x-auto"><code>  homeassistant:
     container_name: pawcorder-ha
     image: ghcr.io/home-assistant/home-assistant:stable
     restart: unless-stopped
@@ -25,61 +36,59 @@
     privileged: true
     environment:
       TZ: "${TZ:-Asia/Taipei}"</code></pre>
-    <button @click="copy('  homeassistant:\n    container_name: pawcorder-ha\n    image: ghcr.io/home-assistant/home-assistant:stable\n    restart: unless-stopped\n    volumes:\n      - ./homeassistant:/config\n      - /etc/localtime:/etc/localtime:ro\n    network_mode: host\n    privileged: true\n    environment:\n      TZ: \"${TZ:-Asia/Taipei}\"')"
-            class="mt-2 text-xs text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100">{{ t('HA_STEP1_COPY') }}</button>
+        <p class="mt-2">{{ t('HA_STEP1_THEN') }} <code class="font-mono">docker compose up -d homeassistant</code></p>
+      </details>
+      <button @click="detect()" :disabled="busy"
+              class="mt-3 rounded-md bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 text-xs font-medium disabled:opacity-50"
+              x-text="busy ? labels.detecting : labels.retry_detect"></button>
+    </div>
 
-    <p class="text-sm text-slate-600 dark:text-slate-300 mt-4">{{ t('HA_STEP1_THEN') }}</p>
-    <pre class="bg-slate-900 text-slate-100 rounded-lg p-4 text-xs overflow-x-auto"><code>docker compose up -d homeassistant</code></pre>
+    <div x-show="status.reachable" class="space-y-4">
+      <ol class="list-decimal pl-5 space-y-2 text-sm text-slate-600 dark:text-slate-300">
+        <li>
+          {{ t('HA_INSTALL_APP') }}
+          <a href="https://apps.apple.com/app/home-assistant/id1099568401" target="_blank" rel="noopener" class="text-brand-600 underline">iOS</a> /
+          <a href="https://play.google.com/store/apps/details?id=io.homeassistant.companion.android" target="_blank" rel="noopener" class="text-brand-600 underline">Android</a>
+        </li>
+        <li>
+          {{ t('HA_GET_TOKEN') }}
+          <a :href="status.base_url + '/profile/security'" target="_blank" rel="noopener" class="text-brand-600 underline">{{ t('HA_OPEN_PROFILE') }} →</a>
+        </li>
+      </ol>
 
-    <p class="text-sm text-slate-600 dark:text-slate-300 mt-4">{{ t('HA_STEP1_OPEN') }}</p>
-  </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('HA_TOKEN_LABEL') }}</label>
+        <div class="mt-1 flex gap-2">
+          <input type="password" x-model="form.token"
+                 placeholder="eyJ0eXAiOiJKV1Qi..."
+                 class="flex-1 rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm font-mono" />
+          <button @click="verifyToken()" :disabled="busy || !form.token"
+                  class="rounded-md bg-slate-900 hover:bg-slate-800 text-white px-3 py-2 text-sm font-medium disabled:opacity-50"
+                  x-text="busy ? labels.verifying : labels.verify"></button>
+        </div>
+        <p x-show="verifyResult" class="text-xs mt-1"
+           x-bind:class="verifyResult?.ok ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'"
+           x-text="verifyResult?.ok ? labels.verify_ok : (labels.verify_failed + ' ' + (verifyResult?.detail || ''))"></p>
+      </div>
 
-  <!-- Step 2 -->
-  <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-6 mb-6">
-    <h2 class="text-lg font-display tracking-tight mb-3">{{ t('HA_STEP2_HEAD') }}</h2>
-    <ol class="list-decimal pl-5 space-y-2 text-sm text-slate-600 dark:text-slate-300">
-      <li>{{ t('HA_STEP2_1') }}</li>
-      <li>{{ t('HA_STEP2_2') }}</li>
-      <li>{{ t('HA_STEP2_3') }}</li>
-      <li>{{ t('HA_STEP2_4') }}</li>
-    </ol>
-  </div>
+      <div x-show="verifyResult?.ok" class="border-t border-slate-200 dark:border-slate-700 pt-4">
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ t('HA_NOTIFY_SERVICE') }}</label>
+        <select x-model="form.notify_service"
+                class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm font-mono">
+          <template x-for="svc in notifyServices" :key="svc">
+            <option :value="svc" x-text="svc"></option>
+          </template>
+        </select>
+        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('HA_NOTIFY_SERVICE_HELP') }}</p>
 
-  <!-- Step 3 -->
-  <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-6 mb-6">
-    <h2 class="text-lg font-display tracking-tight mb-3">{{ t('HA_STEP3_HEAD') }}</h2>
-    <ol class="list-decimal pl-5 space-y-2 text-sm text-slate-600 dark:text-slate-300">
-      <li>{{ t('HA_STEP3_1') }}
-        <a href="https://apps.apple.com/app/home-assistant/id1099568401" target="_blank" rel="noopener" class="text-brand-600 underline">iOS</a> /
-        <a href="https://play.google.com/store/apps/details?id=io.homeassistant.companion.android" target="_blank" rel="noopener" class="text-brand-600 underline">Android</a>
-      </li>
-      <li>{{ t('HA_STEP3_2') }}</li>
-      <li>{{ t('HA_STEP3_3') }}</li>
-    </ol>
-  </div>
-
-  <!-- Step 4 -->
-  <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-6 mb-6">
-    <h2 class="text-lg font-display tracking-tight mb-3">{{ t('HA_STEP4_HEAD') }}</h2>
-    <p class="text-sm text-slate-600 dark:text-slate-300 mb-3">{{ t('HA_STEP4_INTRO') }}</p>
-    <pre class="bg-slate-900 text-slate-100 rounded-lg p-4 text-xs overflow-x-auto"><code>{% raw %}alias: Pawcorder — pet detected
-trigger:
-  - platform: mqtt
-    topic: frigate/events
-    payload: new
-    value_template: "{{ value_json.type }}"
-condition:
-  - condition: template
-    value_template: "{{ trigger.payload_json['after']['label'] in ['cat','dog'] }}"
-action:
-  - service: notify.mobile_app_<your-phone-name>
-    data:
-      title: "{{ trigger.payload_json['after']['label']|capitalize }} detected"
-      message: "in {{ trigger.payload_json['after']['camera'] }}"
-      data:
-        image: "/api/frigate/notifications/{{ trigger.payload_json['after']['id'] }}/snapshot.jpg"{% endraw %}</code></pre>
-    <p class="text-sm text-slate-600 dark:text-slate-300 mt-3">{{ t('HA_STEP4_NOTE') }}</p>
-    <p class="text-xs text-slate-500 dark:text-slate-400 mt-2">{{ t('HA_STEP4_MQTT') }}</p>
+        <button @click="pushAutomation()" :disabled="busy || !form.notify_service"
+                class="mt-3 rounded-md bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 text-sm font-medium disabled:opacity-50"
+                x-text="busy ? labels.pushing : labels.push_automation"></button>
+        <p x-show="pushResult" class="text-xs mt-2"
+           x-bind:class="pushResult?.ok ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'"
+           x-text="pushResult?.ok ? labels.push_ok : (labels.push_failed + ' ' + (pushResult?.detail || ''))"></p>
+      </div>
+    </div>
   </div>
 
   <p class="text-sm text-slate-500 dark:text-slate-400">{{ t('HA_FOOTER') }}</p>
@@ -88,11 +97,61 @@ action:
 <script>
   function haPage() {
     return {
-      async copy(text) {
+      busy: false,
+      status: { reachable: false, base_url: '', version: '' },
+      verifyResult: null,
+      pushResult: null,
+      notifyServices: [],
+      form: { token: '', notify_service: '' },
+      labels: {
+        detecting:     {{ t('HA_DETECTING') | tojson }},
+        retry_detect:  {{ t('HA_RETRY_DETECT') | tojson }},
+        verify:        {{ t('HA_VERIFY_BTN') | tojson }},
+        verifying:     {{ t('HA_VERIFYING') | tojson }},
+        verify_ok:     {{ t('HA_VERIFY_OK') | tojson }},
+        verify_failed: {{ t('HA_VERIFY_FAILED') | tojson }},
+        push_automation:{{ t('HA_PUSH_BTN') | tojson }},
+        pushing:       {{ t('HA_PUSHING') | tojson }},
+        push_ok:       {{ t('HA_PUSH_OK') | tojson }},
+        push_failed:   {{ t('HA_PUSH_FAILED') | tojson }},
+      },
+      async init() {
+        await this.detect();
+      },
+      async detect() {
+        this.busy = true;
         try {
-          await navigator.clipboard.writeText(text);
-          toast({{ t('COPIED') | tojson }}, 'success');
-        } catch (e) { toast({{ t('COPY_FAILED') | tojson }}, 'error'); }
+          this.status = await api('/api/ha/detect');
+        } catch (e) { /* HA not running — UI shows manual instructions */ }
+        finally { this.busy = false; }
+      },
+      async verifyToken() {
+        this.busy = true;
+        this.verifyResult = null;
+        try {
+          this.verifyResult = await api('/api/ha/verify-token', {
+            method: 'POST', body: { base_url: this.status.base_url, token: this.form.token },
+          });
+          this.notifyServices = this.verifyResult?.notify_services || [];
+          if (this.notifyServices.length > 0 && !this.form.notify_service) {
+            // Prefer mobile_app_* over generic services — that's what most users
+            // actually want for push notifications.
+            const mobile = this.notifyServices.find(s => s.includes('mobile_app'));
+            this.form.notify_service = mobile || this.notifyServices[0];
+          }
+        } catch (e) { this.verifyResult = { ok: false, detail: e.message }; }
+        finally { this.busy = false; }
+      },
+      async pushAutomation() {
+        this.busy = true;
+        this.pushResult = null;
+        try {
+          this.pushResult = await api('/api/ha/push-automation', {
+            method: 'POST',
+            body: { base_url: this.status.base_url, token: this.form.token, notify_service: this.form.notify_service },
+          });
+        } catch (e) { this.pushResult = { ok: false, detail: e.message }; }
+        finally { this.busy = false; }
       },
     };
   }

@@ -30,3 +30,19 @@ pywebpush>=2.0,<3
 # public-API rework; 6.x and 7.x share the bootstrap.cameras shape we
 # rely on.
 uiprotect>=6.0,<8
+# Wireless camera onboarding (admin/app/provisioning/*). bleak is the
+# only sane cross-platform BLE client for Python (MIT). cryptography
+# is already a transitive of pywebpush; we list it explicitly because
+# the master_key + wifi_creds + esptouch_v2 modules import it directly.
+# keyring (MIT) gives us macOS Keychain / Windows DPAPI / Linux Secret
+# Service for the master key. tpm2-pytss is intentionally NOT pinned —
+# it's optional, lazy-imported in master_key.py only when /dev/tpmrm0
+# exists, and ships native deps that aren't installable on every host.
+bleak>=0.21,<1
+cryptography>=42,<46
+keyring>=24,<26
+# mDNS / DNS-SD for local-network discovery — used by nas_discover.py
+# to find SMB/NFS/AFP shares on the LAN without asking the user to type
+# IPs from memory. python-zeroconf is LGPL-2.1, the same lib Home
+# Assistant ships, battle-tested across Mac / Linux / Windows.
+zeroconf>=0.131,<1

@@ -13,15 +13,13 @@ silently forgotten.
 Format: each section is a category, each item is one row in
 `Status / Item / Why human / Next step`.
 
-Last updated: 2026-05-02 (Batch 7: PWA + Android hardening — manifest
-modernised (id / shortcuts / orientation any / maskable PNGs / proper
-192-512 raster fallbacks), service-worker dvh / bilingual offline,
-Capacitor Pawcorder cap + Android channel config, dashboard three-state
-recording status + diagnostic banner + last-event time + PWA install
-+ push pre-prompt, mobile.html shell-command de-jargon + Android battery
-hint, welcome.html 6 next-step cards, errors.py + /api/diagnostics, family
-invite link flow (invites.py + /invite/<token>), marketing free-vs-Pro
-comparison table).
+Last updated: 2026-05-02 (Batch 8: engineer-work elimination — file-flag
+login recovery, Tailscale auto-detect + install, NAS mDNS discovery,
+Ollama auto-detect + install + RAM-aware model pull, ntfy.sh zero-token
+push as primary notification path, Telegram bot deep-link pairing for
+chat_id auto-capture, Cloud one-click OAuth for Drive/OneDrive (device
+code) + Nextcloud Login Flow v2, Home Assistant auto-detect + automation
+push via REST API).
 
 ---
 
@@ -114,6 +112,58 @@ comparison table).
 | ⏳ Open | **LINE Official Account** for in-app LINE notifications | `users.html` invite flow uses `https://line.me/R/share?text=...` for sharing — works fine. But the `NOTIF_LINE` channel currently asks the user to mint their own LINE Messaging API token. A "scan our official account" path needs a verified LINE OA + relay endpoint that fans out per-user notifications. | Register a LINE Official Account, enable Messaging API, build a small relay that registers users by webhook signature, update `line.py` admin path to recognise "official account" mode |
 | ⏳ Open | **Diagnostics threshold tuning** (`/api/diagnostics`) | Disk-full warns at 5% free / errors at 2% free; camera-offline detection currently only flags Frigate-down (per-camera reachability not yet wired). Real-customer data may want different thresholds. | Run for 4 weeks, scan logs for false-positives, consider widening to 8% warn / 3% error. Add per-camera offline detection by tailing Frigate's MQTT or polling each camera's `/onvif/device_service` |
 | ⏳ Open | **Family invite link UX field test** | The flow works end-to-end in tests, but needs a real-world try with the LINE share button — does the LINE preview render the URL? Does iOS Safari trust the URL with no warning? Does the recipient hit the redeem page and complete in < 60 s? | Generate one invite, send to a friend / partner via LINE, time them, fix any UX rough edges they hit |
+
+## OAuth client registrations (Batch 8 — engineer-work elimination)
+
+The cloud-backup one-click connect flow (`cloud_oauth.py`) reads OAuth
+client_id (and secret where applicable) from environment variables. The
+Pawcorder OSS distro ships with placeholders; until the actual values
+are registered with each provider, the UI hides those one-click
+buttons and falls through to the existing manual rclone-CLI flow.
+
+All three are **free** to register. PKCE / device-code flows make leaked
+client_secret harmless for our use case (similar to how rclone, Tailscale,
+and other OSS clients ship them).
+
+| Status | Item | Why human | Next step |
+|---|---|---|---|
+| ⏳ Open | **Google Cloud OAuth client** for Drive backup | Need a Google account to register, accept TOS, configure the consent screen, name the app | Console → APIs & Services → Credentials → Create OAuth client ID, type "Desktop app". Scope: `drive.file` (non-sensitive — no app verification needed). Set env: `PAWCORDER_GOOGLE_OAUTH_CLIENT_ID`, `PAWCORDER_GOOGLE_OAUTH_CLIENT_SECRET`. ~10 min. |
+| ⏳ Open | **Microsoft Identity Platform OAuth client** for OneDrive backup | Need a Microsoft account, accept Azure AD TOS, configure redirect URIs | portal.azure.com → App registrations → New registration → Public client/native (mobile & desktop) → API permissions: `Files.ReadWrite.AppFolder`, `offline_access`. Set env: `PAWCORDER_MS_OAUTH_CLIENT_ID`. ~15 min. |
+| ⏳ Open | **Dropbox OAuth client** for Dropbox backup | Need a Dropbox account, accept developer TOS | dropbox.com/developers/apps → Create app → Scoped access → App folder. Note the App Key. Set env: `PAWCORDER_DROPBOX_OAUTH_CLIENT_ID`. PKCE handles secret. ~5 min. |
+
+Once these are set, the corresponding "Connect with one click" buttons
+on `/cloud` light up automatically. If you skip these, users still get
+the existing CLI dance fallback — it just won't be one-click.
+
+## macOS Docker Desktop architectural blockers (real-user testing)
+
+Discovered while running through the README's "I just bought a wireless
+camera" path on macOS 15.4 (Sequoia) Apple Silicon. Docker Desktop runs
+the admin container in a Linux VM that's isolated from the Mac host's
+network and Bluetooth stacks, so anything wireless-onboarding-related
+that needs to *reach the LAN* or *talk to a peripheral* is broken in
+the container by default.
+
+| Status | Item | Why human / why deferred | Next step |
+|---|---|---|---|
+| ✅ Done | Wi-Fi SSID scan from container | airport(8) gutted in macOS 14.4; container can't see Mac's Wi-Fi card | Host helper writes `.wifi_scan.json` via `system_profiler`; admin reads it (commit pending in current batch) |
+| ✅ Done | ARP table snapshot from container | Container ARP only sees other containers; host's LAN ARP cache invisible | Host helper writes `.arp_scan.json` via `arp -an`; arrival_watcher reads it (commit pending) |
+| ⏳ Open | **BLE scan from container on macOS** | bleak in the Linux VM gets `[Errno 2]` when it asks for a Bluetooth socket; macOS CoreBluetooth is the only API that works and it lives outside the VM | Host helper using `pip3 install --user bleak` driven by a launchd plist that emits `.ble_scan.json`; admin's `ble_scanner.py` already mirrors the softap_scanner pattern so the read side is mechanical. Skipped this turn because installing pip packages on the host needs user consent, separate from `brew install --cask docker`. |
+| ⏳ Open | **EspTouch v2 UDP broadcast from container on macOS** | Docker bridge does NAT outbound but doesn't forward link-layer broadcasts; on Linux `network_mode: host` works, on Mac it doesn't (the host networking is the VM's). | Either ship a tiny host launchd helper that does the EspTouch UDP push given an SSID+PSK over a unix socket, or document Mac as "evaluation only" for SoftAP/EspTouch cameras. The Tapo / Wyze / iCSee path via vendor app + ARP arrival watcher works once .arp_scan.json lands. |
+| ⏳ Open | **SoftAP-join from container on macOS** | To push creds to a Foscam/Dahua/ESP32 SoftAP we have to switch the *host's* Wi-Fi onto that AP and back; only the host can do that. | Same shape as the BLE/EspTouch helpers — a host-side worker that takes an "join SSID X / push creds Y / restore Z" job over a unix socket. Linux nmcli already does it inside the container when `network_mode: host` is set, so this is Mac-only. |
+
+## Vendor link rot (re-verify periodically)
+
+Each cloud-locked vendor fingerprint in `admin/app/provisioning/fingerprints.py`
+carries an iOS App Store + Android Play URL the wireless-onboarding
+handoff card sends users to. App IDs DO change (apps get re-listed,
+deprecated, or split). The shape-check test in `test_routes.py` only
+verifies URL format, not liveness.
+
+| Status | Item | Why human | Next step |
+|---|---|---|---|
+| ✅ Done 2026-05-03 | Initial 8-vendor link audit | Found 5 of 8 iOS IDs and 1 Android package were wrong (ID drift over the years) | Reverified all via WebFetch + WebSearch; commits in this batch |
+| ⏳ Open | Re-verify quarterly | App Store IDs and Play package names drift. A user clicking a 404 link from the handoff card kills trust faster than no link. | Open each `vendor_app_ios` / `vendor_app_android` URL from `fingerprints.py` once a quarter and confirm the listing renders, the developer matches, and the bundle matches the camera brand. Update + add a `# Verified YYYY-MM-DD` comment when refreshing. |
 
 ## Hosted services (production deploys)
 

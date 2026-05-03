@@ -134,7 +134,8 @@ class FrigateEventPoller:
         cfg = config_store.load_config()
         telegram_on = cfg.telegram_enabled and cfg.telegram_bot_token and cfg.telegram_chat_id
         line_on = cfg.line_enabled and cfg.line_channel_token and cfg.line_target_id
-        if not (telegram_on or line_on):
+        ntfy_on = cfg.ntfy_enabled and cfg.ntfy_topic
+        if not (telegram_on or line_on or ntfy_on):
             return
 
         events = await self._fetch_events()
@@ -145,7 +146,7 @@ class FrigateEventPoller:
                 continue
             if start_time <= self._last_seen:
                 continue
-            await self._notify(cfg, event, telegram_on=telegram_on, line_on=line_on)
+            await self._notify(cfg, event, telegram_on=telegram_on, line_on=line_on, ntfy_on=ntfy_on)
             self._last_seen = max(self._last_seen, start_time)
 
     async def _fetch_events(self) -> list[dict]:
@@ -164,7 +165,8 @@ class FrigateEventPoller:
             return []
 
     async def _notify(self, cfg: config_store.Config, event: dict,
-                      *, telegram_on: bool, line_on: bool) -> None:
+                      *, telegram_on: bool, line_on: bool,
+                      ntfy_on: bool = False) -> None:
         camera = event.get("camera", "unknown")
         label = event.get("label", "?")
         score = event.get("top_score") or event.get("score") or 0.0
@@ -237,6 +239,23 @@ class FrigateEventPoller:
                 await line_api.send_text(cfg.line_channel_token, cfg.line_target_id, caption_plain)
             except Exception as exc:  # noqa: BLE001
                 logger.warning("line send failed for event %s: %s", event_id, exc)
+
+        if ntfy_on:
+            # ntfy.sh — push to the user's chosen topic. Snapshot is sent
+            # as the message body (text-only); the ntfy mobile app supports
+            # attachments via the `Attach` header but it'd require a
+            # publicly-reachable Pawcorder URL, which most home installs
+            # don't have. Plain text alert is enough.
+            try:
+                from . import ntfy as ntfy_mod
+                await ntfy_mod.send(
+                    cfg.ntfy_server, cfg.ntfy_topic,
+                    title=pet_label or label,
+                    body=caption_plain,
+                    priority=3, tags=["paw_prints"],
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("ntfy send failed for event %s: %s", event_id, exc)
 
         # Web Push — runs in parallel with Telegram / LINE so users can
         # pick whichever they actually have configured. Soft-fails when

@@ -17,6 +17,32 @@
       <summary class="font-medium cursor-pointer">{{ t('STORAGE_NAS_HOW') }}</summary>
       <div class="mt-3 space-y-3">
         <p class="text-xs text-slate-600 dark:text-slate-300">{{ t('STORAGE_NAS_HELP') }}</p>
+
+        {# mDNS scan results — the user clicks one to pre-fill the form,
+           or "Scan again" to refresh. Empty state shows nothing (we don't
+           want to bother users without a NAS). #}
+        <div class="flex items-center gap-2 mb-1">
+          <button @click="scanNas()" :disabled="nasScanning"
+                  class="rounded-md bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 px-3 py-1.5 text-xs font-medium disabled:opacity-50"
+                  x-text="nasScanning ? labels.nas_scanning : labels.nas_scan"></button>
+          <span x-show="nasCandidates.length > 0" class="text-xs text-slate-500 dark:text-slate-400"
+                x-text="labels.nas_found + ' (' + nasCandidates.length + ')'"></span>
+        </div>
+        <ul x-show="nasCandidates.length > 0" class="space-y-1.5 mb-3">
+          <template x-for="cand in nasCandidates" :key="cand.host + ':' + cand.protocol">
+            <li>
+              <button type="button" @click="pickNas(cand)"
+                      class="w-full text-left rounded-md border border-slate-200 dark:border-slate-700 hover:border-brand-400 dark:hover:border-brand-500 bg-white dark:bg-slate-900 px-3 py-2 text-xs flex items-center justify-between gap-3">
+                <span class="min-w-0 flex-1 truncate">
+                  <span class="font-medium" x-text="cand.name"></span>
+                  <span class="text-slate-500 dark:text-slate-400 ml-1 font-mono" x-text="cand.ip || cand.host"></span>
+                </span>
+                <span class="inline-flex rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-medium uppercase"
+                      x-text="cand.protocol"></span>
+              </button>
+            </li>
+          </template>
+        </ul>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label class="text-xs">
             {{ t('STORAGE_NAS_PROTOCOL') }}
@@ -92,11 +118,31 @@
       },
       testing: false,
       installing: false,
+      nasCandidates: [],
+      nasScanning: false,
       labels: {
-        test:       {{ t('STORAGE_NAS_TEST') | tojson }},
-        testing:    {{ t('STORAGE_NAS_TESTING') | tojson }},
-        install:    {{ t('STORAGE_NAS_INSTALL') | tojson }},
-        installing: {{ t('STORAGE_NAS_INSTALLING') | tojson }},
+        test:        {{ t('STORAGE_NAS_TEST') | tojson }},
+        testing:     {{ t('STORAGE_NAS_TESTING') | tojson }},
+        install:     {{ t('STORAGE_NAS_INSTALL') | tojson }},
+        installing:  {{ t('STORAGE_NAS_INSTALLING') | tojson }},
+        nas_scan:    {{ t('STORAGE_NAS_SCAN_BTN') | tojson }},
+        nas_scanning:{{ t('STORAGE_NAS_SCANNING') | tojson }},
+        nas_found:   {{ t('STORAGE_NAS_FOUND') | tojson }},
+      },
+      async scanNas() {
+        this.nasScanning = true;
+        try {
+          const r = await api('/api/nas/discover');
+          this.nasCandidates = r.candidates || [];
+          if (this.nasCandidates.length === 0) {
+            toast({{ t('STORAGE_NAS_NONE') | tojson }}, 'info');
+          }
+        } catch (e) { toast(e.message, 'error'); }
+        finally { this.nasScanning = false; }
+      },
+      pickNas(cand) {
+        this.nas.protocol = cand.protocol === 'afp' ? 'smb' : cand.protocol;
+        this.nas.server = cand.ip || cand.host;
       },
       async save() {
         try {

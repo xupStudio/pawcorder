@@ -1,7 +1,7 @@
 {% extends "_layout.html" %}
 {% block title %}{{ t('MOBILE_TITLE') }} · Pawcorder{% endblock %}
 {% block main %}
-<div x-data="mobilePage()" class="max-w-4xl">
+<div x-data="mobilePage()" x-init="init()" class="max-w-4xl">
   <h1 class="text-3xl font-display tracking-display">{{ t('MOBILE_TITLE') }}</h1>
   <p class="text-sm text-slate-500 dark:text-slate-400 mb-6 italic">{{ t('MOBILE_SUBTITLE') }}</p>
 
@@ -73,17 +73,41 @@ npm run ios         # or: npm run android</pre>
       <p class="text-xs text-slate-500 dark:text-slate-400">{{ t('MOBILE_TS_HELP') }}</p>
     </div>
 
-    <div x-show="!form.tailscale_hostname" class="rounded-lg bg-amber-50 dark:bg-amber-900 border border-amber-200 dark:border-amber-800 p-4 mb-4 text-sm text-amber-800 dark:text-amber-200">
+    {# Tailscale auto-detect + one-click install. State machine in JS:
+       - tsStatus.installed === false → show "Install Tailscale" button
+       - installed but not logged_in → show "Sign in to Tailscale" + auth URL
+       - logged_in + hostname → hostname auto-fills, success badge shows
+       - all of the above degrade to the manual paste field below. #}
+    <div x-show="!tsStatus.logged_in" class="rounded-lg bg-amber-50 dark:bg-amber-900 border border-amber-200 dark:border-amber-800 p-4 mb-4 text-sm text-amber-800 dark:text-amber-200">
       <p class="font-medium">{{ t('MOBILE_TS_NOT_SETUP') }}</p>
-      <p class="mt-1">
-        {{ t('MOBILE_TS_INSTR_BEFORE') }}
-        {{ t('MOBILE_TS_INSTR_THEN') }}
-        {{ t('MOBILE_TS_INSTR_AFTER') }}
-        <code class="font-mono">machine.tailnet.ts.net</code>
-        {{ t('MOBILE_TS_INSTR_END') }}
-      </p>
+
+      <div x-show="tsStatus.installed === false" class="mt-3">
+        <p class="text-xs mb-2">{{ t('MOBILE_TS_AUTO_INSTALL_HELP') }}</p>
+        <button @click="installTailscale()" :disabled="tsBusy"
+                class="rounded-md bg-amber-600 hover:bg-amber-700 text-white px-3 py-2 text-sm font-medium disabled:opacity-50"
+                x-text="tsBusy ? labels.ts_installing : labels.ts_install"></button>
+      </div>
+
+      <div x-show="tsStatus.installed === true && !tsStatus.logged_in" class="mt-3">
+        <p class="text-xs mb-2">{{ t('MOBILE_TS_SIGNIN_HELP') }}</p>
+        <button @click="upTailscale()" :disabled="tsBusy"
+                class="rounded-md bg-amber-600 hover:bg-amber-700 text-white px-3 py-2 text-sm font-medium disabled:opacity-50"
+                x-text="tsBusy ? labels.ts_signing_in : labels.ts_sign_in"></button>
+        <a x-show="tsAuthUrl" :href="tsAuthUrl" target="_blank" rel="noopener"
+           class="ml-2 inline-flex items-center text-xs text-amber-900 dark:text-amber-100 underline">
+          {{ t('MOBILE_TS_OPEN_AUTH') }} →
+        </a>
+      </div>
+
       <details class="mt-3">
-        <summary class="cursor-pointer text-xs font-medium select-none">{{ t('MOBILE_NATIVE_DIY_TOGGLE') }}</summary>
+        <summary class="cursor-pointer text-xs font-medium select-none">{{ t('MOBILE_TS_MANUAL_TOGGLE') }}</summary>
+        <p class="mt-2 text-xs">
+          {{ t('MOBILE_TS_INSTR_BEFORE') }}
+          {{ t('MOBILE_TS_INSTR_THEN') }}
+          {{ t('MOBILE_TS_INSTR_AFTER') }}
+          <code class="font-mono">machine.tailnet.ts.net</code>
+          {{ t('MOBILE_TS_INSTR_END') }}
+        </p>
         <div class="mt-2 relative">
           <pre id="tsInstallCmd" class="font-mono text-[11px] bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 p-2 rounded overflow-x-auto">./scripts/install-tailscale.sh
 sudo tailscale up</pre>
@@ -93,6 +117,10 @@ sudo tailscale up</pre>
           </button>
         </div>
       </details>
+    </div>
+
+    <div x-show="tsStatus.logged_in" class="rounded-lg bg-emerald-50 dark:bg-emerald-950 border border-emerald-200 dark:border-emerald-800 p-3 mb-4 text-sm text-emerald-900 dark:text-emerald-100">
+      <p class="font-medium">{{ t('MOBILE_TS_DETECTED') }} <span class="font-mono" x-text="tsStatus.hostname"></span></p>
     </div>
 
     <div class="flex gap-2 mb-4">
@@ -196,17 +224,63 @@ sudo tailscale up</pre>
       form: {
         tailscale_hostname: {{ config.tailscale_hostname | tojson }},
       },
+      tsStatus: { installed: null, running: false, logged_in: false, hostname: '' },
+      tsBusy: false,
+      tsAuthUrl: '',
+      labels: {
+        ts_install:    {{ t('MOBILE_TS_INSTALL_BTN')    | tojson }},
+        ts_installing: {{ t('MOBILE_TS_INSTALLING')      | tojson }},
+        ts_sign_in:    {{ t('MOBILE_TS_SIGNIN_BTN')      | tojson }},
+        ts_signing_in: {{ t('MOBILE_TS_SIGNING_IN')      | tojson }},
+      },
       isAndroid: /Android/.test(navigator.userAgent),
+      async init() {
+        await this.refreshTailscale();
+      },
+      async refreshTailscale() {
+        try {
+          this.tsStatus = await api('/api/tailscale/status');
+          // Auto-fill the hostname field when Tailscale knows itself, so
+          // the user doesn't need to type it manually.
+          if (this.tsStatus.hostname && !this.form.tailscale_hostname) {
+            this.form.tailscale_hostname = this.tsStatus.hostname;
+          }
+        } catch (e) { /* tailscale binary missing on host — leave default state */ }
+      },
+      async installTailscale() {
+        this.tsBusy = true;
+        try {
+          const r = await api('/api/tailscale/install', { method: 'POST', body: {} });
+          this.tsStatus = r.status || this.tsStatus;
+          if (!r.ok) toast(r.output?.split('\n').pop() || 'install failed', 'error');
+          else toast({{ t('MOBILE_TS_INSTALL_OK') | tojson }}, 'success');
+        } catch (e) { toast(e.message, 'error'); }
+        finally { this.tsBusy = false; }
+      },
+      async upTailscale() {
+        this.tsBusy = true;
+        this.tsAuthUrl = '';
+        try {
+          const r = await api('/api/tailscale/up', { method: 'POST', body: {} });
+          this.tsStatus = r.status || this.tsStatus;
+          this.tsAuthUrl = r.auth_url || '';
+          if (this.tsStatus.hostname) this.form.tailscale_hostname = this.tsStatus.hostname;
+          // Poll once a few seconds later — user typically signs in within
+          // 30 s, this catches the common fast-path without a watchdog.
+          setTimeout(() => this.refreshTailscale(), 8000);
+        } catch (e) { toast(e.message, 'error'); }
+        finally { this.tsBusy = false; }
+      },
       qrSrc(url) {
         return '/api/qrcode?url=' + encodeURIComponent(url);
       },
       tailscaleFrigateUrl() {
         const h = (this.form.tailscale_hostname || '').trim();
-        return h ? `http://${h}:5000` : '';
+        return h ? `http://${h}:{{ frigate_host_port }}` : '';
       },
       tailscaleAdminUrl() {
         const h = (this.form.tailscale_hostname || '').trim();
-        return h ? `http://${h}:8080` : '';
+        return h ? `http://${h}:{{ admin_host_port }}` : '';
       },
       async saveTailscale() {
         try {

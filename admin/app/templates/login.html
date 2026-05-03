@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ t('NAV_DASHBOARD') }} · Pawcorder{% endblock %}
+{% block title %}{{ t('SIGN_IN') }} · Pawcorder{% endblock %}
 {% block body %}
 <div class="relative min-h-full flex items-center justify-center px-4 py-12 overflow-hidden">
 
@@ -19,6 +19,30 @@
       <h1 class="mt-4 text-3xl font-display tracking-display">{{ t('APP_NAME') }}</h1>
       <p class="text-sm text-slate-500 dark:text-slate-400 italic">{{ t('LOGIN_TITLE') }}</p>
     </div>
+    {% if reset_status == 'ok' %}
+    <div class="bg-emerald-50 dark:bg-emerald-950 border border-emerald-200 dark:border-emerald-800 rounded-2xl p-4 mb-4">
+      <p class="text-sm text-emerald-900 dark:text-emerald-100">{{ t('LOGIN_RESET_OK') }}</p>
+    </div>
+    {% elif reset_status == 'tooshort' %}
+    <div class="bg-rose-50 dark:bg-rose-950 border border-rose-200 dark:border-rose-800 rounded-2xl p-4 mb-4">
+      <p class="text-sm text-rose-900 dark:text-rose-100">{{ t('LOGIN_RESET_TOO_SHORT') }}</p>
+    </div>
+    {% endif %}
+    {% if reset_armed %}
+    <form method="post" action="/login/recover" class="bg-amber-50 dark:bg-amber-950 rounded-2xl shadow-sm border border-amber-300 dark:border-amber-800 p-6 space-y-4 mb-4">
+      <p class="text-sm font-medium text-amber-900 dark:text-amber-100">{{ t('LOGIN_RESET_HEADING') }}</p>
+      <p class="text-xs text-amber-800 dark:text-amber-200">{{ t('LOGIN_RESET_BODY') }}</p>
+      <div>
+        <label class="block text-sm font-medium text-amber-900 dark:text-amber-100">{{ t('LOGIN_RESET_NEW_LABEL') }}</label>
+        <input type="password" name="password" required minlength="4" autocomplete="new-password"
+               class="mt-1 block w-full rounded-md border-amber-300 dark:border-amber-700 dark:bg-slate-800 px-3 py-2 border" />
+      </div>
+      <button type="submit"
+              class="w-full inline-flex justify-center rounded-md bg-amber-600 hover:bg-amber-700 px-4 py-2 text-sm font-medium text-white shadow-sm">
+        {{ t('LOGIN_RESET_SUBMIT') }}
+      </button>
+    </form>
+    {% endif %}
     <form method="post" action="/login" class="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 p-6 space-y-4">
       <!-- Username field shown only if multi-user is set up.
            Legacy single-password installs hide it (login still works). -->
@@ -42,6 +66,10 @@
         {{ t('SIGN_IN') }}
       </button>
       <p class="text-xs text-slate-500 dark:text-slate-400 text-center pt-2">{{ t('LOGIN_LOST_PASSWORD') }}</p>
+      <details class="text-xs text-slate-500 dark:text-slate-400 text-center">
+        <summary class="cursor-pointer hover:text-slate-700 dark:hover:text-slate-300 select-none">{{ t('LOGIN_LOST_PASSWORD_INSTALLER_LABEL') }}</summary>
+        <p class="mt-2 leading-relaxed">{{ t('LOGIN_LOST_PASSWORD_INSTALLER_BODY') }}</p>
+      </details>
     </form>
     <div class="flex justify-center mt-6 text-xs" x-data='langSwitcher({{ lang | tojson }})'>
       <div class="relative" @click.outside="open = false">

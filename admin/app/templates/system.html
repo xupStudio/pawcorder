@@ -1,7 +1,7 @@
 {% extends "_layout.html" %}
 {% block title %}{{ t('SYSTEM_TITLE') }} · Pawcorder{% endblock %}
 {% block main %}
-<div x-data="systemPage()" x-init="loadHealth(); checkUpdate(); loadPerf(); loadSchedule(); loadKeys(); loadEnergy(); loadAiTokens(); loadHealthDetectors(); loadFederated()" class="max-w-4xl">
+<div x-data="systemPage()" x-init="loadHealth(); checkUpdate(); loadPerf(); loadSchedule(); loadKeys(); loadEnergy(); loadAiTokens(); loadHealthDetectors(); loadFederated(); refreshOllama()" class="max-w-4xl">
   <h1 class="text-3xl font-display tracking-display">{{ t('SYSTEM_TITLE') }}</h1>
   <p class="text-sm text-slate-500 dark:text-slate-400 mb-6 italic">{{ t('SYSTEM_SUBTITLE') }}</p>
 
@@ -122,17 +122,54 @@
         <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('SYS_ANTHROPIC_KEY_HELP') }}</p>
       </div>
       <div class="border-t border-slate-200 dark:border-slate-700 pt-3 mt-3">
-        <div class="flex items-center gap-2 mb-1">
+        <div class="flex items-center gap-2 mb-2">
           <label class="block text-xs font-medium text-slate-700 dark:text-slate-300">{{ t('SYS_OLLAMA_URL_LABEL') }}</label>
           <span class="text-[10px] uppercase tracking-wider rounded bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-100 px-1.5 py-0.5">{{ t('SYS_OLLAMA_LOCAL_BADGE') }}</span>
+          <span x-show="ollamaStatus.reachable"
+                class="text-[10px] uppercase tracking-wider rounded bg-emerald-200 dark:bg-emerald-800 text-emerald-900 dark:text-emerald-50 px-1.5 py-0.5">
+            {{ t('SYS_OLLAMA_DETECTED') }}
+          </span>
         </div>
+
+        {# Auto-detect banner. Three states:
+           - reachable: green, "detected" + model dropdown from server
+           - binary present but daemon not running: amber, "start it"
+           - binary absent: amber, "install Ollama" button #}
+        <div x-show="!ollamaStatus.reachable && ollamaStatus.binary_present === false"
+             class="rounded-lg bg-amber-50 dark:bg-amber-900 border border-amber-200 dark:border-amber-800 p-3 mb-3 text-xs text-amber-900 dark:text-amber-100">
+          <p class="font-medium mb-1">{{ t('SYS_OLLAMA_NOT_INSTALLED_TITLE') }}</p>
+          <p class="mb-2">{{ t('SYS_OLLAMA_NOT_INSTALLED_BODY') }}</p>
+          <button @click="installOllama()" :disabled="ollamaBusy"
+                  class="rounded-md bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 text-xs font-medium disabled:opacity-50"
+                  x-text="ollamaBusy ? labels.ollama_installing : labels.ollama_install"></button>
+        </div>
+
+        <div x-show="ollamaStatus.reachable && ollamaStatus.models.length === 0"
+             class="rounded-lg bg-sky-50 dark:bg-sky-900 border border-sky-200 dark:border-sky-800 p-3 mb-3 text-xs text-sky-900 dark:text-sky-100">
+          <p class="font-medium mb-1">{{ t('SYS_OLLAMA_NEEDS_MODEL_TITLE') }}</p>
+          <p class="mb-2">
+            {{ t('SYS_OLLAMA_NEEDS_MODEL_BODY') }}
+            <span class="font-mono" x-text="ollamaStatus.recommended_model"></span>
+          </p>
+          <button @click="pullOllamaModel(ollamaStatus.recommended_model)" :disabled="ollamaBusy"
+                  class="rounded-md bg-sky-600 hover:bg-sky-700 text-white px-3 py-1.5 text-xs font-medium disabled:opacity-50"
+                  x-text="ollamaBusy ? labels.ollama_pulling : labels.ollama_pull"></button>
+        </div>
+
         <input type="text" x-model="ollamaBaseUrl" placeholder="http://ollama:11434"
                class="w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm font-mono" />
         <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('SYS_OLLAMA_URL_HELP') }}</p>
       </div>
       <div>
         <label class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">{{ t('SYS_OLLAMA_MODEL_LABEL') }}</label>
-        <input type="text" x-model="ollamaModel" placeholder="qwen2.5:3b"
+        {# When models list is non-empty: dropdown; otherwise: free text #}
+        <select x-show="ollamaStatus.models.length > 0" x-model="ollamaModel"
+                class="w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm">
+          <template x-for="m in ollamaStatus.models" :key="m">
+            <option :value="m" x-text="m"></option>
+          </template>
+        </select>
+        <input x-show="ollamaStatus.models.length === 0" type="text" x-model="ollamaModel" placeholder="qwen2.5:3b"
                class="w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm font-mono" />
         <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t('SYS_OLLAMA_MODEL_HELP') }}</p>
       </div>
@@ -596,9 +633,15 @@
           <li>{{ t('UNINSTALL_TIER1_AFTER') }}</li>
         </ul>
       </details>
-      <button @click="confirmReset()" :disabled="resetting"
-              class="mt-3 rounded-md bg-amber-600 hover:bg-amber-700 text-white px-3 py-2 text-sm font-medium disabled:opacity-50"
-              x-text="resetting ? labels.resetting : labels.reset_now"></button>
+      <div class="mt-3 flex items-center gap-2">
+        <input type="text" x-model="resetConfirmInput"
+               :placeholder="labels.type_delete"
+               class="flex-1 rounded-md border-amber-300 dark:border-amber-700 dark:bg-slate-800 px-3 py-2 border text-sm font-mono" />
+        <button @click="confirmReset()"
+                :disabled="resetting || resetConfirmInput.trim().toUpperCase() !== 'DELETE'"
+                class="rounded-md bg-amber-600 hover:bg-amber-700 text-white px-3 py-2 text-sm font-medium disabled:opacity-50"
+                x-text="resetting ? labels.resetting : labels.reset_now"></button>
+      </div>
       <template x-if="resetResult">
         <div class="mt-3 text-xs text-slate-700 dark:text-slate-300 rounded-md bg-emerald-50 dark:bg-emerald-900 border border-emerald-200 dark:border-emerald-800 p-2">
           <p class="font-medium" x-text="labels.reset_done + ' (' + (resetResult.removed?.length || 0) + ')'"></p>
@@ -673,6 +716,8 @@
       anthropicApiKey: '',
       ollamaBaseUrl: '',
       ollamaModel: 'qwen2.5:3b',
+      ollamaStatus: { reachable: false, base_url: '', models: [], binary_present: null, recommended_model: 'qwen2.5:3b' },
+      ollamaBusy: false,
       llmProviderPreference: 'auto',
       ttsProviderPreference: 'auto',
       ttsVoice: '',
@@ -782,6 +827,46 @@
           this.newPassword = ''; this.newPasswordConfirm = '';
           toast({{ t('SAVED') | tojson }}, 'success');
         } catch (e) { toast(e.message, 'error'); }
+      },
+      async refreshOllama() {
+        // One-shot probe; the UI auto-fills the URL + model dropdown
+        // when Ollama is reachable, so users never need to type either.
+        try {
+          const url = this.ollamaBaseUrl ? '?base_url=' + encodeURIComponent(this.ollamaBaseUrl) : '';
+          const r = await api('/api/local-ai/status' + url);
+          this.ollamaStatus = r;
+          // Auto-fill base URL when detected at the default 127.0.0.1:11434
+          // and the user hasn't typed anything else.
+          if (r.reachable && !this.ollamaBaseUrl) {
+            this.ollamaBaseUrl = r.base_url;
+          }
+          // Auto-pick the first available model only if the field is empty
+          // (don't override a deliberate choice).
+          if (r.reachable && r.models.length > 0 && (!this.ollamaModel || this.ollamaModel === 'qwen2.5:3b')) {
+            this.ollamaModel = r.models[0];
+          }
+        } catch (e) { /* leave default state — user can still paste manually */ }
+      },
+      async installOllama() {
+        this.ollamaBusy = true;
+        try {
+          const r = await api('/api/local-ai/install', { method: 'POST', body: {} });
+          this.ollamaStatus = r.status || this.ollamaStatus;
+          if (!r.ok) toast(r.output?.split('\n').pop() || 'install failed', 'error');
+          else toast({{ t('SYS_OLLAMA_INSTALL_OK') | tojson }}, 'success');
+        } catch (e) { toast(e.message, 'error'); }
+        finally { this.ollamaBusy = false; }
+        await this.refreshOllama();
+      },
+      async pullOllamaModel(model) {
+        this.ollamaBusy = true;
+        try {
+          const r = await api('/api/local-ai/pull', { method: 'POST', body: { model, base_url: this.ollamaBaseUrl } });
+          if (!r.ok) toast(r.last || 'pull failed', 'error');
+          else toast({{ t('SYS_OLLAMA_PULL_OK') | tojson }}, 'success');
+        } catch (e) { toast(e.message, 'error'); }
+        finally { this.ollamaBusy = false; }
+        await this.refreshOllama();
       },
       async loadAiTokens() {
         try {
@@ -1022,6 +1107,7 @@
       level: 'full',
       generatedCommand: '',
       resetting: false,
+      resetConfirmInput: '',
       resetResult: null,
       copied: false,
       labels: {
@@ -1030,6 +1116,11 @@
         not_present: {{ t('UNINSTALL_NOT_PRESENT') | tojson }},
         reset_now:   {{ t('UNINSTALL_TIER1_BUTTON') | tojson }},
         resetting:   {{ t('UNINSTALL_TIER1_RUNNING') | tojson }},
+        type_delete: {{ t('UNINSTALL_TYPE_DELETE_HINT') | tojson }},
+        ollama_install:    {{ t('SYS_OLLAMA_INSTALL_BTN') | tojson }},
+        ollama_installing: {{ t('SYS_OLLAMA_INSTALLING') | tojson }},
+        ollama_pull:       {{ t('SYS_OLLAMA_PULL_BTN') | tojson }},
+        ollama_pulling:    {{ t('SYS_OLLAMA_PULLING') | tojson }},
         reset_done:  {{ t('UNINSTALL_TIER1_DONE') | tojson }},
         copy_command:{{ t('UNINSTALL_COPY_COMMAND') | tojson }},
         copied:      {{ t('COPIED') | tojson }},
@@ -1041,13 +1132,17 @@
         } catch (e) { toast(e.message, 'error'); }
       },
       async confirmReset() {
-        const msg = {{ t('UNINSTALL_TIER1_CONFIRM') | tojson }};
-        if (!confirm(msg)) return;
+        // Inline typed confirmation replaces the native confirm() dialog —
+        // browser-native confirm() uses the OS locale (often English) even
+        // when the admin is in zh-TW. The "type DELETE to confirm" pattern
+        // is also harder to dismiss accidentally.
+        if ((this.resetConfirmInput || '').trim().toUpperCase() !== 'DELETE') return;
         this.resetting = true;
         this.resetResult = null;
         try {
           this.resetResult = await api('/api/uninstall/reset', { method: 'POST', body: {} });
           await this.loadInventory();
+          this.resetConfirmInput = '';
           toast({{ t('UNINSTALL_TIER1_DONE') | tojson }}, 'success');
         } catch (e) { toast(e.message, 'error'); }
         finally { this.resetting = false; }

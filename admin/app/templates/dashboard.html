@@ -205,35 +205,46 @@
     </div>
     <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5">
       <div class="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">{{ t('TILE_STORAGE') }}</div>
-      <div class="mt-2 text-xl font-display tracking-tight truncate text-slate-900 dark:text-slate-100">{{ config.storage_path or t('NOT_SET') }}</div>
-      <div class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{ t('STORAGE_CAPTION') }}</div>
+      {# Show a friendly storage label rather than the raw `/var/folders/.../tmp...`
+         path. The full path is still available on the Storage page. #}
+      <div class="mt-2 text-xl font-display tracking-tight truncate text-slate-900 dark:text-slate-100" x-text="storageLabel()"></div>
+      <div class="mt-1 text-sm text-slate-500 dark:text-slate-400">
+        <a href="/storage" class="hover:text-slate-700 dark:hover:text-slate-200 underline">{{ t('STORAGE_CAPTION') }}</a>
+      </div>
     </div>
   </div>
 
   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
     <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5">
       <h2 class="text-lg font-display tracking-tight mb-3">{{ t('DASHBOARD_CAMERAS_HEADING') }}</h2>
-      <ul x-show="status.cameras && status.cameras.length > 0" class="space-y-2 text-sm">
+      {# Live thumbnails — re-uses the same /api/cameras/{name}/thumbnail
+         endpoint the cameras page uses. Cache-busted every 30 s via
+         tickKey so the user sees fresh frames without manual refresh.
+         Each tile is a link to /cameras → live-view modal so a tap on
+         the pet card is what people expect: "show me the camera". #}
+      <div x-show="status.cameras && status.cameras.length > 0" class="grid grid-cols-2 gap-3">
         <template x-for="c in status.cameras" :key="c.name">
-          <li class="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-2 last:border-0 last:pb-0">
-            <div class="flex items-center gap-2">
-              <div>
-                <div class="font-medium" x-text="c.name"></div>
-                <div class="text-xs text-slate-500 dark:text-slate-400 font-mono" x-text="c.ip"></div>
-              </div>
+          <a :href="`/cameras?watch=${encodeURIComponent(c.name)}`"
+             class="group block rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-brand-400 dark:hover:border-brand-500 transition">
+            <div class="relative aspect-video bg-slate-200 dark:bg-slate-700">
+              <img :src="`/api/cameras/${encodeURIComponent(c.name)}/thumbnail?t=${tickKey}`"
+                   class="absolute inset-0 w-full h-full object-cover"
+                   loading="lazy"
+                   onerror="this.style.visibility='hidden'" alt="" />
+              <span class="absolute top-1.5 right-1.5 inline-flex h-2 w-2 rounded-full ring-2 ring-white dark:ring-slate-900"
+                    x-bind:class="c.enabled ? 'bg-emerald-500' : 'bg-slate-400'"></span>
               <span x-show="c.connection_type && c.connection_type !== 'unknown'"
-                    class="inline-flex rounded-full px-2 py-0.5 text-xs font-medium"
+                    class="absolute top-1.5 left-1.5 inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-medium ring-1 ring-white/20"
                     x-bind:class="{
-                      'bg-blue-50 dark:bg-blue-900 text-blue-700 dark:text-blue-300': c.connection_type === 'wifi',
-                      'bg-emerald-50 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300': c.connection_type === 'wired',
+                      'bg-blue-500 text-white': c.connection_type === 'wifi',
+                      'bg-emerald-600 text-white': c.connection_type === 'wired',
                     }"
                     x-text='c.connection_type === 'wifi' ? {{ t('LINK_WIFI') | tojson }} : {{ t('LINK_WIRED') | tojson }}'></span>
             </div>
-            <span class="inline-flex h-2 w-2 rounded-full"
-                  x-bind:class="c.enabled ? 'bg-emerald-500' : 'bg-slate-300'"></span>
-          </li>
+            <div class="px-3 py-2 text-sm font-medium truncate group-hover:text-brand-600 dark:group-hover:text-brand-400" x-text="c.name"></div>
+          </a>
         </template>
-      </ul>
+      </div>
       <p x-show="!status.cameras || status.cameras.length === 0" class="text-sm text-slate-500 dark:text-slate-400">
         {{ t('DASHBOARD_NO_CAMERAS') }} <a href="/cameras" class="underline">{{ t('ADD_CAMERA') }}</a>.
       </p>
@@ -289,6 +300,10 @@
       copiedCode: null,
       pwaInstall: { show: false, kind: null /* 'native' | 'ios' */ },
       push: { show: false, busy: false, androidHint: false },
+      // tickKey rotates every 30 s to bust the camera-thumbnail browser
+      // cache without forcing a full page refresh.
+      tickKey: 0,
+      _tickInterval: null,
       labels: {
         progress: {{ t('ONBOARDING_PROGRESS') | tojson }},  // "{done}/{total} done"
         update_apply:    {{ t('UPDATE_APPLY') | tojson }},
@@ -303,10 +318,20 @@
         time_min:             {{ t('TIME_AGO_MIN') | tojson }},
         time_hours:           {{ t('TIME_AGO_HOURS') | tojson }},
         time_days:            {{ t('TIME_AGO_DAYS') | tojson }},
+        // Frigate's `health` field arrives as raw English. Map to
+        // localized strings before displaying.
+        frigate_health: {
+          healthy:   {{ t('FRIGATE_HEALTH_HEALTHY')  | tojson }},
+          unhealthy: {{ t('FRIGATE_HEALTH_UNHEALTHY')| tojson }},
+          starting:  {{ t('FRIGATE_HEALTH_STARTING') | tojson }},
+        },
       },
+      storage_path: {{ (config.storage_path or '') | tojson }},
       async init() {
         await this.refresh();
         setInterval(() => this.refresh(), 5000);
+        // Bump tickKey every 30 s so camera thumbnails refresh.
+        this._tickInterval = setInterval(() => { this.tickKey = Date.now(); }, 30000);
         // Diagnostics polled every 30s — these are heavy-ish (disk usage,
         // log tail) so don't piggyback on the 5s status loop.
         this.refreshDiagnostics();
@@ -383,7 +408,21 @@
       },
       recordingStateHint() {
         if (this.status.privacy_paused) return this.labels.state_privacy_hint;
-        return this.status.frigate.health || this.status.frigate.status || '';
+        // Frigate's `health` is "healthy" / "unhealthy" / "starting" raw
+        // English. Translate via the labels map so a zh-TW user doesn't
+        // see English next to localized status text.
+        const raw = (this.status.frigate.health || this.status.frigate.status || '').toString().toLowerCase();
+        return this.labels.frigate_health[raw] || raw;
+      },
+      storageLabel() {
+        // Show only the trailing folder name; users don't gain anything
+        // from a full unix path on the dashboard, and demo paths like
+        // /var/folders/.../tmp.../storage make the product look
+        // unfinished. Click-through to /storage shows the real path.
+        const p = (this.storage_path || '').replace(/\/+$/, '');
+        if (!p) return '—';
+        const idx = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'));
+        return idx >= 0 ? (p.slice(idx + 1) || p) : p;
       },
       lastEventLabel() {
         if (!this.status.last_event_at) return this.labels.last_event_never;

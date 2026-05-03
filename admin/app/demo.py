@@ -1,25 +1,37 @@
 """Run the pawcorder admin panel with mock data for UI preview.
 
 External dependencies (Docker daemon, real Reolink camera, ffprobe) are
-stubbed so this works on a laptop with nothing else running.
+stubbed so this works on a laptop with nothing else running. The data
+directory is a fresh /tmp/pawcorder-demo-XXX so demo writes never touch
+your real /data — you can run this alongside a production admin.
 
 Usage (from the admin/ directory):
 
     python3 -m venv .venv && source .venv/bin/activate
     pip install -r requirements.txt
-    python -m app.demo
+    python -m app.demo                  # http://127.0.0.1:8081
+    python -m app.demo --port 9000      # custom port
+    python -m app.demo --host 0.0.0.0   # listen on the LAN
 
-Then open http://localhost:8080 in a browser. Password: demo
+Default port is 8081 (one above the production admin's 8080) so both can
+run side-by-side without collision. Password: demo
 """
 from __future__ import annotations
 
 import os
 import shutil
+import sys
 import tempfile
 from pathlib import Path
 
 ADMIN_DIR = Path(__file__).resolve().parent.parent
 PROJECT_ROOT = ADMIN_DIR.parent
+
+# Fresh mode: skip the camera / pet / sightings / rich .env seed so the
+# admin lands on the first-run setup wizard, mimicking a brand new install.
+# Detected here (not in serve()) because seeding happens at import time,
+# before argparse runs.
+FRESH = "--fresh" in sys.argv or bool(os.environ.get("PAWCORDER_DEMO_FRESH"))
 
 DEMO_DIR = Path(tempfile.mkdtemp(prefix="pawcorder-demo-"))
 (DEMO_DIR / "config").mkdir(parents=True)
@@ -34,65 +46,78 @@ shutil.copy(
     DEMO_DIR / "config" / "frigate.template.yml",
 )
 
-(DEMO_DIR / ".env").write_text(
-    f'STORAGE_PATH="{DEMO_STORAGE}"\n'
-    'FRIGATE_RTSP_PASSWORD="demosecret"\n'
-    'TZ="Asia/Taipei"\n'
-    'PET_MIN_SCORE="0.65"\n'
-    'PET_THRESHOLD="0.70"\n'
-    'ADMIN_PASSWORD="demo"\n'
-    'ADMIN_SESSION_SECRET="demo-only-do-not-use-in-prod"\n'
-    'TAILSCALE_HOSTNAME="pawcorder-demo.tail-abcd.ts.net"\n'
-    'TELEGRAM_ENABLED="1"\n'
-    'TELEGRAM_BOT_TOKEN="123456:DEMO_TOKEN"\n'
-    'TELEGRAM_CHAT_ID="987654321"\n'
-    'LINE_ENABLED="0"\n'
-    'LINE_CHANNEL_TOKEN=""\n'
-    'LINE_TARGET_ID=""\n'
-    'ADMIN_LANG="zh-TW"\n'
-    'TRACK_CAT="1"\n'
-    'TRACK_DOG="1"\n'
-    'TRACK_PERSON="1"\n'
-    'DETECTOR_TYPE="cpu"\n'
-)
+if FRESH:
+    # Bare minimum so login works; FRIGATE_RTSP_PASSWORD intentionally
+    # absent so is_setup_complete() is False and / redirects to /setup.
+    (DEMO_DIR / ".env").write_text(
+        f'STORAGE_PATH="{DEMO_STORAGE}"\n'
+        'ADMIN_PASSWORD="demo"\n'
+        'ADMIN_SESSION_SECRET="demo-only-do-not-use-in-prod"\n'
+    )
+else:
+    (DEMO_DIR / ".env").write_text(
+        f'STORAGE_PATH="{DEMO_STORAGE}"\n'
+        'FRIGATE_RTSP_PASSWORD="demosecret"\n'
+        'TZ="Asia/Taipei"\n'
+        'PET_MIN_SCORE="0.65"\n'
+        'PET_THRESHOLD="0.70"\n'
+        'ADMIN_PASSWORD="demo"\n'
+        'ADMIN_SESSION_SECRET="demo-only-do-not-use-in-prod"\n'
+        'TAILSCALE_HOSTNAME="pawcorder-demo.tail-abcd.ts.net"\n'
+        'TELEGRAM_ENABLED="1"\n'
+        'TELEGRAM_BOT_TOKEN="123456:DEMO_TOKEN"\n'
+        'TELEGRAM_CHAT_ID="987654321"\n'
+        'LINE_ENABLED="0"\n'
+        'LINE_CHANNEL_TOKEN=""\n'
+        'LINE_TARGET_ID=""\n'
+        'ADMIN_LANG="zh-TW"\n'
+        'TRACK_CAT="1"\n'
+        'TRACK_DOG="1"\n'
+        'TRACK_PERSON="1"\n'
+        'DETECTOR_TYPE="cpu"\n'
+    )
 
-(DEMO_DIR / "config" / "cameras.yml").write_text(
-    "cameras:\n"
-    "  - name: living_room\n"
-    "    ip: 192.168.1.100\n"
-    "    user: admin\n"
-    "    password: demopass\n"
-    "    rtsp_port: 554\n"
-    "    onvif_port: 8000\n"
-    "    detect_width: 640\n"
-    "    detect_height: 480\n"
-    "    enabled: true\n"
-    "    connection_type: wired\n"
-    "  - name: kitchen\n"
-    "    ip: 192.168.1.101\n"
-    "    user: admin\n"
-    "    password: demopass\n"
-    "    rtsp_port: 554\n"
-    "    onvif_port: 8000\n"
-    "    detect_width: 640\n"
-    "    detect_height: 480\n"
-    "    enabled: true\n"
-    "    connection_type: wifi\n"
-    "  - name: garage\n"
-    "    ip: 192.168.1.102\n"
-    "    user: admin\n"
-    "    password: demopass\n"
-    "    rtsp_port: 554\n"
-    "    onvif_port: 8000\n"
-    "    detect_width: 640\n"
-    "    detect_height: 480\n"
-    "    enabled: false\n"
-    "    connection_type: wired\n"
-)
+if not FRESH:
+    (DEMO_DIR / "config" / "cameras.yml").write_text(
+        "cameras:\n"
+        "  - name: living_room\n"
+        "    ip: 192.168.1.100\n"
+        "    user: admin\n"
+        "    password: demopass\n"
+        "    rtsp_port: 554\n"
+        "    onvif_port: 8000\n"
+        "    detect_width: 640\n"
+        "    detect_height: 480\n"
+        "    enabled: true\n"
+        "    connection_type: wired\n"
+        "  - name: kitchen\n"
+        "    ip: 192.168.1.101\n"
+        "    user: admin\n"
+        "    password: demopass\n"
+        "    rtsp_port: 554\n"
+        "    onvif_port: 8000\n"
+        "    detect_width: 640\n"
+        "    detect_height: 480\n"
+        "    enabled: true\n"
+        "    connection_type: wifi\n"
+        "  - name: garage\n"
+        "    ip: 192.168.1.102\n"
+        "    user: admin\n"
+        "    password: demopass\n"
+        "    rtsp_port: 554\n"
+        "    onvif_port: 8000\n"
+        "    detect_width: 640\n"
+        "    detect_height: 480\n"
+        "    enabled: false\n"
+        "    connection_type: wired\n"
+    )
 
 os.environ["PAWCORDER_DATA_DIR"] = str(DEMO_DIR)
 
 # Imports below depend on PAWCORDER_DATA_DIR being set.
+from fastapi import HTTPException, Request  # noqa: E402
+from fastapi.responses import Response  # noqa: E402
+
 from app import camera_api, docker_ops, line as line_api, main, network_scan, telegram as tg  # noqa: E402
 from app.camera_api import RtspProbeResult  # noqa: E402
 from app.docker_ops import ContainerStatus  # noqa: E402
@@ -159,6 +184,67 @@ async def _mock_auto_configure_for_brand(brand: str, ip: str, user: str, passwor
 
 camera_api.auto_configure = _mock_auto_configure
 camera_api.probe_rtsp = _mock_probe_rtsp
+
+
+# ---- demo thumbnails -------------------------------------------------
+#
+# Production routes /api/cameras/{name}/thumbnail through Frigate's
+# latest.jpg; the demo has no Frigate, so without a stub the dashboard
+# tiles all render as empty grey rectangles. Generate a per-camera
+# pastel placeholder once so the new dashboard tile grid can be
+# meaningfully exercised in demo mode.
+
+_DEMO_THUMB_CACHE: dict[str, bytes] = {}
+_DEMO_THUMB_PALETTE = {
+    "living_room": (240, 196, 132),
+    "kitchen":     (190, 220, 195),
+    "garage":      (180, 195, 220),
+    "bedroom":     (220, 200, 220),
+    "litter":      (220, 210, 200),
+}
+
+
+def _demo_thumbnail_for(name: str) -> bytes:
+    cached = _DEMO_THUMB_CACHE.get(name)
+    if cached is not None:
+        return cached
+    import io as _io
+    from PIL import Image, ImageDraw  # imported here so demo can degrade if Pillow is missing
+
+    color = _DEMO_THUMB_PALETTE.get(name, (200, 200, 200))
+    img = Image.new("RGB", (640, 360), color)
+    draw = ImageDraw.Draw(img)
+    # Plain text watermark — no font file shipped with the demo, so use
+    # PIL's default bitmap font. Good enough to disambiguate three demo
+    # cameras at a glance.
+    draw.text((24, 24), name, fill=(60, 60, 60))
+    draw.text((24, 320), "demo placeholder", fill=(120, 120, 120))
+    buf = _io.BytesIO()
+    img.save(buf, format="JPEG", quality=72)
+    data = buf.getvalue()
+    _DEMO_THUMB_CACHE[name] = data
+    return data
+
+
+# Replace the production thumbnail route with a demo-friendly one. We
+# can't simply re-decorate the same path — FastAPI keeps both routes
+# and the first one wins — so we strip the existing route first.
+_THUMB_PATH = "/api/cameras/{name}/thumbnail"
+main.app.routes[:] = [
+    r for r in main.app.routes if getattr(r, "path", None) != _THUMB_PATH
+]
+
+
+@main.app.get(_THUMB_PATH)
+async def _demo_thumbnail_route(request: Request, name: str):
+    main._require_auth(request)
+    if not main.camera_store.get(name):
+        raise HTTPException(status_code=404, detail="camera not found")
+    return Response(
+        content=_demo_thumbnail_for(name),
+        media_type="image/jpeg",
+        headers={"Cache-Control": "private, max-age=10"},
+    )
 # Patch the dispatcher entry point so non-Reolink brand selections don't
 # leak out to real httpx calls.
 from app import camera_setup  # noqa: E402  -- after camera_api stubs land
@@ -305,20 +391,41 @@ def _seed_demo_data() -> None:
     sentinel.write_text("seeded\n", encoding="utf-8")
 
 
-_seed_demo_data()
+if not FRESH:
+    _seed_demo_data()
 
 
 def serve() -> None:
+    import argparse
     import uvicorn
+
+    parser = argparse.ArgumentParser(
+        description="Run the pawcorder admin in demo mode against an isolated "
+                    "/tmp data dir. Safe to run alongside the production admin.",
+    )
+    # Default port is 8081 to avoid colliding with the real admin on 8080
+    # — running both side-by-side is the common case for ourselves while
+    # building / smoke-testing UI changes.
+    parser.add_argument("--port", type=int,
+                        default=int(os.environ.get("PAWCORDER_DEMO_PORT", 8081)))
+    parser.add_argument("--host", default=os.environ.get("PAWCORDER_DEMO_HOST", "127.0.0.1"))
+    # Consumed at module import time (FRESH); declared here so argparse
+    # accepts the flag instead of erroring on an unknown argument.
+    parser.add_argument("--fresh", action="store_true",
+                        help="Skip seeded cameras / pets / sightings — start at /setup wizard.")
+    args = parser.parse_args()
 
     print("=" * 64)
     print(" pawcorder admin demo")
-    print(" URL:      http://localhost:8080")
+    print(f" URL:      http://{args.host}:{args.port}")
     print(" Password: demo")
     print(" Data:    ", DEMO_DIR)
     print(" Mocked:   docker, Reolink API, RTSP probes, network scan")
+    if FRESH:
+        print(" Mode:     FRESH (no seeded data — / redirects to /setup)")
     print("=" * 64)
-    uvicorn.run(main.app, host="127.0.0.1", port=8080, reload=False, log_level="warning")
+    uvicorn.run(main.app, host=args.host, port=args.port,
+                reload=False, log_level="warning")
 
 
 if __name__ == "__main__":

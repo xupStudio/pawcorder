@@ -180,8 +180,59 @@
                  class="mt-1 w-full rounded-md border-slate-300 dark:border-slate-600 px-3 py-2 border text-sm font-mono" />
         </div>
 
+        <!-- One-click OAuth (device code) — Drive / OneDrive only;
+             shown when the env-vars are wired. Falls through to the
+             CLI dance below when not configured. -->
+        <div x-show="['drive','onedrive'].includes(modal.backend) && oauthConfigured[modal.backend]"
+             class="rounded-lg bg-emerald-50 dark:bg-emerald-950 border border-emerald-200 dark:border-emerald-800 p-4 space-y-3">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-semibold text-emerald-900 dark:text-emerald-100">{{ t('CLOUD_OAUTH_ONECLICK_TITLE') }}</h3>
+            <span class="inline-flex rounded-full px-2 py-0.5 text-xs font-medium bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200">{{ t('RECOMMENDED') }}</span>
+          </div>
+          <p class="text-xs text-emerald-800 dark:text-emerald-200">{{ t('CLOUD_OAUTH_ONECLICK_BODY') }}</p>
+          <div x-show="!oauth.user_code">
+            <button type="button" @click="oauthStart(modal.backend)" :disabled="oauth.busy"
+                    class="rounded-md bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 text-sm font-medium disabled:opacity-50"
+                    x-text="oauth.busy ? labels.oauth_starting : labels.oauth_connect"></button>
+          </div>
+          <div x-show="oauth.user_code" class="space-y-2">
+            <p class="text-sm text-emerald-900 dark:text-emerald-100">
+              {{ t('CLOUD_OAUTH_VISIT') }}
+              <a :href="oauth.verification_url" target="_blank" rel="noopener" class="underline font-medium" x-text="oauth.verification_url"></a>
+            </p>
+            <p class="text-sm text-emerald-900 dark:text-emerald-100">
+              {{ t('CLOUD_OAUTH_ENTER_CODE') }}
+              <code class="font-mono text-base bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-800 rounded px-2 py-0.5" x-text="oauth.user_code"></code>
+            </p>
+            <p x-show="!oauth.matched" class="text-xs text-emerald-800 dark:text-emerald-200" x-text="labels.oauth_waiting"></p>
+            <p x-show="oauth.matched" class="text-xs font-medium text-emerald-900 dark:text-emerald-100">{{ t('CLOUD_OAUTH_DONE') }}</p>
+          </div>
+        </div>
+
+        <!-- Nextcloud Login Flow v2 — zero registration needed -->
+        <div x-show="modal.backend === 'webdav'"
+             class="rounded-lg bg-emerald-50 dark:bg-emerald-950 border border-emerald-200 dark:border-emerald-800 p-4 space-y-3 mb-4">
+          <h3 class="text-sm font-semibold text-emerald-900 dark:text-emerald-100">{{ t('CLOUD_OAUTH_NC_TITLE') }}</h3>
+          <p class="text-xs text-emerald-800 dark:text-emerald-200">{{ t('CLOUD_OAUTH_NC_BODY') }}</p>
+          <div x-show="!nc.login_url" class="flex gap-2">
+            <input type="text" x-model="nc.server_url" placeholder="https://cloud.example.com"
+                   class="flex-1 rounded-md border-emerald-300 dark:border-emerald-700 px-3 py-2 border text-sm font-mono" />
+            <button type="button" @click="ncStart()" :disabled="nc.busy || !nc.server_url"
+                    class="rounded-md bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 text-sm font-medium disabled:opacity-50"
+                    x-text="nc.busy ? labels.oauth_starting : labels.oauth_connect"></button>
+          </div>
+          <div x-show="nc.login_url" class="space-y-2">
+            <a :href="nc.login_url" target="_blank" rel="noopener"
+               class="inline-flex items-center rounded-md bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 text-sm font-medium">
+              {{ t('CLOUD_OAUTH_NC_OPEN') }} →
+            </a>
+            <p x-show="!nc.matched" class="text-xs text-emerald-800 dark:text-emerald-200" x-text="labels.oauth_waiting"></p>
+            <p x-show="nc.matched" class="text-xs font-medium text-emerald-900 dark:text-emerald-100">{{ t('CLOUD_OAUTH_DONE') }}</p>
+          </div>
+        </div>
+
         <!-- OAuth backends: walk the user through rclone authorize step-by-step -->
-        <div x-show="['drive','dropbox','onedrive'].includes(modal.backend)" class="space-y-4">
+        <div x-show="['drive','dropbox','onedrive'].includes(modal.backend) && !oauthConfigured[modal.backend]" class="space-y-4">
           <div class="rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-4">
             <h3 class="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-1">{{ t('CLOUD_AUTH_TITLE') }}</h3>
             <p class="text-xs text-slate-600 dark:text-slate-300">{{ t('CLOUD_AUTH_INTRO') }}</p>
@@ -352,7 +403,13 @@
         used_others:{{ t('CLOUD_USED_BY_OTHERS') | tojson }},
         days_label: {{ t('CLOUD_DAYS') | tojson }},
         based_on:   {{ t('CLOUD_BASED_ON_USAGE') | tojson }},
+        oauth_connect:  {{ t('CLOUD_OAUTH_CONNECT_BTN') | tojson }},
+        oauth_starting: {{ t('CLOUD_OAUTH_STARTING') | tojson }},
+        oauth_waiting:  {{ t('CLOUD_OAUTH_WAITING') | tojson }},
       },
+      oauthConfigured: { drive: false, onedrive: false, dropbox: false, nextcloud: true },
+      oauth: { busy: false, user_code: '', verification_url: '', matched: false, _poll: null },
+      nc:    { busy: false, server_url: '', login_url: '', sid: '', matched: false, _poll: null },
       form: {
         cloud_enabled:           {{ config.cloud_enabled | tojson }},
         cloud_remote_path:       {{ config.cloud_remote_path | tojson }},
@@ -370,8 +427,74 @@
         os: detectOS(),
         fields: {},
       },
-      init() {
+      async init() {
         if (this.remotes.length > 0) this.refreshQuota();
+        try {
+          const r = await api('/api/cloud/oauth/status');
+          this.oauthConfigured = { ...this.oauthConfigured, ...(r.providers || {}) };
+        } catch (e) { /* env-vars likely missing — UI falls back to manual paste */ }
+      },
+      async oauthStart(provider) {
+        this.oauth.busy = true;
+        this.oauth.user_code = '';
+        this.oauth.matched = false;
+        try {
+          const r = await api(`/api/cloud/oauth/${provider}/start`, { method: 'POST', body: {} });
+          this.oauth.user_code = r.user_code;
+          this.oauth.verification_url = r.verification_url;
+          // Poll the token endpoint at the provider's recommended cadence
+          // (RFC 8628 says ~5s default; we honour their interval).
+          if (this.oauth._poll) clearInterval(this.oauth._poll);
+          let ticks = 0;
+          this.oauth._poll = setInterval(async () => {
+            ticks++;
+            if (ticks > 360) { clearInterval(this.oauth._poll); return; }   // ~30 min cap
+            try {
+              const cr = await api(`/api/cloud/oauth/${provider}/poll`, {
+                method: 'POST', body: { user_code: this.oauth.user_code },
+              });
+              if (cr.matched) {
+                this.oauth.matched = true;
+                clearInterval(this.oauth._poll);
+                toast({{ t('CLOUD_OAUTH_DONE_TOAST') | tojson }}, 'success');
+                this.modal.open = false;
+                window.location.reload();
+              }
+            } catch (e) { /* transient — keep polling unless final error toast */ }
+          }, (r.interval || 5) * 1000);
+        } catch (e) { toast(e.message, 'error'); }
+        finally { this.oauth.busy = false; }
+      },
+      async ncStart() {
+        this.nc.busy = true;
+        this.nc.login_url = '';
+        this.nc.matched = false;
+        try {
+          const r = await api('/api/cloud/oauth/nextcloud/start', {
+            method: 'POST', body: { server_url: this.nc.server_url },
+          });
+          this.nc.sid = r.sid;
+          this.nc.login_url = r.login_url;
+          if (this.nc._poll) clearInterval(this.nc._poll);
+          let ticks = 0;
+          this.nc._poll = setInterval(async () => {
+            ticks++;
+            if (ticks > 240) { clearInterval(this.nc._poll); return; }   // ~20 min cap
+            try {
+              const cr = await api('/api/cloud/oauth/nextcloud/poll', {
+                method: 'POST', body: { sid: this.nc.sid },
+              });
+              if (cr.matched) {
+                this.nc.matched = true;
+                clearInterval(this.nc._poll);
+                toast({{ t('CLOUD_OAUTH_DONE_TOAST') | tojson }}, 'success');
+                this.modal.open = false;
+                window.location.reload();
+              }
+            } catch (e) { /* transient — keep polling */ }
+          }, 5000);
+        } catch (e) { toast(e.message, 'error'); }
+        finally { this.nc.busy = false; }
       },
       pct(used, total) {
         if (!total || used <= 0) return 0;
